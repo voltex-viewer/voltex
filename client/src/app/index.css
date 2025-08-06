@@ -1,0 +1,278 @@
+/* Make the time axis row label compact */
+.waveform-timeaxis-row .channel-label {
+  padding: 2px 8px;
+  font-size: 0.95em;
+  height: 100%;
+  line-height: 1.1;
+}
+
+body {
+    box-sizing: border-box;
+}
+
+.vertical-sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 320px;
+    background: transparent;
+    display: flex;
+    flex-direction: row;
+    z-index: 100;
+    box-shadow: none;
+    transition: none;
+    overflow: visible;
+    pointer-events: none;
+}
+.vertical-sidebar:not(.expanded) .sidebar-panel-container {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+}
+.sidebar-panel-container {
+    width: 272px;
+    min-width: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: #23272e;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+    border-left: 1px solid #2c313a;
+    pointer-events: auto;
+    overflow: hidden;
+}
+.vertical-sidebar:not(.expanded) .sidebar-panel-container {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+}
+.sidebar-panel {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #23272e;
+    color: #bfc7d5;
+    padding: 24px 20px;
+    box-sizing: border-box;
+    font-size: 16px;
+    overflow-y: auto;
+    z-index: 1;
+    transition: opacity 0.15s;
+}
+.vertical-sidebar.expanded .sidebar-panel.active {
+    display: block;
+    opacity: 1;
+}
+.sidebar-panel:not(.active) {
+    opacity: 0;
+    pointer-events: none;
+}
+.sidebar-icons {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 16px;
+    gap: 12px;
+    background: #181c22;
+    position: absolute;
+    right: 0;
+    top: 0;
+    z-index: 2;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+    pointer-events: auto;
+    flex-shrink: 0;
+    border-left: 1.5px solid #353b45;
+}
+.sidebar-icon {
+    background: none;
+    border: none;
+    color: #bfc7d5;
+    font-size: 22px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+.sidebar-icon.active, .sidebar-icon:hover {
+    background: #353b45;
+    color: #fff;
+}
+@media (max-width: 600px) {
+    .vertical-sidebar.expanded {
+        width: 90vw;
+    }
+    .vertical-sidebar.expanded .sidebar-panel-container {
+        width: calc(90vw - 48px);
+        min-width: 0;
+        max-width: none;
+    }
+}
+html, body {
+  background: #181c20;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+/* Split horizontal separator for channel and waveform section (single definition) */
+/* Note: Now using border-bottom on .waveform-row instead of dedicated elements */
+
+.waveform-container {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.waveform-main-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.waveform-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+  background: #181a20;
+  padding: 0;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+/* Container styles updated for single canvas approach */
+
+.waveform-vline {
+  min-width: 2px;
+  max-width: 2px;
+  height: 100%;
+  background: #333;
+  border-left: 1px solid #222;
+  display: block;
+  z-index: 10;
+  align-self: stretch;
+  cursor: ew-resize;
+  transition: background 0.2s;
+}
+.waveform-timeaxis-row .waveform-vline {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  align-self: stretch;
+}
+.waveform-vline:hover, .waveform-vline:active {
+  background: #444;
+}
+
+/* Hotbar styles */
+.hotbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  background: transparent;
+  border-bottom: 1px solid #333;
+  padding: 0;
+  height: 40px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.hotbar-button {
+  background: transparent;
+  border: none;
+  border-left: 1px solid #333;
+  color: #bfc7d5;
+  border-radius: 0;
+  padding: 0;
+  width: 40px;
+  height: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.hotbar-button:last-child {
+  border-right: 1px solid #333;
+}
+
+.hotbar-button:hover {
+  background: #242830;
+}
+
+.hotbar-button.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.hotbar-button:disabled {
+  background: transparent;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.hotbar-button-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.waveform-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Container for channel label and resize handle */
+.channel-label-container {
+  display: flex;
+  flex-direction: column;
+  width: var(--label-width, 110px);
+  min-width: 40px;
+  max-width: 400px;
+  height: 100%;
+}
+
+/* Update channel label to fill the container */
+.channel-label {
+  flex: 1;
+  width: 100%;
+  color: #fff;
+  font-weight: bold;
+  font-family: monospace;
+  font-size: 1.1em;
+  text-align: left;
+  background: #1a1c22;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: keep-all;
+  line-height: normal;
+  user-select: none;
+  box-sizing: border-box;
+  padding: 14px 8px;
+  transition: background-color 0.15s ease;
+}

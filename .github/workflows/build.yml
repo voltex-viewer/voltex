@@ -1,0 +1,180 @@
+name: Build Electron App
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            rust_target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            rust_target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            rust_target: aarch64-apple-darwin
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: client/package-lock.json
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+        targets: ${{ matrix.rust_target }}
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          server/target
+        key: ${{ runner.os }}-${{ matrix.rust_target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.rust_target }}-cargo-
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler libprotobuf-dev libudev-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install protobuf
+
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install protoc
+
+    - name: Install client dependencies
+      run: |
+        cd client
+        npm ci
+
+    - name: Generate protobuf files
+      run: |
+        cd client
+        npm run proto
+
+    - name: Build Rust server
+      run: |
+        cd server
+        cargo build --release --target ${{ matrix.rust_target }}
+
+    - name: Copy server binary (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        mkdir -p client/resources
+        cp server/target/${{ matrix.rust_target }}/release/server.exe client/resources/
+
+    - name: Copy server binary (Linux/macOS)
+      if: matrix.os != 'windows-latest'
+      run: |
+        mkdir -p client/resources
+        cp server/target/${{ matrix.rust_target }}/release/server client/resources/
+
+    - name: Build Electron app
+      run: |
+        cd client
+        npm run package
+        npm run make
+      env:
+        CI: true
+
+    - name: Upload Windows artifacts
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: voltex-windows-x64
+        path: |
+          client/out/make/squirrel.windows/x64/*.exe
+          client/out/make/zip/win32/x64/*.zip
+
+    - name: Upload Linux artifacts
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: voltex-linux-x64
+        path: |
+          client/out/make/deb/x64/*.deb
+          client/out/make/rpm/x64/*.rpm
+          client/out/make/zip/linux/x64/*.zip
+
+    - name: Upload macOS artifacts
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: voltex-macos-arm64
+        path: |
+          client/out/make/zip/darwin/arm64/*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Upload release assets
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          const uploadAsset = async (filePath, name) => {
+            const data = fs.readFileSync(filePath);
+            await github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              name: name,
+              data: data,
+            });
+          };
+          
+          const artifactDirs = ['voltex-windows-x64', 'voltex-linux-x64', 'voltex-macos-arm64'];
+          
+          for (const dir of artifactDirs) {
+            const dirPath = path.join('artifacts', dir);
+            if (fs.existsSync(dirPath)) {
+              const files = fs.readdirSync(dirPath, { recursive: true });
+              for (const file of files) {
+                const filePath = path.join(dirPath, file);
+                if (fs.statSync(filePath).isFile()) {
+                  await uploadAsset(filePath, path.basename(file));
+                }
+              }
+            }
+          }

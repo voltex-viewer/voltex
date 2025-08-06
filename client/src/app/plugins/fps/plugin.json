@@ -1,0 +1,6 @@
+{
+  "name": "FPS Plugin",
+  "version": "1.0.0",
+  "description": "Displays frames per second counter on each waveform row",
+  "author": "Voltex Team"
+}

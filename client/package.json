@@ -1,0 +1,60 @@
+{
+  "name": "voltex",
+  "productName": "voltex",
+  "version": "1.0.0",
+  "description": "My Electron application description",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "proto": "node -e \"const fs = require('fs'); fs.mkdirSync('src/generated', { recursive: true });\" && npx protoc --ts_out src/generated --proto_path ../protos tracereader.proto",
+    "proto:watch": "npx nodemon --watch ../protos/tracereader.proto --ext proto --exec \"node -e \\\"const fs = require('fs'); fs.mkdirSync('src/generated', { recursive: true });\\\" && npx protoc --ts_out src/generated --proto_path ../protos tracereader.proto\"",
+    "prestart": "npm run proto",
+    "prebuild": "npm run proto",
+    "prepackage": "npm run proto",
+    "premake": "npm run proto",
+    "build": "cd ../server && cargo build --release",
+    "build:web": "npm run proto && vite build --config vite.web.config.ts",
+    "dev:web": "npm run proto && vite dev --config vite.web.config.ts",
+    "preview:web": "vite preview --config vite.web.config.ts",
+    "start": "concurrently --kill-others-on-fail --kill-others \"npm:proto:watch\" \"electron-forge start -- --no-server\"",
+    "start:debug": "concurrently --kill-others-on-fail --kill-others \"npm:proto:watch\" \"electron-forge start -- --no-server --inspect=9229 --remote-debugging-port=9222\"",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint --ext .ts,.tsx ."
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.6.0",
+    "@electron-forge/maker-deb": "^7.6.0",
+    "@electron-forge/maker-rpm": "^7.6.0",
+    "@electron-forge/maker-squirrel": "^7.6.0",
+    "@electron-forge/maker-zip": "^7.6.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.6.0",
+    "@electron-forge/plugin-fuses": "^7.6.0",
+    "@electron-forge/plugin-vite": "^7.6.0",
+    "@electron/fuses": "^1.8.0",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "cargo-cp-artifact": "^0.1",
+    "concurrently": "^9.2.0",
+    "electron": "33.2.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.31.0",
+    "nodemon": "^3.1.10",
+    "protoc-gen-js": "^3.21.2",
+    "ts-node": "^10.9.2",
+    "typescript": "~4.5.4",
+    "vite": "^5.4.11"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Tom Gillbe"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@protobuf-ts/grpcweb-transport": "^2.9.4",
+    "@protobuf-ts/plugin": "^2.9.4",
+    "electron-squirrel-startup": "^1.0.1",
+    "fp-ts": "^2.16.10",
+    "io-ts": "^2.2.22"
+  }
+}

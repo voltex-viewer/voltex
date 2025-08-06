@@ -1,0 +1,25 @@
+;$FILEVERSION=1.2
+;$STARTTIME=39878.6772258947;
+;   C:\TraceFile.trc
+;
+;   Start time: 06.03.2009 16:15:12.317.3
+;   Connection: TestNet
+;
+;   Columns description:
+;   ~~~~~~~~~~~~~~~~~~~~~
+;   +-Message Number
+;   |        +Time Offset (ms)
+;   |        |        +Bus
+;   |        |        |    +Type
+;   |        |        |    |        +ID (hex)
+;   |        |        |    |        |     +Data Length Code
+;   |        |        |    |        |     |   +Data Bytes (hex) ...
+;   |        |        |    |        |     |   |
+;---+--  ----+------  +  --+--  ----+---  +  -+ -- -- -- -- -- -- --
+     1)     1059.900  1  Rx         0300  7  00 00 00 00 04 00 00
+     2)     1283.231  1  Rx         0300  7  00 00 00 00 04 00 00
+     3)     1298.945  1  Tx         0400  2  00 00
+     4)     1323.201  1  Rx         0300  7  00 00 00 00 06 00 00
+     5)     1346.834  1  Warng  FFFFFFFF  4  00 00 00 04 BUSLIGHT
+     6)     1349.222  1  Error      0008  4  00 19 08 08
+     7)     1352.743  1  Rx         0100  3  RTR

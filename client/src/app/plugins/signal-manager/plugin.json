@@ -1,0 +1,6 @@
+{
+  "name": "Signal Manager",
+  "version": "1.0.0",
+  "description": "Manages which signals are plotted with search and filtering capabilities",
+  "author": "Voltex Team"
+}

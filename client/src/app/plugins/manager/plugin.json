@@ -1,0 +1,6 @@
+{
+  "name": "Plugin Manager",
+  "version": "1.0.0",
+  "description": "Manages other plugins and provides plugin management interface",
+  "author": "Voltex Team"
+}

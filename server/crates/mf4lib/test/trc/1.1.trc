@@ -1,0 +1,25 @@
+;$FILEVERSION=1.1
+;$STARTTIME=37704.5364870833
+;
+;   C:\TraceFile.trc
+;
+;   Start time: 24.03.2003 12:52:32.484
+;   PCAN-Net: TestNet
+;
+;   Columns description:
+;   ~~~~~~~~~~~~~~~~~~~~~
+;   +-Message Number
+;   |         +Time Offset (ms)
+;   |         |        +Type
+;   |         |        |        +ID (hex)
+;   |         |        |        |     +Data Length Code
+;   |         |        |        |     |   +Data Bytes (hex) ...
+;   |         |        |        |     |   |
+;---+--   ----+----  --+--  ----+---  +  -+ -- -- -- -- -- -- --
+     1)      1059.9  Rx         0300  7  00 00 00 00 04 00 00
+     2)      1283.2  Rx         0300  7  00 00 00 00 04 00 00
+     3)      1298.9  Tx         0400  2  00 00
+     4)      1323.0  Rx         0300  7  00 00 00 00 06 00 00
+     5)      1346.8  Warng  FFFFFFFF  4  00 00 00 04  BUSLIGHT
+     6)      1349.2  Error      0008  4  00 19 08 08
+     7)      1352.7  Rx         0100  3  RTR

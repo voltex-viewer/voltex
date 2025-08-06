@@ -1,0 +1,20 @@
+import * as t from 'io-ts';
+
+export enum RenderMode {
+    Lines = 'lines',
+    LinesDots = 'lines-dots',
+    Dots = 'dots',
+}
+
+// Config schema for WaveformRenderer
+export const WaveformConfigSchema = t.type({
+    renderMode: t.union([
+        t.literal(RenderMode.Lines),
+        t.literal(RenderMode.LinesDots),
+        t.literal(RenderMode.Dots)
+    ]),
+    dotSize: t.number,
+    lineWidth: t.number,
+});
+
+export type WaveformConfig = t.TypeOf<typeof WaveformConfigSchema>;
