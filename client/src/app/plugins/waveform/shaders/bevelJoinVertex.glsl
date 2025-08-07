@@ -5,25 +5,34 @@ attribute vec2 pointC;
 
 uniform vec2 u_bounds;
 uniform float u_width;
+uniform float u_timeOffsetHigh;   // High precision part of time offset
+uniform float u_timeOffsetLow;    // Low precision part of time offset
 uniform float u_pxPerSecond;
-uniform float u_offset;
 uniform float u_yScale;
 uniform float u_yOffset;
 
 void main() {
-    // Transform signal points to screen coordinates first
+    // Emulated double precision
+    float diffA = pointA.x - u_timeOffsetHigh;
+    diffA = diffA - u_timeOffsetLow;
+    float diffB = pointB.x - u_timeOffsetHigh;
+    diffB = diffB - u_timeOffsetLow;
+    float diffC = pointC.x - u_timeOffsetHigh;
+    diffC = diffC - u_timeOffsetLow;
+    
+    // Transform signal points to screen coordinates
     vec2 screenPointA = vec2(
-        pointA.x * u_pxPerSecond - u_offset,
+        diffA * u_pxPerSecond,
         u_bounds.y / 2.0 - (pointA.y + u_yOffset) * u_yScale * u_bounds.y * 0.4
     );
     
     vec2 screenPointB = vec2(
-        pointB.x * u_pxPerSecond - u_offset,
+        diffB * u_pxPerSecond,
         u_bounds.y / 2.0 - (pointB.y + u_yOffset) * u_yScale * u_bounds.y * 0.4
     );
     
     vec2 screenPointC = vec2(
-        pointC.x * u_pxPerSecond - u_offset,
+        diffC * u_pxPerSecond,
         u_bounds.y / 2.0 - (pointC.y + u_yOffset) * u_yScale * u_bounds.y * 0.4
     );
     

@@ -40,13 +40,23 @@ export class WaveformRenderObject extends RenderObject {
         const renderMode = this.getSignalRenderMode(this.signal, this.config.renderMode);
         
         const color = this.color;
+            
+        // Calculate left time with high precision
+        const leftTimeDouble = state.offset / signal.pxPerSecond;
+        
+        // Split double precision into two float32 values for GPU
+        // This emulates double precision arithmetic on the GPU
+        const timeOffsetHigh = Math.fround(leftTimeDouble); // Round to float32
+        const timeOffsetLow = leftTimeDouble - timeOffsetHigh; // Remaining precision
         
         // Set uniforms
         let bindUniforms = (width: number) => (program: WebGLProgram) => {
             gl.uniform2f(gl.getUniformLocation(program, 'u_bounds'), bounds.width, bounds.height);
             gl.uniform1f(gl.getUniformLocation(program, 'u_width'), width);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetHigh'), timeOffsetHigh);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetLow'), timeOffsetLow);
             gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), signal.pxPerSecond);
-            gl.uniform1f(gl.getUniformLocation(program, 'u_offset'), state.offset);
+            
             gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.source.discrete ? 1 : 0);
 
             // Apply row-specific y-scale and y-offset
@@ -58,16 +68,11 @@ export class WaveformRenderObject extends RenderObject {
         };
 
         // Special uniform binding for enum mode to pass max value for coloring
-        let enumBindUniforms = (width: number) => (program: WebGLProgram) => {
+        let enumLinesBindUniforms = (program: WebGLProgram) => {
             gl.uniform2f(gl.getUniformLocation(program, 'u_bounds'), bounds.width, bounds.height);
-            gl.uniform1f(gl.getUniformLocation(program, 'u_width'), width);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetHigh'), timeOffsetHigh);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetLow'), timeOffsetLow);
             gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), signal.pxPerSecond);
-            gl.uniform1f(gl.getUniformLocation(program, 'u_offset'), state.offset);
-            gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.source.discrete ? 1 : 0);
-
-            // Apply row-specific y-scale and y-offset
-            gl.uniform1f(gl.getUniformLocation(program, 'u_yScale'), row.yScale);
-            gl.uniform1f(gl.getUniformLocation(program, 'u_yOffset'), row.yOffset);
 
             // Pass max value for color generation
             gl.uniform1f(gl.getUniformLocation(program, 'u_maxValue'), this.signal.maxValue);
@@ -78,7 +83,6 @@ export class WaveformRenderObject extends RenderObject {
 
         let linesBindUniforms = bindUniforms(this.config.lineWidth);
         let dotsBindUniforms = bindUniforms(this.config.dotSize);
-        let enumLinesBindUniforms = enumBindUniforms(this.config.lineWidth);
         
         if (renderMode === RenderMode.Lines) {
             this.renderInstancedLines(gl, this.waveformPrograms.instancedLine, linesBindUniforms);
