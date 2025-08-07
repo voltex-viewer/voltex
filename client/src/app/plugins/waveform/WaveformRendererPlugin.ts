@@ -160,6 +160,7 @@ export default (context: PluginContext): void => {
                         pointCount: 0
                     });
                 }
+                
                 row.addRenderObject(
                     new WaveformRenderObject(
                         config,

@@ -132,6 +132,22 @@ export class WebGLUtils {
         return [r, g, b, alpha];
     }
 
+    measureText(text: string, font: string = '12px sans-serif', padding: number = 0, strokeWidth: number = 0): {metrics: TextMetrics, renderWidth: number, renderHeight: number} {
+        this.textCtx.save();
+        this.textCtx.font = font;
+        const metrics = this.textCtx.measureText(text);
+        this.textCtx.restore();
+        
+        // Account for stroke width extending beyond the text bounds
+        const strokePadding = strokeWidth > 0 ? Math.ceil(strokeWidth) : 0;
+        
+        return {
+            metrics,
+            renderWidth: Math.ceil(metrics.width) + padding * 2 + strokePadding * 2,
+            renderHeight: Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) + padding * 2 + strokePadding * 2
+        };
+    }
+
     createTextTexture(
         text: string, 
         font: string = '12px "Open Sans", sans-serif', 
@@ -142,11 +158,10 @@ export class WebGLUtils {
     ):  HTMLCanvasElement {
         const dpr = window.devicePixelRatio || 1;
         
-        // Measure text at base resolution
-        this.textCtx.font = font;
-        const metrics = this.textCtx.measureText(text);
-        const textWidth = Math.ceil(metrics.width) + padding * 2;
-        const textHeight = Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) + padding * 2;
+        // Measure text at base resolution, accounting for stroke width
+        const { renderWidth, renderHeight } = this.measureText(text, font, padding, strokeWidth || 0);
+        const textWidth = renderWidth;
+        const textHeight = renderHeight;
 
         // Create high-DPI canvas
         this.textCanvas.width = textWidth * dpr;
@@ -156,27 +171,36 @@ export class WebGLUtils {
         this.textCanvas.style.width = `${textWidth}px`;
         this.textCanvas.style.height = `${textHeight}px`;
 
-        // Scale context for high-DPI
-        this.textCtx.scale(dpr, dpr);
+        // Reset and scale context for high-DPI
+        this.textCtx.save();
+        this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this.textCtx.font = font;
         this.textCtx.fillStyle = fillStyle;
         this.textCtx.textBaseline = 'top';
         this.textCtx.textAlign = 'left';
         
-        // Chrome-specific text rendering improvements
+        // Disable image smoothing for crisp text
         this.textCtx.imageSmoothingEnabled = false;
         
         if (strokeStyle && strokeWidth) {
             this.textCtx.strokeStyle = strokeStyle;
             this.textCtx.lineWidth = strokeWidth;
+            this.textCtx.lineJoin = 'round';
+            this.textCtx.lineCap = 'round';
         }
         
         this.textCtx.clearRect(0, 0, textWidth, textHeight);
+        
+        // Snap to pixel boundary for crisp rendering
+        const textX = Math.round(padding + (strokeWidth || 0) / 2);
+        const textY = Math.round(padding + (strokeWidth || 0) / 2);
  
         if (strokeStyle && strokeWidth) {
-            this.textCtx.strokeText(text, padding, padding);
+            this.textCtx.strokeText(text, textX, textY);
         }
-        this.textCtx.fillText(text, padding, padding);
+        this.textCtx.fillText(text, textX, textY);
+        
+        this.textCtx.restore();
 
         return this.textCanvas;
     }

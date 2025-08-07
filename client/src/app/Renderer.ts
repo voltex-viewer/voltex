@@ -12,6 +12,8 @@ import { RenderProfiler } from './RenderProfiler';
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
 import PluginManagerMetadata from './plugins/manager/plugin.json';
 import { PluginModule } from './Plugin';
+import { RowImpl } from './RowImpl';
+
 const PluginManagerPlugin: PluginModule = {
     plugin: PluginManagerFunction,
     metadata: PluginManagerMetadata
@@ -115,6 +117,7 @@ export class Renderer {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
         let currentY = 0;
+        const renderProfiler = this.renderProfiler;
         const baseContext = {
             canvas: this.canvas,
             render: {
@@ -127,33 +130,9 @@ export class Renderer {
         };
         for (const row of this.rowManager.getAllRows()) {
             const rowHeight = row.height;
-            const context = { ...baseContext, row };
-
-            // Set viewport for the label area
-            const viewportY = currentY * dpr;
-            const labelWidth = this.state.labelWidth * dpr;
-            const viewportHeight = rowHeight * dpr;
-            
-            if (viewportY <= this.canvas.height) {
-                // Render labels
-                gl.viewport(0, this.canvas.height - viewportY - viewportHeight, labelWidth, viewportHeight);
-                const labelBounds = { x: 0, y: 0, width: this.state.labelWidth, height: rowHeight };
-        
-                for (const renderObject of [...row.labelRenderObjects].sort((a, b) => a.getZIndex() - b.getZIndex())) {
-                    const rerequest = renderObject.render(context, labelBounds);
-                    renderRequested ||= rerequest;
-                }
-
-                // Render the main row content
-                gl.viewport(labelWidth, this.canvas.height - viewportY - viewportHeight, this.canvas.width - labelWidth, viewportHeight);
-                const bounds = { x: 0, y: 0, width: this.state.canvasWidth, height: row.height };
-                
-                for (const renderObject of [...row.renderObjects].sort((a, b) => a.getZIndex() - b.getZIndex())) {
-                    const rerequest = renderObject.render(context, bounds);
-                    renderRequested ||= rerequest;
-                }
-            }
-
+            this.renderProfiler.startMeasure(`renderRow-${row.signals[0]?.source.name.join('.') || 'unknown'}`);
+            renderRow.call(this, row, rowHeight);
+            this.renderProfiler.endMeasure();
             currentY += row.height;
         }
         
@@ -163,5 +142,37 @@ export class Renderer {
         this.renderProfiler.endFrame();
         
         return renderRequested || beforeRenderRequested || afterRenderRequested;
+
+        function renderRow(row: RowImpl, rowHeight: number) {
+            // Set viewport for the label area
+            const viewportY = currentY * dpr;
+            const labelWidth = this.state.labelWidth * dpr;
+            const viewportHeight = rowHeight * dpr;
+
+            if (viewportY <= this.canvas.height) {
+                const context = { ...baseContext, row };
+                // Render labels
+                gl.viewport(0, this.canvas.height - viewportY - viewportHeight, labelWidth, viewportHeight);
+                const labelBounds = { x: 0, y: 0, width: this.state.labelWidth, height: rowHeight };
+
+                for (const renderObject of [...row.labelRenderObjects].sort((a, b) => a.getZIndex() - b.getZIndex())) {
+                    renderProfiler.startMeasure(`label-${renderObject.constructor.name}`);
+                    const rerequest = renderObject.render(context, labelBounds);
+                    renderProfiler.endMeasure();
+                    renderRequested ||= rerequest;
+                }
+
+                // Render the main row content
+                gl.viewport(labelWidth, this.canvas.height - viewportY - viewportHeight, this.canvas.width - labelWidth, viewportHeight);
+                const bounds = { x: 0, y: 0, width: this.state.canvasWidth, height: row.height };
+
+                for (const renderObject of [...row.renderObjects].sort((a, b) => a.getZIndex() - b.getZIndex())) {
+                    renderProfiler.startMeasure(`main-${renderObject.constructor.name}`);
+                    const rerequest = renderObject.render(context, bounds);
+                    renderProfiler.endMeasure();
+                    renderRequested ||= rerequest;
+                }
+            }
+        }
     }
 }

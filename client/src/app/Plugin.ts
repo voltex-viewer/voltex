@@ -5,15 +5,24 @@ import type { SignalMetadataManager } from './SignalMetadataManager';
 import { Signal } from './Signal';
 import * as t from 'io-ts';
 
+export interface MeasureInfo {
+    name: string;
+    startTime: number;
+    endTime: number;
+}
+
 export interface FrameInfo {
     startTime: number;
     endTime: number;
     frameTime: number;
+    measures: MeasureInfo[][];
 }
 
 export interface ReadOnlyRenderProfiler {
     readonly lastFrame: FrameInfo | null;
     getFilteredFrameRenderTime(): number;
+    startMeasure(name: string): void;
+    endMeasure(): void;
 }
 
 export interface Row {

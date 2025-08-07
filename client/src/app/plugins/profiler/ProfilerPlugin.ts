@@ -4,10 +4,13 @@ export default (context: PluginContext): void => {
     const profiler = context.renderProfiler;
 
     const frameData: Array<{ timestamp: number; frameTime: number }> = [];
+    const flameGraphData: Array<{ timestamp: number; measures: import('../../Plugin').MeasureInfo[][] }> = [];
     let firstFrameTimestamp = 0;
     const maxFrames = 1000;
+    const maxFlameGraphs = 10;
     let minFrameTime = Infinity;
     let maxFrameTime = -Infinity;
+    const flameGraphSources: Array<{ name: string[]; source: any }> = [];
     
     // Create signal source for frame time data
     const signalSource = {
@@ -42,6 +45,88 @@ export default (context: PluginContext): void => {
         }
     };
     
+    // Function to create or update flame graph sources based on current depth
+    const updateFlameGraphSources = () => {
+        // Find the maximum depth from recent flame graph data
+        let maxDepth = 0;
+        for (const entry of flameGraphData.slice(-5)) { // Check last 5 entries for max depth
+            maxDepth = Math.max(maxDepth, entry.measures.length);
+        }
+        
+        // Create sources for each depth level if they don't exist
+        for (let depth = 0; depth < maxDepth; depth++) {
+            if (!flameGraphSources[depth]) {
+                const depthSource = {
+                    name: ['Profiler', `Depth ${depth}`],
+                    discrete: true,
+                    signal: () => {
+                        // Generate timeline data showing when measures are active at this depth
+                        const timelineData: Array<{ timestamp: number; active: number }> = [];
+                        const nameToIdMap = new Map<string, number>();
+                        const idToNameMap = new Map<number, string>();
+                        let nextId = 0;
+                        
+                        for (const entry of flameGraphData) {
+                            const measures = entry.measures[depth] || [];
+                            
+                            // For each measure at this depth, add start/end points
+                            for (const measure of measures) {
+                                if (measure.endTime) {
+                                    // Get or assign a unique ID for this measure name
+                                    if (!nameToIdMap.has(measure.name)) {
+                                        nameToIdMap.set(measure.name, nextId);
+                                        idToNameMap.set(nextId, measure.name);
+                                        nextId++;
+                                    }
+                                    const measureId = nameToIdMap.get(measure.name)!;
+                                    
+                                    const relativeStart = (measure.startTime - (firstFrameTimestamp || measure.startTime)) / 1000;
+                                    const relativeEnd = (measure.endTime - (firstFrameTimestamp || measure.startTime)) / 1000;
+                                    
+                                    timelineData.push({ timestamp: relativeStart, active: measureId });
+                                    timelineData.push({ timestamp: relativeEnd, active: measureId });
+                                }
+                            }
+                        }
+                        
+                        // Sort by timestamp
+                        timelineData.sort((a, b) => a.timestamp - b.timestamp);
+                        
+                        return {
+                            source: depthSource,
+                            valueTable: idToNameMap,
+                            data: (index: number) => {
+                                if (index < 0 || index >= timelineData.length) {
+                                    return [0, 0] as [number, number];
+                                }
+                                const entry = timelineData[index];
+                                return [entry.timestamp, entry.active] as [number, number];
+                            },
+                            get length() {
+                                return timelineData.length;
+                            },
+                            get minTime() {
+                                return timelineData.length > 0 ? timelineData[0].timestamp : 0;
+                            },
+                            get maxTime() {
+                                return timelineData.length > 0 ? timelineData[timelineData.length - 1].timestamp : 0;
+                            },
+                            get minValue() {
+                                return 0;
+                            },
+                            get maxValue() {
+                                return Math.max(1, nextId - 1);
+                            }
+                        };
+                    }
+                };
+                
+                flameGraphSources[depth] = { name: depthSource.name, source: depthSource };
+                context.signalSources.add(depthSource);
+            }
+        }
+    };
+    
     context.signalSources.add(signalSource);
     
     // Hook into render cycle to capture frame data
@@ -57,6 +142,22 @@ export default (context: PluginContext): void => {
             const relativeTimestamp = (lastFrame.endTime - firstFrameTimestamp) / 1000; // Convert to seconds
             
             frameData.push({ timestamp: relativeTimestamp, frameTime: lastFrame.frameTime });
+            
+            // Store flame graph data if available
+            if (lastFrame.measures) {
+                flameGraphData.push({
+                    timestamp: relativeTimestamp,
+                    measures: lastFrame.measures
+                });
+                
+                // Keep only the last 10 flame graphs
+                if (flameGraphData.length > maxFlameGraphs) {
+                    flameGraphData.shift();
+                }
+                
+                // Update flame graph sources when we have new data
+                updateFlameGraphSources();
+            }
             
             // Update running min/max values
             minFrameTime = Math.min(minFrameTime, lastFrame.frameTime);
@@ -161,6 +262,21 @@ export default (context: PluginContext): void => {
                         font-size: 12px;
                         margin-bottom: 8px;
                     ">Add Frame Time Signal to Waveform</button>
+                    <button id="add-flamegraph-signals" style="
+                        width: 100%;
+                        padding: 8px;
+                        background: #ff6b35;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                        margin-bottom: 8px;
+                    ">Add All Flame Graph Depths</button>
+                    <div style="font-size: 11px; color: #aaa; margin-bottom: 8px;">
+                        Flame graphs: ${flameGraphData.length}/${maxFlameGraphs} stored<br/>
+                        Depth levels: ${flameGraphSources.length}
+                    </div>
                 `;
                 
                 const button = container.querySelector('#add-profiler-signal') as HTMLButtonElement;
@@ -174,6 +290,26 @@ export default (context: PluginContext): void => {
                         );
                         if (profilerSource) {
                             context.createRows({ channels: [profilerSource.signal()] });
+                            context.requestRender();
+                        }
+                    });
+                }
+                
+                const flameGraphButton = container.querySelector('#add-flamegraph-signals') as HTMLButtonElement;
+                if (flameGraphButton) {
+                    flameGraphButton.addEventListener('click', () => {
+                        // Find all flame graph depth sources and add them to waveform
+                        const depthSources = context.signalSources.available.filter(
+                            source => source.name.length === 2 && 
+                                     source.name[0] === 'Profiler' && 
+                                     source.name[1].startsWith('Depth ')
+                        );
+                        
+                        if (depthSources.length > 0) {
+                            // Create one row per signal
+                            for (const source of depthSources) {
+                                context.createRows({ channels: [source.signal()] });
+                            }
                             context.requestRender();
                         }
                     });
