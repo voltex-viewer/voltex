@@ -112,8 +112,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Horizontal drag-to-scroll logic
     mainCanvas.addEventListener('mousedown', (e) => {
-        // Don't start panning if we're resizing a label
-        if (state.isResizingLabel) return;
+        // Don't start panning if we're resizing a label or row height
+        if (state.isResizingLabel || state.isResizingRowHeight) return;
         
         // Don't start panning if clicking in the label area
         const rect = mainCanvas.getBoundingClientRect();
@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
     });
     window.addEventListener('mousemove', (e) => {
-        if (!state.isDragging || state.isResizingLabel) return;
+        if (!state.isDragging || state.isResizingLabel || state.isResizingRowHeight) return;
         const now = performance.now();
         state.offset = state.dragStartOffset - (e.clientX - state.dragStartX);
         state.velocity = (e.clientX - state.lastDragX) / (now - state.lastDragTime + 0.0001);

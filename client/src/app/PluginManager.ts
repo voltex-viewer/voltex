@@ -44,9 +44,9 @@ export class PluginManager {
         private signalMetadata: SignalMetadataManager,
         private signalSources: SignalSourceManager,
         private rowManager: RowManager,
-        private onSidebarEntryAdded?: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
-        private onSidebarEntryRemoved?: (entry: import('./VerticalSidebar').SidebarEntry) => void,
-        private requestRender?: () => void
+        private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
+        private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
+        private requestRender: () => void
     ) {
         rowManager.onChange((event: RowChangedEvent) => {
             this.onRowsChanged(event);
@@ -339,6 +339,10 @@ export class PluginManager {
             addLabelRenderObject: (renderObject: RenderObject) => {
                 data.labelRenderObjects.push(renderObject);
                 row.addLabelRenderObject(renderObject);
+            },
+            setHeight: (height: number) => {
+                row.setHeight(height);
+                this.requestRender();
             }
         };
         

@@ -8,15 +8,25 @@ export class RowImpl implements Row {
     public readonly renderObjects: RenderObject[] = [];
     public yScale: number = 1.0;
     public yOffset: number = 0.0;
+    private _height: number;
     
     constructor(
         signals?: Signal[],
-        public readonly height: number = 50
+        height: number = 50
     ) {
+        this._height = height;
         if (signals) {
             this.signals = [...signals];
             this.calculateOptimalScaleAndOffset();
         }
+    }
+
+    get height(): number {
+        return this._height;
+    }
+
+    setHeight(height: number): void {
+        this._height = Math.max(20, height); // Minimum height of 20px
     }
 
     addRenderObject(renderObject: RenderObject): void {

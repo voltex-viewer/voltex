@@ -17,5 +17,8 @@ export class WaveformState {
     minLabelWidth = 40;
     maxLabelWidth = 400;
     
+    // This is set by WaveformLabelHandler to prevent dragging during row resize
+    isResizingRowHeight = false;
+    
     constructor() { }
 }

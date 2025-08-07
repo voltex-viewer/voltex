@@ -12,6 +12,7 @@ export interface Row {
     readonly yScale: number;
     readonly yOffset: number;
     addLabelRenderObject(renderObject: RenderObject): void;
+    setHeight(height: number): void;
 }
 
 export interface SignalSource {
