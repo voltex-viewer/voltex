@@ -58,8 +58,7 @@ function renderContent(): HTMLElement {
                 border: 1px solid #444;
                 color: #e5e7eb;
                 border-radius: 6px;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                font-size: 13px;
+                                font-size: 13px;
                 box-sizing: border-box;
             }
             .search-input:focus {
@@ -95,10 +94,7 @@ function renderContent(): HTMLElement {
             .toggle-switch.enabled::after {
                 transform: translateX(20px);
             }
-            .plugin-item {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            }
-            .config-button {
+                        .config-button {
                 width: 24px;
                 height: 24px;
                 cursor: pointer;
