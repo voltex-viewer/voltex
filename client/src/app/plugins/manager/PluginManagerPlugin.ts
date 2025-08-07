@@ -101,9 +101,6 @@ function renderContent(): HTMLElement {
             .config-button {
                 width: 24px;
                 height: 24px;
-                background: #374151;
-                border: 1px solid #6b7280;
-                border-radius: 4px;
                 cursor: pointer;
                 display: flex;
                 align-items: center;
@@ -113,7 +110,6 @@ function renderContent(): HTMLElement {
                 margin-right: 8px;
             }
             .config-button:hover {
-                background: #4b5563;
                 color: #e5e7eb;
             }
             .back-button {
@@ -237,23 +233,22 @@ function renderPluginList(): void {
         
         pluginItem.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2c313a; border-radius: 6px; border: 1px solid #374151;">
-                <span style="color: #e5e7eb; font-weight: ${isPluginManager ? '600' : '400'}; font-size: 13px;">
-                    ${pluginModule.metadata.name}
-                </span>
-                <div style="display: flex; align-items: center;">
-                    ${!isPluginManager && hasConfig && isEnabled ? `
-                        <div class="config-button" data-plugin="${pluginModule.metadata.name}" title="Configure plugin">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="12" cy="12" r="3"></circle>
-                                <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"></path>
-                            </svg>
-                        </div>
-                    ` : ''}
-                    ${isPluginManager ? 
-                        '' :
-                        `<div class="toggle-switch ${isEnabled ? 'enabled' : ''}" data-plugin="${pluginModule.metadata.name}"></div>`
-                    }
-                </div>
+            <span style="color: #e5e7eb; font-weight: ${isPluginManager ? '600' : '400'}; font-size: 13px;">
+            ${pluginModule.metadata.name}
+            </span>
+            <div style="display: flex; align-items: center;">
+            ${!isPluginManager && hasConfig && isEnabled ? `
+            <div class="config-button" data-plugin="${pluginModule.metadata.name}" title="Configure plugin">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
+            </svg>
+            </div>
+            ` : ''}
+            ${isPluginManager ? 
+            '' :
+            `<div class="toggle-switch ${isEnabled ? 'enabled' : ''}" data-plugin="${pluginModule.metadata.name}"></div>`
+            }
+            </div>
             </div>
         `;
 
