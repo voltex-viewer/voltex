@@ -1,12 +1,11 @@
 import type { PluginModule } from './Plugin';
-import { FpsPlugin, PluginManagerPlugin, SignalManagerPlugin, WaveformRendererPlugin, DemoSignalsPlugin, TimeAxisPlugin, WaveformLabelsPlugin, FileLoaderPlugin, HorizontalGridPlugin } from './plugins/index';
+import { FpsPlugin, SignalManagerPlugin, WaveformRendererPlugin, DemoSignalsPlugin, TimeAxisPlugin, WaveformLabelsPlugin, FileLoaderPlugin, HorizontalGridPlugin } from './plugins/index';
 
-export function getDefaultPlugins(): PluginModule[] {
+export function getAvailablePlugins(): PluginModule[] {
     return [
         FpsPlugin,
         HorizontalGridPlugin,
         TimeAxisPlugin,
-        PluginManagerPlugin,
         SignalManagerPlugin,
         WaveformRendererPlugin,
         WaveformLabelsPlugin,

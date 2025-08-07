@@ -3,8 +3,6 @@ import FpsPluginFunction from './fps/FpsPlugin';
 import FpsPluginMetadata from './fps/plugin.json';
 import HorizontalGridFunction from './horizontal-grid/HorizontalGridPlugin';
 import HorizontalGridMetadata from './horizontal-grid/plugin.json';
-import PluginManagerFunction from './manager/PluginManagerPlugin';
-import PluginManagerMetadata from './manager/plugin.json';
 import SignalManagerFunction from './signal-manager/SignalManagerPlugin';
 import SignalManagerMetadata from './signal-manager/plugin.json';
 import WaveformRendererFunction from './waveform/WaveformRendererPlugin';
@@ -26,11 +24,6 @@ const FpsPlugin: PluginModule = {
 const HorizontalGridPlugin: PluginModule = {
     plugin: HorizontalGridFunction,
     metadata: HorizontalGridMetadata
-};
-
-const PluginManagerPlugin: PluginModule = {
-    plugin: PluginManagerFunction,
-    metadata: PluginManagerMetadata
 };
 
 const SignalManagerPlugin: PluginModule = {
@@ -63,4 +56,4 @@ const FileLoaderPlugin: PluginModule = {
     metadata: FileLoaderMetadata
 };
 
-export { FpsPlugin, HorizontalGridPlugin, PluginManagerPlugin, SignalManagerPlugin, WaveformRendererPlugin, DemoSignalsPlugin, TimeAxisPlugin, WaveformLabelsPlugin, FileLoaderPlugin };
+export { FpsPlugin, HorizontalGridPlugin, SignalManagerPlugin, WaveformRendererPlugin, DemoSignalsPlugin, TimeAxisPlugin, WaveformLabelsPlugin, FileLoaderPlugin };

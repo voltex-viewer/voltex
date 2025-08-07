@@ -1,13 +1,20 @@
 import type { WaveformState } from './WaveformState';
 import type { SignalParams } from './SignalParams';
-import { RenderObject } from './RenderObject';
 import { SignalMetadataManager } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
 import { WebGLUtils } from './WebGLUtils';
 import { PluginManager } from './PluginManager';
-import { getDefaultPlugins } from './PluginRegistry';
 import { setPluginManager } from './plugins/manager/PluginManagerPlugin';
 import { RowManager } from './RowManager';
+
+
+import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
+import PluginManagerMetadata from './plugins/manager/plugin.json';
+import { PluginModule } from './Plugin';
+const PluginManagerPlugin: PluginModule = {
+    plugin: PluginManagerFunction,
+    metadata: PluginManagerMetadata
+};
 
 export class Renderer {
     private canvas: HTMLCanvasElement;
@@ -54,26 +61,10 @@ export class Renderer {
             this.requestRender
         );
         
-        // Register and enable all plugin types
-        for (const pluginModule of getDefaultPlugins()) {
-            this.pluginManager.registerPluginType(pluginModule);
-        }
-        
-        // Enable all plugins now that WebGL is available
-        let pluginManagerPlugin: any = null;
-        for (const pluginModule of getDefaultPlugins()) {
-            const plugin = this.pluginManager.enablePlugin(pluginModule);
-            
-            // Store reference to the Plugin Manager plugin
-            if (plugin.metadata.name === 'Plugin Manager') {
-                pluginManagerPlugin = plugin;
-            }
-        }
-        
-        // Set plugin manager reference after all plugins are enabled
-        if (pluginManagerPlugin) {
-            setPluginManager(this.pluginManager);
-        }
+        // Register and enable default plugins (only Plugin Manager)
+        this.pluginManager.registerPluginType(PluginManagerPlugin);
+        this.pluginManager.enablePlugin(PluginManagerPlugin);
+        setPluginManager(this.pluginManager);
     }
 
     resizeCanvases(): void {

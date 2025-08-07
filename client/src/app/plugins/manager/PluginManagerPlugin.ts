@@ -1,13 +1,28 @@
 import type { PluginContext, SidebarEntry } from '../../Plugin';
 import type { PluginManager } from '../../PluginManager';
 import { ConfigUIGenerator } from './ConfigUIGenerator';
+import { getAvailablePlugins } from '../../PluginRegistry';
+import * as t from 'io-ts';
+
+const PluginManagerConfigSchema = t.type({
+    enabledPlugins: t.record(t.string, t.boolean)
+});
+
+type PluginManagerConfig = t.TypeOf<typeof PluginManagerConfigSchema>;
 
 let pluginManager: PluginManager | undefined;
 let sidebarContainer: HTMLElement | undefined;
 let context: PluginContext | undefined;
+let config: PluginManagerConfig;
 
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
+    
+    config = context.loadConfig(PluginManagerConfigSchema, {
+        enabledPlugins: {
+            'FPS': false,
+        }
+    });
     
     const sidebarEntry: SidebarEntry = {
         title: 'Plugin Manager',
@@ -25,12 +40,54 @@ export default (pluginContext: PluginContext): void => {
 export function setPluginManager(manager: PluginManager): void {
     pluginManager = manager;
     
+    // Register all available plugins with the plugin manager
+    const availablePlugins = getAvailablePlugins();
+    for (const plugin of availablePlugins) {
+        pluginManager.registerPluginType(plugin);
+    }
+    
+    // Apply saved plugin states from config
+    restorePluginStates();
+    
     // Register to be notified when new plugins are registered
     pluginManager.onPluginRegistered(() => {
         refreshPluginList();
     });
     
     refreshPluginList();
+}
+
+function restorePluginStates(): void {
+    if (!pluginManager || !config) return;
+    
+    const availablePlugins = pluginManager.getAvailablePlugins();
+    
+    for (const pluginModule of availablePlugins) {
+        const pluginName = pluginModule.metadata.name;
+        
+        // Skip the Plugin Manager itself
+        if (pluginName === 'Plugin Manager') continue;
+        
+        const savedState = config.enabledPlugins[pluginName];
+        const shouldBeEnabled = savedState !== undefined ? savedState : true; // Default to enabled
+        const currentlyEnabled = pluginManager.getPlugins().some(p => p.metadata.name === pluginName);
+        
+        if (shouldBeEnabled && !currentlyEnabled) {
+            pluginManager.enablePlugin(pluginModule);
+        } else if (!shouldBeEnabled && currentlyEnabled) {
+            const enabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
+            if (enabledPlugin) {
+                pluginManager.disablePlugin(enabledPlugin);
+            }
+        }
+    }
+}
+
+function savePluginState(pluginName: string, enabled: boolean): void {
+    if (!config || !pluginManager) return;
+    
+    config.enabledPlugins[pluginName] = enabled;
+    pluginManager.getConfigManager().updateConfig('Plugin Manager', config);
 }
 
 function renderContent(): HTMLElement {
@@ -58,7 +115,7 @@ function renderContent(): HTMLElement {
                 border: 1px solid #444;
                 color: #e5e7eb;
                 border-radius: 6px;
-                                font-size: 13px;
+                font-size: 13px;
                 box-sizing: border-box;
             }
             .search-input:focus {
@@ -94,7 +151,7 @@ function renderContent(): HTMLElement {
             .toggle-switch.enabled::after {
                 transform: translateX(20px);
             }
-                        .config-button {
+            .config-button {
                 width: 24px;
                 height: 24px;
                 cursor: pointer;
@@ -207,6 +264,30 @@ function renderContent(): HTMLElement {
     return container;
 }
 
+function togglePlugin(pluginName: string, toggleElement: HTMLElement): void {
+    if (!pluginManager) return;
+    
+    const currentEnabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
+    const currentIsEnabled = !!currentEnabledPlugin;
+    
+    if (currentIsEnabled && currentEnabledPlugin) {
+        pluginManager.disablePlugin(currentEnabledPlugin);
+        toggleElement.classList.remove('enabled');
+        savePluginState(pluginName, false);
+    } else {
+        const pluginModule = pluginManager.getAvailablePlugins().find(p => p.metadata.name === pluginName);
+        if (pluginModule) {
+            pluginManager.enablePlugin(pluginModule);
+            toggleElement.classList.add('enabled');
+            savePluginState(pluginName, true);
+        }
+    }
+    refreshPluginList();
+    if (context) {
+        context.requestRender();
+    }
+}
+
 function renderPluginList(): void {
     if (!pluginManager || !sidebarContainer) return;
 
@@ -215,9 +296,7 @@ function renderPluginList(): void {
 
     pluginListContainer.innerHTML = '';
 
-    const plugins = pluginManager.getAvailablePlugins();
-    
-    for (const pluginModule of plugins) {
+    for (const pluginModule of pluginManager.getAvailablePlugins().sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))) {
         const pluginItem = document.createElement('div');
         pluginItem.className = 'plugin-item';
         pluginItem.setAttribute('data-plugin-name', pluginModule.metadata.name.toLowerCase());
@@ -229,11 +308,11 @@ function renderPluginList(): void {
         
         pluginItem.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2c313a; border-radius: 6px; border: 1px solid #374151;">
-            <span style="color: #e5e7eb; font-weight: ${isPluginManager ? '600' : '400'}; font-size: 13px;">
+            <span style="color: #e5e7eb; font-weight: 400; font-size: 13px;">
             ${pluginModule.metadata.name}
             </span>
             <div style="display: flex; align-items: center;">
-            ${!isPluginManager && hasConfig && isEnabled ? `
+            ${!isPluginManager && hasConfig ? `
             <div class="config-button" data-plugin="${pluginModule.metadata.name}" title="Configure plugin">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
@@ -251,17 +330,7 @@ function renderPluginList(): void {
         if (!isPluginManager) {
             const toggleSwitch = pluginItem.querySelector('.toggle-switch') as HTMLElement;
             toggleSwitch.addEventListener('click', () => {
-                if (isEnabled && enabledPlugin) {
-                    pluginManager!.disablePlugin(enabledPlugin);
-                    toggleSwitch.classList.remove('enabled');
-                } else {
-                    pluginManager!.enablePlugin(pluginModule);
-                    toggleSwitch.classList.add('enabled');
-                }
-                refreshPluginList();
-                if (context) {
-                    context.requestRender();
-                }
+                togglePlugin(pluginModule.metadata.name, toggleSwitch);
             });
 
             // Add config button event listener
@@ -326,21 +395,7 @@ function showConfigView(pluginName: string): void {
     
     // Add toggle functionality
     configToggle.onclick = () => {
-        if (isEnabled && enabledPlugin) {
-            pluginManager!.disablePlugin(enabledPlugin);
-            configToggle.classList.remove('enabled');
-            // Go back to list when disabled
-            showListView();
-        } else {
-            const pluginModule = pluginManager!.getAvailablePlugins().find(p => p.metadata.name === pluginName);
-            if (pluginModule) {
-                pluginManager!.enablePlugin(pluginModule);
-                configToggle.classList.add('enabled');
-            }
-        }
-        if (context) {
-            context.requestRender();
-        }
+        togglePlugin(pluginName, configToggle);
     };
     
     // Hide list view and show config view

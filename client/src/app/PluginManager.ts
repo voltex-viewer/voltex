@@ -4,7 +4,6 @@ import type { WaveformState } from './WaveformState';
 import type { SignalParams } from './SignalParams';
 import type { SignalMetadataManager } from './SignalMetadataManager';
 import { RowManager, RowChangedEvent } from './RowManager';
-import { RowImpl } from './RowImpl';
 import { PluginConfigManager } from './PluginConfigManager';
 import * as t from 'io-ts';
 
