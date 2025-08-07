@@ -1,20 +1,89 @@
 import { PluginContext } from '../../Plugin';
-import { RenderProfiler } from '../../RenderProfiler';
-
-let profiler: RenderProfiler | null = null;
 
 export default (context: PluginContext): void => {
-    profiler = new RenderProfiler();
-    profiler.setContext(context);
+    const profiler = context.renderProfiler;
+
+    const frameData: Array<{ timestamp: number; frameTime: number }> = [];
+    let firstFrameTimestamp = 0;
+    const maxFrames = 1000;
+    let minFrameTime = Infinity;
+    let maxFrameTime = -Infinity;
     
-    // Hook into render cycle to measure frame times
+    // Create signal source for frame time data
+    const signalSource = {
+        name: ['Profiler', 'Frame Time (ms)'],
+        discrete: false,
+        signal: () => {
+            return {
+                source: signalSource,
+                data: (index: number) => {
+                    if (index < 0 || index >= frameData.length) {
+                        return [0, 0] as [number, number];
+                    }
+                    const frameEntry = frameData[index];
+                    return [frameEntry.timestamp, frameEntry.frameTime] as [number, number];
+                },
+                get length() {
+                    return frameData.length;
+                },
+                get minTime() {
+                    return frameData.length > 0 ? frameData[0].timestamp : 0;
+                },
+                get maxTime() {
+                    return frameData.length > 0 ? frameData[frameData.length - 1].timestamp : 0;
+                },
+                get minValue() {
+                    return frameData.length === 0 ? 0 : (minFrameTime === Infinity ? 0 : minFrameTime);
+                },
+                get maxValue() {
+                    return frameData.length === 0 ? 0 : (maxFrameTime === -Infinity ? 0 : maxFrameTime);
+                }
+            };
+        }
+    };
+    
+    context.signalSources.add(signalSource);
+    
+    // Hook into render cycle to capture frame data
     context.onBeforeRender(() => {
-        profiler?.startFrame();
+        const lastFrame = profiler.lastFrame;
+        if (lastFrame) {
+            // Initialize first frame timestamp
+            if (frameData.length === 0) {
+                firstFrameTimestamp = lastFrame.endTime;
+            }
+            
+            // Calculate relative timestamp from first frame
+            const relativeTimestamp = (lastFrame.endTime - firstFrameTimestamp) / 1000; // Convert to seconds
+            
+            frameData.push({ timestamp: relativeTimestamp, frameTime: lastFrame.frameTime });
+            
+            // Update running min/max values
+            minFrameTime = Math.min(minFrameTime, lastFrame.frameTime);
+            maxFrameTime = Math.max(maxFrameTime, lastFrame.frameTime);
+            
+            if (frameData.length > maxFrames) {
+                const removedFrame = frameData.shift()!;
+                // Update first frame timestamp when we remove the oldest frame
+                if (frameData.length > 0) {
+                    firstFrameTimestamp = performance.now() - (frameData[frameData.length - 1].timestamp * 1000);
+                }
+                
+                // If we removed the min or max value, we need to recompute
+                if (removedFrame.frameTime === minFrameTime || removedFrame.frameTime === maxFrameTime) {
+                    minFrameTime = Infinity;
+                    maxFrameTime = -Infinity;
+                    for (const frame of frameData) {
+                        minFrameTime = Math.min(minFrameTime, frame.frameTime);
+                        maxFrameTime = Math.max(maxFrameTime, frame.frameTime);
+                    }
+                }
+            }
+        }
         return false; // Don't request additional renders
     });
     
     context.onAfterRender(() => {
-        profiler?.endFrame();
         return false; // Don't request additional renders
     });
     
@@ -28,19 +97,13 @@ export default (context: PluginContext): void => {
             container.style.padding = '10px';
             
             const updateStats = () => {
-                const avgTime = profiler?.getAverageFrameTime() || 0;
-                const fps = profiler?.getCurrentFPS() || 0;
-                const frameCount = profiler?.getFrameData().length || 0;
-                const frameTimes = profiler?.getFrameTimes() || [];
+                const avgTime = frameData.length > 0 ? 
+                    frameData.reduce((sum: number, frame: { timestamp: number; frameTime: number }) => sum + frame.frameTime, 0) / frameData.length : 0;
+                const fps = avgTime > 0 ? 1000 / avgTime : 0;
+                const frameCount = frameData.length;
                 
-                let minTime = Infinity;
-                let maxTime = -Infinity;
-                for (const time of frameTimes) {
-                    minTime = Math.min(minTime, time);
-                    maxTime = Math.max(maxTime, time);
-                }
-                if (minTime === Infinity) minTime = 0;
-                if (maxTime === -Infinity) maxTime = 0;
+                const minTime = frameData.length === 0 ? 0 : (minFrameTime === Infinity ? 0 : minFrameTime);
+                const maxTime = frameData.length === 0 ? 0 : (maxFrameTime === -Infinity ? 0 : maxFrameTime);
                 
                 container.innerHTML = `
                     <div style="margin-bottom: 15px;">
@@ -101,7 +164,7 @@ export default (context: PluginContext): void => {
                 `;
                 
                 const button = container.querySelector('#add-profiler-signal') as HTMLButtonElement;
-                if (button && profiler) {
+                if (button) {
                     button.addEventListener('click', () => {
                         // Find the profiler signal source and add it to waveform
                         const profilerSource = context.signalSources.available.find(
@@ -142,7 +205,3 @@ export default (context: PluginContext): void => {
         }
     });
 };
-
-export function getProfiler(): RenderProfiler | null {
-    return profiler;
-}

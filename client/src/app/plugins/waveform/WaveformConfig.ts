@@ -15,6 +15,7 @@ export const WaveformConfigSchema = t.type({
     ]),
     dotSize: t.number,
     lineWidth: t.number,
+    targetFps: t.number,
 });
 
 export type WaveformConfig = t.TypeOf<typeof WaveformConfigSchema>;

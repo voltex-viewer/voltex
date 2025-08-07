@@ -6,6 +6,7 @@ import { WebGLUtils } from './WebGLUtils';
 import { PluginManager } from './PluginManager';
 import { setPluginManager } from './plugins/manager/PluginManagerPlugin';
 import { RowManager } from './RowManager';
+import { RenderProfiler } from './RenderProfiler';
 
 
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
@@ -23,6 +24,7 @@ export class Renderer {
     private signalMetadata: SignalMetadataManager;
     private signalSources: SignalSourceManagerImpl;
     private rowManager: RowManager;
+    private renderProfiler: RenderProfiler;
     
     constructor(
         private state: WaveformState,
@@ -49,6 +51,8 @@ export class Renderer {
 
         this.rowManager = new RowManager();
         
+        this.renderProfiler = new RenderProfiler();
+        
         this.pluginManager = new PluginManager(
             this.state, 
             this.signal,
@@ -58,7 +62,8 @@ export class Renderer {
             this.rowManager,
             (entry) => this.verticalSidebar.addDynamicEntry(entry),
             (entry) => this.verticalSidebar.removeDynamicEntry(entry),
-            this.requestRender
+            this.requestRender,
+            this.renderProfiler
         );
         
         // Register and enable default plugins (only Plugin Manager)
@@ -88,6 +93,8 @@ export class Renderer {
     }
     
     render(): boolean {
+        this.renderProfiler.startFrame();
+        
         // Call beforeRender callbacks
         const beforeRenderRequested = this.pluginManager.onBeforeRender();
         
@@ -152,6 +159,8 @@ export class Renderer {
         
         // Call afterRender callbacks
         const afterRenderRequested = this.pluginManager.onAfterRender();
+
+        this.renderProfiler.endFrame();
         
         return renderRequested || beforeRenderRequested || afterRenderRequested;
     }

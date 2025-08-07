@@ -1,10 +1,11 @@
-import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert } from './Plugin';
+import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler } from './Plugin';
 import type { RenderObject, WebGlContext } from './RenderObject';
 import type { WaveformState } from './WaveformState';
 import type { SignalParams } from './SignalParams';
 import type { SignalMetadataManager } from './SignalMetadataManager';
 import { RowManager, RowChangedEvent } from './RowManager';
 import { PluginConfigManager } from './PluginConfigManager';
+import type { RenderProfiler } from './RenderProfiler';
 import * as t from 'io-ts';
 
 interface ActivePlugin {
@@ -47,7 +48,8 @@ export class PluginManager {
         private rowManager: RowManager,
         private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
         private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
-        private requestRender: () => void
+        private requestRender: () => void,
+        private renderProfiler: RenderProfiler
     ) {
         rowManager.onChange((event: RowChangedEvent) => {
             this.onRowsChanged(event);
@@ -84,6 +86,7 @@ export class PluginManager {
             webgl: this.webgl,
             signalMetadata: this.signalMetadata,
             signalSources: this.createPluginSignalSourceManager(plugin),
+            renderProfiler: this.createReadOnlyRenderProfiler(),
             onRowsChanged: (callback: RowsChangedCallback) => {
                 const data = this.pluginData.get(plugin)!;
                 data.rowsChangedCallbacks.push(callback);
@@ -376,5 +379,18 @@ export class PluginManager {
 
     getConfigManager(): PluginConfigManager {
         return this.configManager;
+    }
+
+    private createReadOnlyRenderProfiler(): ReadOnlyRenderProfiler {
+        // Create a proxy that only exposes safe read-only methods
+        const self = this;
+        return {
+            get lastFrame() {
+                return self.renderProfiler.lastFrame;
+            },
+            getFilteredFrameRenderTime(): number {
+                return self.renderProfiler.getFilteredFrameRenderTime();
+            }
+        };
     }
 }

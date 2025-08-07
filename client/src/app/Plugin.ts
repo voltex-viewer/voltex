@@ -5,6 +5,17 @@ import type { SignalMetadataManager } from './SignalMetadataManager';
 import { Signal } from './Signal';
 import * as t from 'io-ts';
 
+export interface FrameInfo {
+    startTime: number;
+    endTime: number;
+    frameTime: number;
+}
+
+export interface ReadOnlyRenderProfiler {
+    readonly lastFrame: FrameInfo | null;
+    getFilteredFrameRenderTime(): number;
+}
+
 export interface Row {
     readonly height: number;
     readonly signals: Signal[];
@@ -65,6 +76,7 @@ export interface PluginContext {
     webgl: WebGlContext;
     signalMetadata: SignalMetadataManager;
     signalSources: SignalSourceManager;
+    renderProfiler: ReadOnlyRenderProfiler;
     onRowsChanged(callback: RowsChangedCallback): void;
     onBeforeRender(callback: () => boolean): void;
     onAfterRender(callback: () => boolean): void;
