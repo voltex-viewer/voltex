@@ -291,10 +291,17 @@ export class WaveformLabelHandler {
                 this.selectedRows.add(row);
             }
         } else {
-            // Handle single selection
-            this.selectedRows.clear();
-            this.selectedRows.add(row);
-            this.lastSelectedRow = row;
+            // Handle single selection or deselection
+            if (this.selectedRows.size === 1 && this.selectedRows.has(row)) {
+                // If only this row is selected, deselect it
+                this.selectedRows.clear();
+                this.lastSelectedRow = null;
+            } else {
+                // Otherwise, select only this row
+                this.selectedRows.clear();
+                this.selectedRows.add(row);
+                this.lastSelectedRow = row;
+            }
         }
 
         this.updateLabelSelectionStates();
