@@ -9,16 +9,18 @@ export class SignalMetadataManager {
     ];
 
     getColor(signal: Signal): string {
-        let color = this.colorMap.get(signal.name);
+        const signalName = signal.source.name[signal.source.name.length - 1];
+        let color = this.colorMap.get(signalName);
         if (!color) {
-            color = this.generateDefaultColor(signal.name);
-            this.colorMap.set(signal.name, color);
+            color = this.generateDefaultColor(signalName);
+            this.colorMap.set(signalName, color);
         }
         return color;
     }
 
     setColor(signal: Signal, color: string): void {
-        this.colorMap.set(signal.name, color);
+        const signalName = signal.source.name[signal.source.name.length - 1];
+        this.colorMap.set(signalName, color);
     }
 
     private generateDefaultColor(name: string): string {

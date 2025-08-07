@@ -5,31 +5,44 @@ export default (context: PluginContext): void => {
     const squareWaveSource: SignalSource = {
         name: ['Demo Signals', 'Square Wave'],
         discrete: true,
-        signal: () => new FunctionSignal('Square Wave', (t: number) => 
-            Math.sign(Math.sin(2 * Math.PI * context.signal.freq * t)), squareWaveSource)
+        signal: () => new FunctionSignal(
+            squareWaveSource,
+            (t: number) => Math.sin(2 * Math.PI * context.signal.freq * t) >= 0 ? 1 : -1,
+            -1,
+            1
+        )
     };
     
     const triangleWaveSource: SignalSource = {
         name: ['Demo Signals', 'Triangle Wave'],
         discrete: false,
-        signal: () => new FunctionSignal('Triangle Wave', (t: number) => 
-            10 * (2 * Math.abs(2 * (t * context.signal.freq - Math.floor(t * context.signal.freq + 0.5))) - 1), triangleWaveSource
+        signal: () => new FunctionSignal(
+            triangleWaveSource,
+            (t: number) => 10 * (2 * Math.abs(2 * (t * context.signal.freq - Math.floor(t * context.signal.freq + 0.5))) - 1),
+            -10,
+            10
         )
     };
     
     const sawtoothWaveSource: SignalSource = {
         name: ['Demo Signals', 'Sawtooth Wave'],
         discrete: false,
-        signal: () => new FunctionSignal('Sawtooth Wave', (t: number) => 
-            2 * (t * context.signal.freq - Math.floor(t * context.signal.freq + 0.5)), sawtoothWaveSource
+        signal: () => new FunctionSignal(
+            sawtoothWaveSource,
+            (t: number) => 2 * (t * context.signal.freq - Math.floor(t * context.signal.freq + 0.5)),
+            -1,
+            1
         )
     };
     
     const sineWaveSource: SignalSource = {
         name: ['Demo Signals', 'Sine Wave'],
         discrete: false,
-        signal: () => new FunctionSignal('Sine Wave', (t: number) => 
-            Math.sin(2 * Math.PI * context.signal.freq * t), sineWaveSource
+        signal: () => new FunctionSignal(
+            sineWaveSource,
+            (t: number) => Math.sin(2 * Math.PI * context.signal.freq * t),
+            -1,
+            1
         )
     };
     

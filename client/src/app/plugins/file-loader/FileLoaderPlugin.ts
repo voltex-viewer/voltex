@@ -22,7 +22,7 @@ export default (context: PluginContext): void => {
                             ch.name
                         ],
                         discrete: false,
-                        signal: () => new InMemorySignal(ch.name, ch.data.map(d => [d.t, d.v]), source)
+                        signal: () => new InMemorySignal(source, ch.data.map(d => [d.t, d.v]))
                     };
                     return source;
                 }));

@@ -48,11 +48,8 @@ export class RowImpl implements Row {
         let maxValue = -Infinity;
         
         for (const signal of this.signals) {
-            for (let i = 0; i < signal.length; i++) {
-                const [, value] = signal.data(i);
-                minValue = Math.min(minValue, value);
-                maxValue = Math.max(maxValue, value);
-            }
+            minValue = Math.min(minValue, signal.minValue);
+            maxValue = Math.max(maxValue, signal.maxValue);
         }
         
         if (minValue === Infinity || maxValue === -Infinity || minValue === maxValue) {

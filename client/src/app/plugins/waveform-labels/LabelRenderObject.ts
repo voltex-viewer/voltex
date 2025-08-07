@@ -95,8 +95,9 @@ export class LabelRenderObject extends RenderObject {
 
             this.channels.forEach((channel, index) => {
                 const y = index * channelHeight + channelHeight / 2 - 6; // Center vertically within the channel's section
+                const channelName = channel.source.name[channel.source.name.length - 1];
                 utils.drawText(
-                    channel.name,
+                    channelName,
                     padding, // Start after color bar + small gap
                     y,
                     { width: bounds.width, height: bounds.height },
