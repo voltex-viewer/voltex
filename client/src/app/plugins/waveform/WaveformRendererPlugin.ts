@@ -41,14 +41,11 @@ export default (context: PluginContext): void => {
         0,  0.5
     ]);
     
-    // Create miter join instance geometry (2 triangles, 6 vertices, 3 coefficients each)
-    const miterJoinInstanceGeometry = new Float32Array([
-        0, 0, 0,
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 0,
-        0, 1, 0,
-        0, 0, 1
+    // Create bevel join instance geometry (1 triangle, 3 vertices, 2 coefficients each)
+    const bevelJoinInstanceGeometry = new Float32Array([
+        0, 0,
+        1, 0,
+        0, 1
     ]);
     
     // Create shared instance geometry buffer
@@ -59,13 +56,13 @@ export default (context: PluginContext): void => {
     context.webgl.gl.bindBuffer(context.webgl.gl.ARRAY_BUFFER, sharedInstanceGeometryBuffer);
     context.webgl.gl.bufferData(context.webgl.gl.ARRAY_BUFFER, segmentInstanceGeometry, context.webgl.gl.STATIC_DRAW);
     
-    // Create shared miter join geometry buffer
-    const sharedMiterJoinGeometryBuffer = context.webgl.gl.createBuffer();
-    if (!sharedMiterJoinGeometryBuffer) {
-        throw new Error('Failed to create shared miter join geometry buffer');
+    // Create shared bevel join geometry buffer
+    const sharedBevelJoinGeometryBuffer = context.webgl.gl.createBuffer();
+    if (!sharedBevelJoinGeometryBuffer) {
+        throw new Error('Failed to create shared bevel join geometry buffer');
     }
-    context.webgl.gl.bindBuffer(context.webgl.gl.ARRAY_BUFFER, sharedMiterJoinGeometryBuffer);
-    context.webgl.gl.bufferData(context.webgl.gl.ARRAY_BUFFER, miterJoinInstanceGeometry, context.webgl.gl.STATIC_DRAW);
+    context.webgl.gl.bindBuffer(context.webgl.gl.ARRAY_BUFFER, sharedBevelJoinGeometryBuffer);
+    context.webgl.gl.bufferData(context.webgl.gl.ARRAY_BUFFER, bevelJoinInstanceGeometry, context.webgl.gl.STATIC_DRAW);
 
     // Frame timing variables
     let frameStartTime = 0;
@@ -168,7 +165,7 @@ export default (context: PluginContext): void => {
                         config,
                         channelBuffers.get(channel),
                         sharedInstanceGeometryBuffer,
-                        sharedMiterJoinGeometryBuffer,
+                        sharedBevelJoinGeometryBuffer,
                         instancingExt,
                         context.signalMetadata.getColor(channel),
                         waveformPrograms,
