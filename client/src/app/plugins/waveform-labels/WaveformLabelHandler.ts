@@ -19,6 +19,12 @@ export class WaveformLabelHandler {
     private resizingRow: Row | null = null;
     private readonly minRowHeight = 20;
     private readonly maxRowHeight = 200;
+    
+    // Label resizing state
+    private resizeStartX = 0;
+    private resizeStartWidth = 0;
+    private readonly minLabelWidth = 40;
+    private readonly maxLabelWidth = 400;
 
     constructor(
         state: WaveformState, 
@@ -115,8 +121,8 @@ export class WaveformLabelHandler {
         
         if (this.isInLabelResizeArea(x, y)) {
             this.state.isResizingLabel = true;
-            this.state.resizeStartX = e.clientX;
-            this.state.resizeStartWidth = this.state.labelWidth;
+            this.resizeStartX = e.clientX;
+            this.resizeStartWidth = this.state.labelWidth;
             
             document.body.style.cursor = 'ew-resize';
             e.preventDefault();
@@ -164,10 +170,10 @@ export class WaveformLabelHandler {
 
     private handleGlobalMouseMove = (e: MouseEvent): void => {
         if (this.state.isResizingLabel) {
-            const dx = e.clientX - this.state.resizeStartX;
+            const dx = e.clientX - this.resizeStartX;
             const newWidth = Math.max(
-                this.state.minLabelWidth, 
-                Math.min(this.state.maxLabelWidth, this.state.resizeStartWidth + dx)
+                this.minLabelWidth, 
+                Math.min(this.maxLabelWidth, this.resizeStartWidth + dx)
             );
             
             if (newWidth !== this.state.labelWidth) {
@@ -196,7 +202,7 @@ export class WaveformLabelHandler {
         if (this.state.isResizingLabel) {
             this.state.isResizingLabel = false;
             document.body.style.cursor = '';
-            this.state.resizeStartX = 0;
+            this.resizeStartX = 0;
         } else if (this.isResizingRowHeight) {
             this.isResizingRowHeight = false;
             this.state.isResizingRowHeight = false; // Sync with global state

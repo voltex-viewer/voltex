@@ -110,6 +110,17 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => renderer.resizeCanvases());
     requestRender();
 
+    // Horizontal drag state
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartOffset = 0;
+    let lastDragX = 0;
+    let lastDragTime = 0;
+    let velocity = 0;
+    let animationFrame: number | null = null;
+    const decay = 0.85; // friction per frame (faster decay)
+    const minVelocity = 0.1; // px/frame threshold to stop
+
     // Horizontal drag-to-scroll logic
     mainCanvas.addEventListener('mousedown', (e) => {
         // Don't start panning if we're resizing a label or row height
@@ -120,43 +131,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const x = e.clientX - rect.left;
         if (x < state.labelWidth) return;
         
-        state.isDragging = true;
-        state.dragStartX = e.clientX;
-        state.dragStartOffset = state.offset;
-        state.lastDragX = e.clientX;
-        state.lastDragTime = performance.now();
-        state.velocity = 0;
-        if (state.animationFrame !== null) {
-            cancelAnimationFrame(state.animationFrame);
-            state.animationFrame = null;
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartOffset = state.offset;
+        lastDragX = e.clientX;
+        lastDragTime = performance.now();
+        velocity = 0;
+        if (animationFrame !== null) {
+            cancelAnimationFrame(animationFrame);
+            animationFrame = null;
         }
         e.preventDefault();
     });
     window.addEventListener('mousemove', (e) => {
-        if (!state.isDragging || state.isResizingLabel || state.isResizingRowHeight) return;
+        if (!isDragging || state.isResizingLabel || state.isResizingRowHeight) return;
         const now = performance.now();
-        state.offset = state.dragStartOffset - (e.clientX - state.dragStartX);
-        state.velocity = (e.clientX - state.lastDragX) / (now - state.lastDragTime + 0.0001);
-        state.lastDragX = e.clientX;
-        state.lastDragTime = now;
+        state.offset = dragStartOffset - (e.clientX - dragStartX);
+        velocity = (e.clientX - lastDragX) / (now - lastDragTime + 0.0001);
+        lastDragX = e.clientX;
+        lastDragTime = now;
         requestRender();
     });
     window.addEventListener('mouseup', () => {
-        if (!state.isDragging) return;
-        state.isDragging = false;
-        let pxPerFrame = state.velocity * 16.67;
-        if (Math.abs(pxPerFrame) > state.minVelocity) {
+        if (!isDragging) return;
+        isDragging = false;
+        let pxPerFrame = velocity * 16.67;
+        if (Math.abs(pxPerFrame) > minVelocity) {
             function animate() {
-                pxPerFrame *= state.decay;
+                pxPerFrame *= decay;
                 state.offset = state.offset - pxPerFrame;
                 requestRender();
-                if (Math.abs(pxPerFrame) > state.minVelocity) {
-                    state.animationFrame = requestAnimationFrame(animate);
+                if (Math.abs(pxPerFrame) > minVelocity) {
+                    animationFrame = requestAnimationFrame(animate);
                 } else {
-                    state.animationFrame = null;
+                    animationFrame = null;
                 }
             }
-            state.animationFrame = requestAnimationFrame(animate);
+            animationFrame = requestAnimationFrame(animate);
         }
     });
 });
