@@ -66,7 +66,8 @@ export interface PluginContext {
     signalMetadata: SignalMetadataManager;
     signalSources: SignalSourceManager;
     onRowsChanged(callback: RowsChangedCallback): void;
-    onRender(callback: () => boolean): void;
+    onBeforeRender(callback: () => boolean): void;
+    onAfterRender(callback: () => boolean): void;
     addSidebarEntry(entry: SidebarEntry): void;
     requestRender(): void;
     createRows(...rows: RowParameters[]): Row[];

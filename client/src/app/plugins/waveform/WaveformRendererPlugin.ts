@@ -66,7 +66,7 @@ export default (context: PluginContext): void => {
     context.webgl.gl.bindBuffer(context.webgl.gl.ARRAY_BUFFER, sharedMiterJoinGeometryBuffer);
     context.webgl.gl.bufferData(context.webgl.gl.ARRAY_BUFFER, miterJoinInstanceGeometry, context.webgl.gl.STATIC_DRAW);
 
-    context.onRender(() => {
+    context.onBeforeRender(() => {
         let anyBufferNeedsUpdate = false;
 
         for (const [channel, bufferData] of channelBuffers.entries()) {

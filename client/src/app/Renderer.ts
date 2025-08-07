@@ -88,6 +88,9 @@ export class Renderer {
     }
     
     render(): boolean {
+        // Call beforeRender callbacks
+        const beforeRenderRequested = this.pluginManager.onBeforeRender();
+        
         let renderRequested = false;
         const gl = this.canvas.getContext('webgl');
         if (!gl) {
@@ -147,10 +150,9 @@ export class Renderer {
             currentY += row.height;
         }
         
-        // Call plugin render callbacks
-        const pluginRenderRequested = this.pluginManager.onRender();
-        renderRequested ||= pluginRenderRequested;
+        // Call afterRender callbacks
+        const afterRenderRequested = this.pluginManager.onAfterRender();
         
-        return renderRequested;
+        return renderRequested || beforeRenderRequested || afterRenderRequested;
     }
 }

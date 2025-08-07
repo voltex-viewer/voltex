@@ -15,6 +15,8 @@ import WaveformLabelsFunction from './waveform-labels/WaveformLabelsPlugin';
 import WaveformLabelsMetadata from './waveform-labels/plugin.json';
 import FileLoaderFunction from './file-loader/FileLoaderPlugin';
 import FileLoaderMetadata from './file-loader/plugin.json';
+import ProfilerFunction from './profiler/ProfilerPlugin';
+import ProfilerMetadata from './profiler/plugin.json';
 
 const FpsPlugin: PluginModule = {
     plugin: FpsPluginFunction,
@@ -56,4 +58,9 @@ const FileLoaderPlugin: PluginModule = {
     metadata: FileLoaderMetadata
 };
 
-export { FpsPlugin, HorizontalGridPlugin, SignalManagerPlugin, WaveformRendererPlugin, DemoSignalsPlugin, TimeAxisPlugin, WaveformLabelsPlugin, FileLoaderPlugin };
+const ProfilerPlugin: PluginModule = {
+    plugin: ProfilerFunction,
+    metadata: ProfilerMetadata
+};
+
+export { FpsPlugin, HorizontalGridPlugin, SignalManagerPlugin, WaveformRendererPlugin, DemoSignalsPlugin, TimeAxisPlugin, WaveformLabelsPlugin, FileLoaderPlugin, ProfilerPlugin };

@@ -1,0 +1,5 @@
+{
+    "name": "Profiler",
+    "description": "Provides rendering performance profiling capabilities",
+    "version": "1.0.0"
+}

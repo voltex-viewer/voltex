@@ -20,7 +20,8 @@ interface PluginSignalSourceManager extends SignalSourceManager {
 
 interface PluginData {
     rowsChangedCallbacks: RowsChangedCallback[];
-    renderCallbacks: (() => boolean)[];
+    beforeRenderCallbacks: (() => boolean)[];
+    afterRenderCallbacks: (() => boolean)[];
     sidebarEntries: SidebarEntry[];
     sidebarEntryInstances: import('./VerticalSidebar').SidebarEntry[];
     renderObjects: RenderObject[];
@@ -87,9 +88,13 @@ export class PluginManager {
                 const data = this.pluginData.get(plugin)!;
                 data.rowsChangedCallbacks.push(callback);
             },
-            onRender: (callback: () => boolean) => {
+            onBeforeRender: (callback: () => boolean) => {
                 const data = this.pluginData.get(plugin)!;
-                data.renderCallbacks.push(callback);
+                data.beforeRenderCallbacks.push(callback);
+            },
+            onAfterRender: (callback: () => boolean) => {
+                const data = this.pluginData.get(plugin)!;
+                data.afterRenderCallbacks.push(callback);
             },
             addSidebarEntry: (entry: SidebarEntry) => {
                 this.addSidebarEntry(plugin, entry);
@@ -147,7 +152,8 @@ export class PluginManager {
         this.plugins.push(plugin);
         this.pluginData.set(plugin, {
             rowsChangedCallbacks: [],
-            renderCallbacks: [],
+            beforeRenderCallbacks: [],
+            afterRenderCallbacks: [],
             sidebarEntries: [],
             sidebarEntryInstances: [],
             renderObjects: [],
@@ -295,12 +301,28 @@ export class PluginManager {
         };
     }
 
-    onRender(): boolean {
+    onBeforeRender(): boolean {
         let needsMoreRender = false;
         for (const plugin of this.plugins) {
             const data = this.pluginData.get(plugin);
             if (data) {
-                for (const callback of data.renderCallbacks) {
+                for (const callback of data.beforeRenderCallbacks) {
+                    const pluginNeedsMoreRender = callback();
+                    if (pluginNeedsMoreRender) {
+                        needsMoreRender = true;
+                    }
+                }
+            }
+        }
+        return needsMoreRender;
+    }
+
+    onAfterRender(): boolean {
+        let needsMoreRender = false;
+        for (const plugin of this.plugins) {
+            const data = this.pluginData.get(plugin);
+            if (data) {
+                for (const callback of data.afterRenderCallbacks) {
                     const pluginNeedsMoreRender = callback();
                     if (pluginNeedsMoreRender) {
                         needsMoreRender = true;
