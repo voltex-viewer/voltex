@@ -80,6 +80,9 @@ export class WaveformRenderObject extends RenderObject {
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
         gl.drawArrays(gl.POINTS, 0, this.bufferData.updateIndex);
+        
+        // Clean up
+        gl.disableVertexAttribArray(positionLocation);
     }
     
     private renderInstancedLines(
@@ -120,6 +123,11 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
         this.instancingExt.vertexAttribDivisorANGLE(pointALocation, 0);
         this.instancingExt.vertexAttribDivisorANGLE(pointBLocation, 0);
+        
+        // Disable vertex attribute arrays
+        gl.disableVertexAttribArray(positionLocation);
+        gl.disableVertexAttribArray(pointALocation);
+        gl.disableVertexAttribArray(pointBLocation);
     }
     
     private renderMiterJoins(
@@ -171,5 +179,11 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(pointALocation, 0);
         this.instancingExt.vertexAttribDivisorANGLE(pointBLocation, 0);
         this.instancingExt.vertexAttribDivisorANGLE(pointCLocation, 0);
+        
+        // Disable vertex attribute arrays
+        gl.disableVertexAttribArray(positionLocation);
+        gl.disableVertexAttribArray(pointALocation);
+        gl.disableVertexAttribArray(pointBLocation);
+        gl.disableVertexAttribArray(pointCLocation);
     }
 }

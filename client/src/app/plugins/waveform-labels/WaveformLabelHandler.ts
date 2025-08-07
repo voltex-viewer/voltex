@@ -71,23 +71,32 @@ export class WaveformLabelHandler {
                     this.context.requestRender();
                 }
             }
+            
+            // Delete key: Remove selected rows
+            if (e.key === 'Delete' && this.selectedRows.size > 0) {
+                e.preventDefault();
+                this.context.spliceRows(Array.from(this.selectedRows), []);
+                this.selectedRows.clear();
+                this.updateLabelSelectionStates();
+                this.context.requestRender();
+            }
         });
         
         // Listen for row changes from the plugin context
         this.context.onRowsChanged((event) => {
-        // Remove render objects for removed rows
-        for (const row of event.removed) {
-            this.labelRenderObjects.delete(row);
-        }
-        
-        // Add render objects for new rows
-        for (const row of event.added) {
-            if (!this.labelRenderObjects.has(row)) {
-                const labelRenderObject = new LabelRenderObject(row.signals, this.signalMetadata);
-                this.labelRenderObjects.set(row, labelRenderObject);
-                row.addLabelRenderObject(labelRenderObject);
+            // Remove render objects for removed rows
+            for (const row of event.removed) {
+                this.labelRenderObjects.delete(row);
             }
-        }
+            
+            // Add render objects for new rows
+            for (const row of event.added) {
+                if (!this.labelRenderObjects.has(row)) {
+                    const labelRenderObject = new LabelRenderObject(row.signals, this.signalMetadata);
+                    this.labelRenderObjects.set(row, labelRenderObject);
+                    row.addLabelRenderObject(labelRenderObject);
+                }
+            }
         });
     }
 
