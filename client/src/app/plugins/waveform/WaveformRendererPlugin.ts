@@ -139,11 +139,6 @@ export default (context: PluginContext): void => {
         }
         return anyBufferNeedsUpdate;
     });
-
-    context.onAfterRender(() => {
-        // Frame timing is now handled by the RenderProfiler
-        return false; // Don't request additional renders
-    });
     
     context.onRowsChanged((event) => {
         for (const row of event.added) {
