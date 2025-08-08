@@ -294,9 +294,8 @@ export default (context: PluginContext): void => {
                         );
                         
                         if (depthSources.length > 0) {
-                            // Create one row per signal
                             for (const source of depthSources) {
-                                context.createRows({ channels: [source.signal()] });
+                                context.createRows({ channels: [source.signal()], height: 30 });
                             }
                             context.requestRender();
                         }
