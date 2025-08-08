@@ -5,7 +5,9 @@ export class WebGLUtils {
     private textBuffer: WebGLBuffer;
     private textCanvas: HTMLCanvasElement;
     private textCtx: CanvasRenderingContext2D;
-    private textTexture: WebGLTexture;
+    private textureCache: Map<string, { texture: WebGLTexture; width: number; height: number; usedThisFrame: boolean }> = new Map();
+    private cacheKeysUsedThisFrame: Set<string> = new Set();
+    private measureTextCache: Map<string, {metrics: TextMetrics, renderWidth: number, renderHeight: number}> = new Map();
 
     constructor(private gl: WebGLRenderingContext) {
         const lineVertexShader = this.createShader('vertex-shader', `
@@ -48,10 +50,13 @@ export class WebGLUtils {
             attribute vec2 a_position;
             attribute vec2 a_texCoord;
             uniform vec2 u_bounds;
+            uniform vec2 u_translation;
+            uniform vec2 u_scale;
             varying vec2 v_texCoord;
             
             void main() {
-                gl_Position = vec4((a_position / u_bounds * 2.0 - 1.0) * vec2(1, -1), 0, 1);
+                vec2 scaledPosition = a_position * u_scale + u_translation;
+                gl_Position = vec4((scaledPosition / u_bounds * 2.0 - 1.0) * vec2(1, -1), 0, 1);
                 v_texCoord = a_texCoord;
             }
         `);
@@ -73,6 +78,17 @@ export class WebGLUtils {
             throw new Error('Failed to create text buffer');
         }
         this.textBuffer = textBuffer;
+        
+        // Create reusable quad buffer with normalized coordinates
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.textBuffer);
+        const quadVertices = new Float32Array([
+            0, 0, 0, 0,  // bottom-left
+            1, 0, 1, 0,  // bottom-right
+            0, 1, 0, 1,  // top-left
+            1, 1, 1, 1   // top-right
+        ]);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, quadVertices, this.gl.STATIC_DRAW);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
 
         this.textCanvas = document.createElement('canvas');
         const textCtx = this.textCanvas.getContext('2d');
@@ -80,12 +96,6 @@ export class WebGLUtils {
             throw new Error('Failed to create text canvas context');
         }
         this.textCtx = textCtx;
-
-        const textTexture = this.gl.createTexture();
-        if (!textTexture) {
-            throw new Error('Failed to create text texture');
-        }
-        this.textTexture = textTexture;
     }
 
     createShader(type: 'fragment-shader' | 'vertex-shader', source: string): WebGLShader {
@@ -133,6 +143,14 @@ export class WebGLUtils {
     }
 
     measureText(text: string, font: string = '12px sans-serif', padding: number = 0, strokeWidth: number = 0): {metrics: TextMetrics, renderWidth: number, renderHeight: number} {
+        const cacheKey = `${text}|${font}|${padding}|${strokeWidth}`;
+        
+        // Check cache first
+        const cachedResult = this.measureTextCache.get(cacheKey);
+        if (cachedResult) {
+            return cachedResult;
+        }
+        
         this.textCtx.save();
         this.textCtx.font = font;
         const metrics = this.textCtx.measureText(text);
@@ -141,11 +159,16 @@ export class WebGLUtils {
         // Account for stroke width extending beyond the text bounds
         const strokePadding = strokeWidth > 0 ? Math.ceil(strokeWidth) : 0;
         
-        return {
+        const result = {
             metrics,
             renderWidth: Math.ceil(metrics.width) + padding * 2 + strokePadding * 2,
             renderHeight: Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) + padding * 2 + strokePadding * 2
         };
+        
+        // Cache the result
+        this.measureTextCache.set(cacheKey, result);
+        
+        return result;
     }
 
     createTextTexture(
@@ -155,7 +178,7 @@ export class WebGLUtils {
         strokeStyle?: string,
         strokeWidth?: number,
         padding: number = 0,
-    ):  HTMLCanvasElement {
+    ): { texture: WebGLTexture; width: number; height: number } {
         const dpr = window.devicePixelRatio || 1;
         
         // Measure text at base resolution, accounting for stroke width
@@ -163,46 +186,64 @@ export class WebGLUtils {
         const textWidth = renderWidth;
         const textHeight = renderHeight;
 
+        // Use shared canvas for rendering
+        const canvas = this.textCanvas;
+        const ctx = this.textCtx;
+
         // Create high-DPI canvas
-        this.textCanvas.width = textWidth * dpr;
-        this.textCanvas.height = textHeight * dpr;
+        canvas.width = textWidth * dpr;
+        canvas.height = textHeight * dpr;
         
         // Set CSS size to logical pixels
-        this.textCanvas.style.width = `${textWidth}px`;
-        this.textCanvas.style.height = `${textHeight}px`;
+        canvas.style.width = `${textWidth}px`;
+        canvas.style.height = `${textHeight}px`;
 
         // Reset and scale context for high-DPI
-        this.textCtx.save();
-        this.textCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        this.textCtx.font = font;
-        this.textCtx.fillStyle = fillStyle;
-        this.textCtx.textBaseline = 'top';
-        this.textCtx.textAlign = 'left';
+        ctx.save();
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.font = font;
+        ctx.fillStyle = fillStyle;
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
         
         // Disable image smoothing for crisp text
-        this.textCtx.imageSmoothingEnabled = false;
+        ctx.imageSmoothingEnabled = false;
         
         if (strokeStyle && strokeWidth) {
-            this.textCtx.strokeStyle = strokeStyle;
-            this.textCtx.lineWidth = strokeWidth;
-            this.textCtx.lineJoin = 'round';
-            this.textCtx.lineCap = 'round';
+            ctx.strokeStyle = strokeStyle;
+            ctx.lineWidth = strokeWidth;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
         }
         
-        this.textCtx.clearRect(0, 0, textWidth, textHeight);
+        ctx.clearRect(0, 0, textWidth, textHeight);
         
         // Snap to pixel boundary for crisp rendering
         const textX = Math.round(padding + (strokeWidth || 0) / 2);
         const textY = Math.round(padding + (strokeWidth || 0) / 2);
  
         if (strokeStyle && strokeWidth) {
-            this.textCtx.strokeText(text, textX, textY);
+            ctx.strokeText(text, textX, textY);
         }
-        this.textCtx.fillText(text, textX, textY);
+        ctx.fillText(text, textX, textY);
         
-        this.textCtx.restore();
+        ctx.restore();
 
-        return this.textCanvas;
+        // Create WebGL texture
+        const texture = this.gl.createTexture();
+        if (!texture) {
+            throw new Error('Failed to create text texture');
+        }
+
+        // Upload canvas data to texture
+        this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, canvas);
+
+        return { texture, width: textWidth, height: textHeight };
     }
 
     drawText(
@@ -218,38 +259,46 @@ export class WebGLUtils {
         } = {}
     ): void {
         const padding = 2;
-        const textCanvas = this.createTextTexture(
-            text,
-            options.font,
-            options.fillStyle,
-            options.strokeStyle,
-            options.strokeWidth,
-            padding
-        );
+        
+        const cacheKey = `${text}|${options.font}|${options.fillStyle}|${options.strokeStyle}|${options.strokeWidth}|${padding}`;
 
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.textTexture);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-        this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, textCanvas);
+        // Check if texture exists in cache
+        let textureInfo = this.textureCache.get(cacheKey);
+        if (textureInfo) {
+            textureInfo.usedThisFrame = true;
+            this.cacheKeysUsedThisFrame.add(cacheKey);
+        } else {
+            // Create new texture with resolved values
+            const newTextureInfo = this.createTextTexture(
+                text,
+                options.font,
+                options.fillStyle,
+                options.strokeStyle,
+                options.strokeWidth,
+                padding
+            );
+            
+            // Cache the texture
+            textureInfo = {
+                texture: newTextureInfo.texture,
+                width: newTextureInfo.width,
+                height: newTextureInfo.height,
+                usedThisFrame: true
+            };
+            this.textureCache.set(cacheKey, textureInfo);
+            this.cacheKeysUsedThisFrame.add(cacheKey);
+        }
 
-        const dpr = window.devicePixelRatio || 1;
-        const width = textCanvas.width / dpr;
-        const height = textCanvas.height / dpr;
+        this.gl.bindTexture(this.gl.TEXTURE_2D, textureInfo.texture);
+
+        const width = textureInfo.width;
+        const height = textureInfo.height;
 
         const adjustedX = Math.floor(x - padding);
         const adjustedY = Math.floor(y - padding);
-        const vertices = new Float32Array([
-            adjustedX, adjustedY, 0, 0,
-            adjustedX + width, adjustedY, 1, 0,
-            adjustedX, adjustedY + height, 0, 1,
-            adjustedX + width, adjustedY + height, 1, 1
-        ]);
 
         this.gl.useProgram(this.text);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.textBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, vertices, this.gl.STATIC_DRAW);
 
         const positionLocation = this.gl.getAttribLocation(this.text, 'a_position');
         const texCoordLocation = this.gl.getAttribLocation(this.text, 'a_texCoord');
@@ -260,14 +309,20 @@ export class WebGLUtils {
         this.gl.enableVertexAttribArray(texCoordLocation);
         this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 4 * 4, 2 * 4);
 
-        const resolutionLocation = this.gl.getUniformLocation(this.text, 'u_bounds');
-        this.gl.uniform2f(resolutionLocation, bounds.width, bounds.height);
+        const boundsLocation = this.gl.getUniformLocation(this.text, 'u_bounds');
+        this.gl.uniform2f(boundsLocation, bounds.width, bounds.height);
+
+        const translationLocation = this.gl.getUniformLocation(this.text, 'u_translation');
+        this.gl.uniform2f(translationLocation, adjustedX, adjustedY);
+
+        const scaleLocation = this.gl.getUniformLocation(this.text, 'u_scale');
+        this.gl.uniform2f(scaleLocation, width, height);
 
         const textureLocation = this.gl.getUniformLocation(this.text, 'u_texture');
         this.gl.uniform1i(textureLocation, 0);
 
         this.gl.activeTexture(this.gl.TEXTURE0);
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.textTexture);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, textureInfo.texture);
 
         this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
 
@@ -276,5 +331,25 @@ export class WebGLUtils {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
         this.gl.bindTexture(this.gl.TEXTURE_2D, null);
         this.gl.useProgram(null);
+    }
+
+    startFrame(): void {
+        this.cacheKeysUsedThisFrame.clear();
+        for (const cached of this.textureCache.values()) {
+            cached.usedThisFrame = false;
+        }
+    }
+
+    endFrame(): void {
+        const keysToDelete: string[] = [];
+        for (const [key, cached] of this.textureCache.entries()) {
+            if (!cached.usedThisFrame) {
+                this.gl.deleteTexture(cached.texture);
+                keysToDelete.push(key);
+            }
+        }
+        for (const key of keysToDelete) {
+            this.textureCache.delete(key);
+        }
     }
 }

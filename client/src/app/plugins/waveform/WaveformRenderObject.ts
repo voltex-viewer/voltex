@@ -144,6 +144,11 @@ export class WaveformRenderObject extends RenderObject {
         const padding = 5; // Padding around text
         const font = '12px "Open Sans", sans-serif'; // Match the font used in drawText
 
+        // Pre-calculate expensive measurements
+        const ellipsisWidth = utils.measureText('...', font).renderWidth;
+        const baselineMetrics = utils.measureText('Ag', font); // Use consistent reference text for baseline
+        const y = (bounds.height - baselineMetrics.renderHeight) / 2;
+
         // Find data points and determine which segments are visible
         // We render text for segments that are at least partially visible
         for (let i = 0; i < this.bufferData.updateIndex; i += 2) {
@@ -179,7 +184,6 @@ export class WaveformRenderObject extends RenderObject {
                 let displayText = enumText;
                 if (textWidth > availableWidth) {
                     // Try to fit text with ellipsis
-                    const ellipsisWidth = utils.measureText('...', font).renderWidth;
                     const availableForText = availableWidth - ellipsisWidth;
                     
                     if (availableForText <= 0) {
@@ -187,9 +191,13 @@ export class WaveformRenderObject extends RenderObject {
                         continue;
                     }
                     
+                    // Use character-based estimate to reduce binary search iterations
+                    const avgCharWidth = textWidth / enumText.length;
+                    const estimatedLength = Math.floor(availableForText / avgCharWidth);
+                    
                     // Binary search to find the longest text that fits
-                    let left = 1;
-                    let right = enumText.length - 1;
+                    let left = Math.max(1, estimatedLength - 5);
+                    let right = Math.min(enumText.length - 1, estimatedLength + 5);
                     let bestLength = 0;
                     
                     while (left <= right) {
@@ -218,10 +226,6 @@ export class WaveformRenderObject extends RenderObject {
                 }
                 
                 // Render text at center of viewport height using consistent baseline positioning
-                // Use font metrics for consistent vertical centering regardless of text content
-                const baselineMetrics = utils.measureText('Ag', font); // Use consistent reference text for baseline
-                const y = (bounds.height - baselineMetrics.renderHeight) / 2;
-                
                 // Render text with white fill and black stroke for better visibility
                 utils.drawText(
                     displayText,

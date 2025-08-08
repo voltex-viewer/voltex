@@ -98,4 +98,22 @@ export class RenderProfiler implements ReadOnlyRenderProfiler {
     getFilteredFrameRenderTime(): number {
         return this.filteredFrameRenderTime;
     }
+
+    createProxy<T extends object>(target: T, namePrefix: string): T {
+        const proxy = new Proxy(target, {
+            get: (obj, prop) => {
+                const value = obj[prop as keyof T];
+                if (typeof value === 'function') {
+                    return (...args: any[]) => {
+                        this.startMeasure(`${namePrefix}.${String(prop)}`);
+                        const result = value.apply(proxy, args);
+                        this.endMeasure();
+                        return result;
+                    };
+                }
+                return value;
+            }
+        });
+        return proxy;
+    }
 }

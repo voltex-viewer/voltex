@@ -7,8 +7,6 @@ import { PluginManager } from './PluginManager';
 import { setPluginManager } from './plugins/manager/PluginManagerPlugin';
 import { RowManager } from './RowManager';
 import { RenderProfiler } from './RenderProfiler';
-
-
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
 import PluginManagerMetadata from './plugins/manager/plugin.json';
 import { PluginModule } from './Plugin';
@@ -38,27 +36,30 @@ export class Renderer {
     ) {
         this.canvas = canvas;
         
+        this.renderProfiler = new RenderProfiler();
+        
         // Initialize WebGL context
         const gl = this.canvas.getContext('webgl');
         if (!gl) {
             throw new Error('WebGL not supported');
         }
 
-        // Create shared WebGLUtils instance
         const webglUtils = new WebGLUtils(gl);
-        this.webglUtils = webglUtils;
+        
+        // Profile all WebGLUtils function calls
+        const proxiedWebglUtils = this.renderProfiler.createProxy(webglUtils, 'webgl');
+        
+        this.webglUtils = proxiedWebglUtils;
         
         this.signalMetadata = new SignalMetadataManager();
         this.signalSources = new SignalSourceManagerImpl();
 
         this.rowManager = new RowManager();
         
-        this.renderProfiler = new RenderProfiler();
-        
         this.pluginManager = new PluginManager(
             this.state, 
             this.signal,
-            { gl, utils: webglUtils }, // WebGL context with shared utils
+            { gl, utils: proxiedWebglUtils },
             this.signalMetadata,
             this.signalSources,
             this.rowManager,
@@ -96,6 +97,7 @@ export class Renderer {
     
     render(): boolean {
         this.renderProfiler.startFrame();
+        this.webglUtils.startFrame();
         
         // Call beforeRender callbacks
         const beforeRenderRequested = this.pluginManager.onBeforeRender(this.renderProfiler);
@@ -138,6 +140,7 @@ export class Renderer {
         
         const afterRenderRequested = this.pluginManager.onAfterRender(this.renderProfiler);
 
+        this.webglUtils.endFrame();
         this.renderProfiler.endFrame();
         
         return renderRequested || beforeRenderRequested || afterRenderRequested;
