@@ -304,33 +304,29 @@ export class PluginManager {
         };
     }
 
-    onBeforeRender(): boolean {
+    onBeforeRender(profiler: ReadOnlyRenderProfiler): boolean {
         let needsMoreRender = false;
         for (const plugin of this.plugins) {
-            const data = this.pluginData.get(plugin);
-            if (data) {
-                for (const callback of data.beforeRenderCallbacks) {
-                    const pluginNeedsMoreRender = callback();
-                    if (pluginNeedsMoreRender) {
-                        needsMoreRender = true;
-                    }
+            for (const callback of this.pluginData.get(plugin).beforeRenderCallbacks) {
+                profiler.startMeasure(`beforeRender-${plugin.metadata.name}`);
+                if (callback()) {
+                    needsMoreRender = true;
                 }
+                profiler.endMeasure();
             }
         }
         return needsMoreRender;
     }
 
-    onAfterRender(): boolean {
+    onAfterRender(profiler: ReadOnlyRenderProfiler): boolean {
         let needsMoreRender = false;
         for (const plugin of this.plugins) {
-            const data = this.pluginData.get(plugin);
-            if (data) {
-                for (const callback of data.afterRenderCallbacks) {
-                    const pluginNeedsMoreRender = callback();
-                    if (pluginNeedsMoreRender) {
-                        needsMoreRender = true;
-                    }
+            for (const callback of this.pluginData.get(plugin).afterRenderCallbacks) {
+                profiler.startMeasure(`afterRender-${plugin.metadata.name}`);
+                if (callback()) {
+                    needsMoreRender = true;
                 }
+                profiler.endMeasure();
             }
         }
         return needsMoreRender;
@@ -382,7 +378,6 @@ export class PluginManager {
     }
 
     private createReadOnlyRenderProfiler(): ReadOnlyRenderProfiler {
-        // Create a proxy that only exposes safe read-only methods
         const self = this;
         return {
             get lastFrame() {
@@ -390,6 +385,12 @@ export class PluginManager {
             },
             getFilteredFrameRenderTime(): number {
                 return self.renderProfiler.getFilteredFrameRenderTime();
+            },
+            startMeasure(name: string): void {
+                self.renderProfiler.startMeasure(name);
+            },
+            endMeasure(): void {
+                self.renderProfiler.endMeasure();
             }
         };
     }

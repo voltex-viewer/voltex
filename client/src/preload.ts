@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('waveformApi', {
     ipcRenderer.on('open-waveform-file', (_event, filePath) => {
       callback(filePath);
     });
-  }
+  },
+  getHighResTime: () => process.hrtime.bigint(),
 });

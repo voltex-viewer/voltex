@@ -5,6 +5,18 @@ export class RenderProfiler implements ReadOnlyRenderProfiler {
     private _lastFrame: FrameInfo | null = null;
     private measureStack: MeasureInfo[][] = [];
     private currentDepth = 0;
+    private now: () => number;
+
+    constructor() {
+        if ((window as any).waveformApi?.getHighResTime) {
+            this.now = () => {
+                const now = (window as any).waveformApi.getHighResTime() as bigint;
+                return Number(now) / 1000000;
+            };
+        } else {
+            this.now = performance.now.bind(performance);
+        }
+    }
 
     get lastFrame(): FrameInfo | null {
         return this._lastFrame;
@@ -30,7 +42,7 @@ export class RenderProfiler implements ReadOnlyRenderProfiler {
 
         this.measureStack[this.currentDepth].push({
             name,
-            startTime: performance.now(),
+            startTime: this.now(),
             endTime: undefined,
         });
         this.currentDepth++;
@@ -48,7 +60,7 @@ export class RenderProfiler implements ReadOnlyRenderProfiler {
             throw new Error('Measure already ended - profiling logic error');
         }
         
-        measure.endTime = performance.now();
+        measure.endTime = this.now();
     }
 
     endFrame(): void {

@@ -98,7 +98,7 @@ export class Renderer {
         this.renderProfiler.startFrame();
         
         // Call beforeRender callbacks
-        const beforeRenderRequested = this.pluginManager.onBeforeRender();
+        const beforeRenderRequested = this.pluginManager.onBeforeRender(this.renderProfiler);
         
         let renderRequested = false;
         const gl = this.canvas.getContext('webgl');
@@ -130,14 +130,13 @@ export class Renderer {
         };
         for (const row of this.rowManager.getAllRows()) {
             const rowHeight = row.height;
-            this.renderProfiler.startMeasure(`renderRow-${row.signals[0]?.source.name.join('.') || 'unknown'}`);
+            this.renderProfiler.startMeasure(`row-${row.signals[0]?.source.name.join('.') || 'unknown'}`);
             renderRow.call(this, row, rowHeight);
             this.renderProfiler.endMeasure();
             currentY += row.height;
         }
         
-        // Call afterRender callbacks
-        const afterRenderRequested = this.pluginManager.onAfterRender();
+        const afterRenderRequested = this.pluginManager.onAfterRender(this.renderProfiler);
 
         this.renderProfiler.endFrame();
         

@@ -1,13 +1,13 @@
-import { PluginContext } from '../../Plugin';
+import { MeasureInfo, PluginContext } from '../../Plugin';
 
 export default (context: PluginContext): void => {
     const profiler = context.renderProfiler;
 
     const frameData: Array<{ timestamp: number; frameTime: number }> = [];
-    const flameGraphData: Array<{ timestamp: number; measures: import('../../Plugin').MeasureInfo[][] }> = [];
+    const flameGraphData: MeasureInfo[][][] = [];
     let firstFrameTimestamp = 0;
     const maxFrames = 1000;
-    const maxFlameGraphs = 10;
+    const maxFlameGraphs = 100;
     let minFrameTime = Infinity;
     let maxFrameTime = -Infinity;
     const flameGraphSources: Array<{ name: string[]; source: any }> = [];
@@ -47,19 +47,21 @@ export default (context: PluginContext): void => {
     
     // Function to create or update flame graph sources based on current depth
     const updateFlameGraphSources = () => {
-        // Find the maximum depth from recent flame graph data
-        let maxDepth = 0;
-        for (const entry of flameGraphData.slice(-5)) { // Check last 5 entries for max depth
-            maxDepth = Math.max(maxDepth, entry.measures.length);
-        }
-        
-        // Create sources for each depth level if they don't exist
+        // Find the maximum depth from all flame graph data
+        const maxDepth = Math.max(0, ...flameGraphData.map(entry => entry.length));
+
         for (let depth = 0; depth < maxDepth; depth++) {
             if (!flameGraphSources[depth]) {
                 const depthSource = {
                     name: ['Profiler', `Depth ${depth}`],
                     discrete: true,
                     signal: () => {
+                        // Use the start time of the first measure entry (root of the stack)
+                        let firstMeasurementTime = 0;
+                        if (flameGraphData.length > 0 && flameGraphData[0].length > 0 && flameGraphData[0][0].length > 0) {
+                            firstMeasurementTime = flameGraphData[0][0][0].startTime;
+                        }
+
                         // Generate timeline data showing when measures are active at this depth
                         const timelineData: Array<{ timestamp: number; active: number }> = [];
                         const nameToIdMap = new Map<string, number>();
@@ -67,30 +69,25 @@ export default (context: PluginContext): void => {
                         let nextId = 0;
                         
                         for (const entry of flameGraphData) {
-                            const measures = entry.measures[depth] || [];
+                            const measures = entry[depth] || [];
                             
                             // For each measure at this depth, add start/end points
                             for (const measure of measures) {
-                                if (measure.endTime) {
-                                    // Get or assign a unique ID for this measure name
-                                    if (!nameToIdMap.has(measure.name)) {
-                                        nameToIdMap.set(measure.name, nextId);
-                                        idToNameMap.set(nextId, measure.name);
-                                        nextId++;
-                                    }
-                                    const measureId = nameToIdMap.get(measure.name)!;
-                                    
-                                    const relativeStart = (measure.startTime - (firstFrameTimestamp || measure.startTime)) / 1000;
-                                    const relativeEnd = (measure.endTime - (firstFrameTimestamp || measure.startTime)) / 1000;
-                                    
-                                    timelineData.push({ timestamp: relativeStart, active: measureId });
-                                    timelineData.push({ timestamp: relativeEnd, active: measureId });
+                                // Get or assign a unique ID for this measure name
+                                if (!nameToIdMap.has(measure.name)) {
+                                    nameToIdMap.set(measure.name, nextId);
+                                    idToNameMap.set(nextId, measure.name);
+                                    nextId++;
                                 }
+                                const measureId = nameToIdMap.get(measure.name)!;
+                                
+                                const relativeStart = (measure.startTime - firstMeasurementTime) / 1000;
+                                const relativeEnd = (measure.endTime - firstMeasurementTime) / 1000;
+                                
+                                timelineData.push({ timestamp: relativeStart, active: measureId });
+                                timelineData.push({ timestamp: relativeEnd, active: measureId });
                             }
                         }
-                        
-                        // Sort by timestamp
-                        timelineData.sort((a, b) => a.timestamp - b.timestamp);
                         
                         return {
                             source: depthSource,
@@ -143,21 +140,14 @@ export default (context: PluginContext): void => {
             
             frameData.push({ timestamp: relativeTimestamp, frameTime: lastFrame.frameTime });
             
-            // Store flame graph data if available
-            if (lastFrame.measures) {
-                flameGraphData.push({
-                    timestamp: relativeTimestamp,
-                    measures: lastFrame.measures
-                });
-                
-                // Keep only the last 10 flame graphs
-                if (flameGraphData.length > maxFlameGraphs) {
-                    flameGraphData.shift();
-                }
-                
-                // Update flame graph sources when we have new data
-                updateFlameGraphSources();
+            // Store flame graph data if available up to a limit
+            flameGraphData.push(lastFrame.measures);
+            if (flameGraphData.length > maxFlameGraphs) {
+                flameGraphData.shift();
             }
+            
+            // Update flame graph sources when we have new data
+            updateFlameGraphSources();
             
             // Update running min/max values
             minFrameTime = Math.min(minFrameTime, lastFrame.frameTime);
@@ -167,7 +157,9 @@ export default (context: PluginContext): void => {
                 const removedFrame = frameData.shift()!;
                 // Update first frame timestamp when we remove the oldest frame
                 if (frameData.length > 0) {
-                    firstFrameTimestamp = performance.now() - (frameData[frameData.length - 1].timestamp * 1000);
+                    // Recalculate firstFrameTimestamp based on the new first frame
+                    const newFirstFrame = frameData[0];
+                    firstFrameTimestamp = lastFrame.endTime - (newFirstFrame.timestamp * 1000);
                 }
                 
                 // If we removed the min or max value, we need to recompute
@@ -181,10 +173,6 @@ export default (context: PluginContext): void => {
                 }
             }
         }
-        return false; // Don't request additional renders
-    });
-    
-    context.onAfterRender(() => {
         return false; // Don't request additional renders
     });
     
