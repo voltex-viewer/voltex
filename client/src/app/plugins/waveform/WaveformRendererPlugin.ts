@@ -156,18 +156,17 @@ export default (context: PluginContext): void => {
                     });
                 }
                 
-                row.addRenderObject(
-                    new WaveformRenderObject(
-                        config,
-                        channelBuffers.get(channel),
-                        sharedInstanceGeometryBuffer,
-                        sharedBevelJoinGeometryBuffer,
-                        instancingExt,
-                        context.signalMetadata.getColor(channel),
-                        waveformPrograms,
-                        channel
-                    )
-                );
+                row.addRenderObject(new WaveformRenderObject(
+                    config,
+                    channelBuffers.get(channel),
+                    sharedInstanceGeometryBuffer,
+                    sharedBevelJoinGeometryBuffer,
+                    instancingExt,
+                    context.signalMetadata.getColor(channel),
+                    waveformPrograms,
+                    channel,
+                    row,
+                ));
             }
         }
 

@@ -2,12 +2,13 @@ import { PluginContext, SignalSource } from '../../Plugin';
 import { FunctionSignal } from '../../Signal';
 
 export default (context: PluginContext): void => {
+    const freq = 1;
     const squareWaveSource: SignalSource = {
         name: ['Demo Signals', 'Square Wave'],
         discrete: true,
         signal: () => new FunctionSignal(
             squareWaveSource,
-            (t: number) => Math.sin(2 * Math.PI * context.signal.freq * t) >= 0 ? 1 : -1,
+            (t: number) => Math.sin(2 * Math.PI * freq * t) >= 0 ? 1 : -1,
             -1,
             1
         )
@@ -18,7 +19,7 @@ export default (context: PluginContext): void => {
         discrete: false,
         signal: () => new FunctionSignal(
             triangleWaveSource,
-            (t: number) => 10 * (2 * Math.abs(2 * (t * context.signal.freq - Math.floor(t * context.signal.freq + 0.5))) - 1),
+            (t: number) => 10 * (2 * Math.abs(2 * (t * freq - Math.floor(t * freq + 0.5))) - 1),
             -10,
             10
         )
@@ -29,7 +30,7 @@ export default (context: PluginContext): void => {
         discrete: false,
         signal: () => new FunctionSignal(
             sawtoothWaveSource,
-            (t: number) => 2 * (t * context.signal.freq - Math.floor(t * context.signal.freq + 0.5)),
+            (t: number) => 2 * (t * freq - Math.floor(t * freq + 0.5)),
             -1,
             1
         )
@@ -40,7 +41,7 @@ export default (context: PluginContext): void => {
         discrete: false,
         signal: () => new FunctionSignal(
             sineWaveSource,
-            (t: number) => Math.sin(2 * Math.PI * context.signal.freq * t),
+            (t: number) => Math.sin(2 * Math.PI * freq * t),
             -1,
             1
         )

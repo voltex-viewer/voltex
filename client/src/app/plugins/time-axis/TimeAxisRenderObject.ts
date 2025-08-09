@@ -31,18 +31,16 @@ export class TimeAxisRenderObject extends RenderObject {
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {
-        const { render, state, signal } = context;
+        const { render, state } = context;
         const { gl, utils } = render;
 
-        const gridSpacing = getGridSpacing(signal.pxPerSecond);
-        const pxPerGrid = gridSpacing * signal.pxPerSecond;
+        const gridSpacing = getGridSpacing(state.pxPerSecond);
+        const pxPerGrid = gridSpacing * state.pxPerSecond;
         const startPx = state.offset;
 
         const unitInfo = this.getTimeUnitAndScale(gridSpacing);
 
-        const leftTime = startPx / signal.pxPerSecond;
-        const leftGridTime = Math.floor(leftTime / gridSpacing) * gridSpacing;
-        const leftGridPx = leftGridTime * signal.pxPerSecond;
+        const leftGridPx = Math.floor(startPx / state.pxPerSecond / gridSpacing) * gridSpacing * state.pxPerSecond;
 
         // Draw major grid lines, labels, and subdivisions
         const subdivisions = 10;
@@ -56,16 +54,16 @@ export class TimeAxisRenderObject extends RenderObject {
             const x = Math.round(((px - startPx) / bounds.width) * bounds.width);
             
             // Draw major grid line and label if in bounds
-            if (x >= 0 && x <= bounds.width) {
+            if (x <= bounds.width) {
                 // Add major grid line vertices
                 lineVertices.push(
-                    bounds.x + x, bounds.y,
-                    bounds.x + x, bounds.y + bounds.height
+                    x, 0,
+                    x, bounds.height
                 );
                 
                 // Draw time label
-                const t = px / signal.pxPerSecond;
-                utils.drawText(this.formatSplitTimeLabel(t, unitInfo.scale), bounds.x + x, bounds.y + 2, bounds, {
+                const t = px / state.pxPerSecond;
+                utils.drawText(this.formatSplitTimeLabel(t, unitInfo.scale), x, 2, bounds, {
                     font: 'bold 14px "Open Sans"',
                     fillStyle: '#ffffff'
                 });
@@ -76,24 +74,24 @@ export class TimeAxisRenderObject extends RenderObject {
                 const subPx = px + (pxPerGrid * j / subdivisions);
                 const subX = Math.round(((subPx - startPx) / bounds.width) * bounds.width);
                 
-                if (subX < 0 || subX > bounds.width) continue;
-                
-                // Add subdivision line vertices
-                lineVertices.push(
-                    bounds.x + subX, bounds.y + rowHeight + gap / 2,
-                    bounds.x + subX, bounds.y + bounds.height - rowHeight - gap / 2
-                );
-                
-                // Draw subdivision label
-                const offsetValue = (gridSpacing * j / subdivisions) / unitInfo.scale;
-                const label = Math.abs(offsetValue) < 1 
-                    ? `+${offsetValue.toFixed(1)}${unitInfo.unit}`
-                    : `+${Math.round(offsetValue)}${unitInfo.unit}`;
-                
-                utils.drawText(label, bounds.x + subX - 3.5, bounds.y + rowHeight + gap + 1, bounds, {
-                    font: 'bold 12px "Open Sans"',
-                    fillStyle: '#ffffff'
-                });
+                if (subX <= bounds.width) {
+                    // Add subdivision line vertices
+                    lineVertices.push(
+                        subX, rowHeight + gap / 2,
+                        subX, bounds.height - rowHeight - gap / 2
+                    );
+                    
+                    // Draw subdivision label
+                    const offsetValue = (gridSpacing * j / subdivisions) / unitInfo.scale;
+                    const label = Math.abs(offsetValue) < 1 
+                        ? `+${offsetValue.toFixed(1)}${unitInfo.unit}`
+                        : `+${Math.round(offsetValue)}${unitInfo.unit}`;
+                    
+                    utils.drawText(label, subX - 3.5, rowHeight + gap + 1, bounds, {
+                        font: 'bold 12px "Open Sans"',
+                        fillStyle: '#ffffff'
+                    });
+                }
             }
         }
         

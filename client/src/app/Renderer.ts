@@ -1,5 +1,5 @@
 import type { WaveformState } from './WaveformState';
-import type { SignalParams } from './SignalParams';
+import { RenderObject, RenderBounds, px, percent, MouseEvent } from './RenderObject';
 import { SignalMetadataManager } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
 import { WebGLUtils } from './WebGLUtils';
@@ -10,7 +10,12 @@ import { RenderProfiler } from './RenderProfiler';
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
 import PluginManagerMetadata from './plugins/manager/plugin.json';
 import { PluginModule } from './Plugin';
-import { RowImpl } from './RowImpl';
+import { ContainerRenderObject } from './ContainerRenderObject';
+import { RowContainerRenderObject } from './RowContainerRenderObject';
+
+interface InternalMouseEvent extends MouseEvent {
+    readonly stopPropagationCalled: boolean;
+}
 
 const PluginManagerPlugin: PluginModule = {
     plugin: PluginManagerFunction,
@@ -25,11 +30,11 @@ export class Renderer {
     private signalSources: SignalSourceManagerImpl;
     private rowManager: RowManager;
     private renderProfiler: RenderProfiler;
+    private rootRenderObject: ContainerRenderObject;
+    private rowContainer: RowContainerRenderObject;
     
     constructor(
         private state: WaveformState,
-        private signal: SignalParams, 
-        private root: HTMLElement,
         canvas: HTMLCanvasElement,
         private verticalSidebar?: import('./VerticalSidebar').VerticalSidebar,
         private requestRender?: () => void
@@ -37,6 +42,10 @@ export class Renderer {
         this.canvas = canvas;
         
         this.renderProfiler = new RenderProfiler();
+        
+        // Create root render object
+        this.rootRenderObject = new ContainerRenderObject();
+        this.resizeCanvases(); // Setup the root size
         
         // Initialize WebGL context
         const gl = this.canvas.getContext('webgl');
@@ -54,11 +63,14 @@ export class Renderer {
         this.signalMetadata = new SignalMetadataManager();
         this.signalSources = new SignalSourceManagerImpl();
 
-        this.rowManager = new RowManager();
+        // Create row container and add it to root
+        this.rowContainer = new RowContainerRenderObject(this.state, this.requestRender);
+        this.rootRenderObject.addChild(this.rowContainer);
+
+        this.rowManager = new RowManager(this.rowContainer);
         
         this.pluginManager = new PluginManager(
-            this.state, 
-            this.signal,
+            this.state,
             { gl, utils: proxiedWebglUtils },
             this.signalMetadata,
             this.signalSources,
@@ -66,21 +78,148 @@ export class Renderer {
             (entry) => this.verticalSidebar.addDynamicEntry(entry),
             (entry) => this.verticalSidebar.removeDynamicEntry(entry),
             this.requestRender,
-            this.renderProfiler
+            this.renderProfiler,
+            this.rootRenderObject
         );
         
         // Register and enable default plugins (only Plugin Manager)
         this.pluginManager.registerPluginType(PluginManagerPlugin);
         this.pluginManager.enablePlugin(PluginManagerPlugin);
         setPluginManager(this.pluginManager);
+        
+        // Set up mouse event handlers on the canvas
+        this.setupMouseEventHandlers();
+    }
+
+    private setupMouseEventHandlers(): void {
+        this.canvas.addEventListener('mousedown', (e): void => {
+            this.dispatchMouseEvent('onMouseDown', this.createMouseEvent(e));
+        });
+        this.canvas.addEventListener('mousemove', (e): void => {
+            const mouseEvent = this.createMouseEvent(e);
+            this.dispatchMouseEvent('onMouseMove', mouseEvent);
+            this.updateMouseOverStates(mouseEvent);
+        });
+        this.canvas.addEventListener('mouseup', (e): void => {
+            this.dispatchMouseEvent('onMouseUp', this.createMouseEvent(e));
+        });
+        this.canvas.addEventListener('click', (e): void => {
+            this.dispatchMouseEvent('onClick', this.createMouseEvent(e));
+        });
+        this.canvas.addEventListener('mouseenter', (e): void => {
+            this.dispatchMouseEvent('onMouseEnter', this.createMouseEvent(e));
+        });
+        this.canvas.addEventListener('mouseleave', (e): void => {
+            const mouseEvent = this.createMouseEvent(e);
+            this.dispatchMouseEvent('onMouseLeave', mouseEvent);
+            this.clearAllMouseOverStates(mouseEvent);
+        });
+        this.canvas.addEventListener('wheel', (e): void => {
+            this.dispatchMouseEvent('onWheel', this.createWheelEvent(e));
+        }, { passive: false });
+    }
+
+    private createMouseEvent(e: globalThis.MouseEvent): InternalMouseEvent {
+        const rect = this.canvas.getBoundingClientRect();
+        let stopPropagationCalled = false;
+        
+        const mouseEvent: InternalMouseEvent = {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            button: e.button,
+            ctrlKey: e.ctrlKey,
+            metaKey: e.metaKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            get stopPropagationCalled() {
+                return stopPropagationCalled;
+            },
+            preventDefault: () => {
+                e.preventDefault();
+            },
+            stopPropagation: () => {
+                stopPropagationCalled = true;
+                e.stopPropagation();
+            }
+        };
+        
+        return mouseEvent;
+    }
+
+    private createWheelEvent(e: globalThis.WheelEvent): InternalMouseEvent & { deltaY: number; deltaX: number; deltaZ: number } {
+        return {
+            ...this.createMouseEvent(e),
+            deltaY: e.deltaY,
+            deltaX: e.deltaX,
+            deltaZ: e.deltaZ
+        };
+    }
+
+    private dispatchMouseEvent(eventType: keyof import('./RenderObject').MouseEventHandlers, event: InternalMouseEvent): void {
+        const dispatchMouseEventRecursive = (
+            renderObject: RenderObject, 
+            eventType: keyof import('./RenderObject').MouseEventHandlers, 
+            event: InternalMouseEvent, 
+            bounds: RenderBounds
+        ): void => {
+            // Process children first (in reverse z-order)
+            const children = [...renderObject.getChildren()].reverse();
+            for (const child of children) {
+                dispatchMouseEventRecursive(child, eventType, event, child.calculateBounds(bounds));
+                if (event.stopPropagationCalled) {
+                    return;
+                }
+            }
+
+            if (isPointInBounds(event.x, event.y, bounds)) {
+                renderObject.emitMouseEvent(eventType, event);
+            }
+        }
+        dispatchMouseEventRecursive(this.rootRenderObject, eventType, event, this.getRootBounds());
+    }
+
+    private updateMouseOverStates(event: InternalMouseEvent): void {
+        const updateMouseOverStatesRecursive = (renderObject: RenderObject, event: InternalMouseEvent, bounds: RenderBounds): void => {
+            renderObject.updateMouseOver(isPointInBounds(event.x, event.y, bounds), event);
+
+            for (const child of renderObject.getChildren()) {
+                updateMouseOverStatesRecursive(child, event, child.calculateBounds(bounds));
+            }
+        }
+        updateMouseOverStatesRecursive(this.rootRenderObject, event, this.getRootBounds());
+    }
+
+    private clearAllMouseOverStates(event: InternalMouseEvent): void {
+        const clearMouseOverStatesRecursive = (renderObject: RenderObject, event: InternalMouseEvent): void => {
+            renderObject.updateMouseOver(false, event);
+
+            // Clear children
+            for (const child of renderObject.getChildren()) {
+                clearMouseOverStatesRecursive(child, event);
+            }
+        }
+        clearMouseOverStatesRecursive(this.rootRenderObject, event);
+    }
+
+
+    private getRootBounds(): RenderBounds {
+        const root = this.rootRenderObject;
+        if (root.x.type !== 'pixels' || root.y.type !== 'pixels' || 
+            root.width.type !== 'pixels' || root.height.type !== 'pixels') {
+            throw new Error('Root render object dimensions must be in pixels');
+        }
+        
+        return {
+            x: root.x.value,
+            y: root.y.value,
+            width: root.width.value,
+            height: root.height.value
+        };
     }
 
     resizeCanvases(): void {
-        if (!this.root || !this.state || !this.canvas) return;
-
         // Get size from the canvas parent container instead of the canvas itself
         const container = this.canvas.parentElement;
-        if (!container) return;
 
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
@@ -91,7 +230,9 @@ export class Renderer {
         this.canvas.style.width = `${containerWidth}px`;
         this.canvas.style.height = `${containerHeight}px`;
 
-        this.state.canvasWidth = containerWidth - this.state.labelWidth;
+        this.rootRenderObject.width = px(containerWidth);
+        this.rootRenderObject.height = px(containerHeight);
+        
         this.requestRender();
     }
     
@@ -99,10 +240,10 @@ export class Renderer {
         this.renderProfiler.startFrame();
         this.webglUtils.startFrame();
         
-        // Call beforeRender callbacks
-        const beforeRenderRequested = this.pluginManager.onBeforeRender(this.renderProfiler);
-        
         let renderRequested = false;
+
+        renderRequested = this.pluginManager.onBeforeRender(this.renderProfiler) || renderRequested;
+        
         const gl = this.canvas.getContext('webgl');
         if (!gl) {
             throw new Error('WebGL context not available');
@@ -118,8 +259,6 @@ export class Renderer {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-        let currentY = 0;
-        const renderProfiler = this.renderProfiler;
         const baseContext = {
             canvas: this.canvas,
             render: {
@@ -127,54 +266,37 @@ export class Renderer {
                 utils: this.webglUtils
             },
             state: this.state,
-            signal: this.signal,
             dpr
         };
-        for (const row of this.rowManager.getAllRows()) {
-            const rowHeight = row.height;
-            this.renderProfiler.startMeasure(`row-${row.signals[0]?.source.name.join('.') || 'unknown'}`);
-            renderRow.call(this, row, rowHeight);
-            this.renderProfiler.endMeasure();
-            currentY += row.height;
-        }
-        
-        const afterRenderRequested = this.pluginManager.onAfterRender(this.renderProfiler);
+
+        const rootBounds = this.getRootBounds();
+
+        renderRequested = this.renderRecursive(this.rootRenderObject, baseContext, rootBounds) || renderRequested;
+
+        renderRequested = this.pluginManager.onAfterRender(this.renderProfiler) || renderRequested;
 
         this.webglUtils.endFrame();
         this.renderProfiler.endFrame();
-        
-        return renderRequested || beforeRenderRequested || afterRenderRequested;
 
-        function renderRow(row: RowImpl, rowHeight: number) {
-            // Set viewport for the label area
-            const viewportY = currentY * dpr;
-            const labelWidth = this.state.labelWidth * dpr;
-            const viewportHeight = rowHeight * dpr;
-
-            if (viewportY <= this.canvas.height) {
-                const context = { ...baseContext, row };
-                // Render labels
-                gl.viewport(0, this.canvas.height - viewportY - viewportHeight, labelWidth, viewportHeight);
-                const labelBounds = { x: 0, y: 0, width: this.state.labelWidth, height: rowHeight };
-
-                for (const renderObject of [...row.labelRenderObjects].sort((a, b) => a.getZIndex() - b.getZIndex())) {
-                    renderProfiler.startMeasure(`label-${renderObject.constructor.name}`);
-                    const rerequest = renderObject.render(context, labelBounds);
-                    renderProfiler.endMeasure();
-                    renderRequested ||= rerequest;
-                }
-
-                // Render the main row content
-                gl.viewport(labelWidth, this.canvas.height - viewportY - viewportHeight, this.canvas.width - labelWidth, viewportHeight);
-                const bounds = { x: 0, y: 0, width: this.state.canvasWidth, height: row.height };
-
-                for (const renderObject of [...row.renderObjects].sort((a, b) => a.getZIndex() - b.getZIndex())) {
-                    renderProfiler.startMeasure(`main-${renderObject.constructor.name}`);
-                    const rerequest = renderObject.render(context, bounds);
-                    renderProfiler.endMeasure();
-                    renderRequested ||= rerequest;
-                }
-            }
-        }
+        return renderRequested;
     }
+
+    private renderRecursive(renderObject: RenderObject, context: any, bounds: RenderBounds): boolean {
+        let rerenderRequested = false;
+
+        this.renderProfiler.startMeasure("render-" + renderObject.constructor.name);
+        rerenderRequested = renderObject.render(context, bounds) || rerenderRequested;
+        for (const child of renderObject.getChildren()) {
+            rerenderRequested = this.renderRecursive(child, context, child.calculateBounds(bounds)) || rerenderRequested;
+        }
+        this.renderProfiler.endMeasure();
+        
+        return rerenderRequested;
+    }
+}
+
+    
+function isPointInBounds(x: number, y: number, bounds: RenderBounds): boolean {
+    return x >= bounds.x && x < bounds.x + bounds.width &&
+            y >= bounds.y && y < bounds.y + bounds.height;
 }

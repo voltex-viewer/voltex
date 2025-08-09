@@ -4,17 +4,9 @@ import type { ChannelBufferData } from './WaveformRendererPlugin';
 import { RenderMode, WaveformConfig } from './WaveformConfig';
 import { WaveformShaders } from './WaveformShaders';
 import type { Signal } from '../../Signal';
+import { Row } from 'src/app/Plugin';
 
 export class WaveformRenderObject extends RenderObject {
-    private bufferData: ChannelBufferData;
-    private sharedInstanceGeometryBuffer: WebGLBuffer;
-    private sharedBevelJoinGeometryBuffer: WebGLBuffer;
-    private color: string;
-    private waveformPrograms: WaveformShaders;
-    private config: WaveformConfig;
-    private instancingExt: ANGLE_instanced_arrays;
-    private signal: Signal;
-
     private getSignalRenderMode(signal: Signal, defaultMode: RenderMode): RenderMode {
         if (signal.source.discrete && 'valueTable' in signal) {
             return RenderMode.Enum;
@@ -22,27 +14,30 @@ export class WaveformRenderObject extends RenderObject {
         return defaultMode;
     }
 
-    constructor(config: WaveformConfig, bufferData: ChannelBufferData, sharedInstanceGeometryBuffer: WebGLBuffer, sharedBevelJoinGeometryBuffer: WebGLBuffer, instancingExt: ANGLE_instanced_arrays, color: string, waveformPrograms: WaveformShaders, signal: Signal, zIndex: number = 0) {
+    constructor(
+        private config: WaveformConfig,
+        private bufferData: ChannelBufferData,
+        private sharedInstanceGeometryBuffer: WebGLBuffer,
+        private sharedBevelJoinGeometryBuffer: WebGLBuffer,
+        private instancingExt: ANGLE_instanced_arrays,
+        private color: string,
+        private waveformPrograms: WaveformShaders,
+        private signal: Signal,
+        private row: Row,
+        zIndex: number = 0
+    ) {
         super(zIndex);
-        this.config = config;
-        this.bufferData = bufferData;
-        this.sharedInstanceGeometryBuffer = sharedInstanceGeometryBuffer;
-        this.sharedBevelJoinGeometryBuffer = sharedBevelJoinGeometryBuffer;
-        this.instancingExt = instancingExt;
-        this.color = color;
-        this.waveformPrograms = waveformPrograms;
-        this.signal = signal;
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {
-        const {render, state, signal, row} = context;
+        const {render, state} = context;
         const { gl } = render;
         const renderMode = this.getSignalRenderMode(this.signal, this.config.renderMode);
         
         const color = this.color;
             
         // Calculate left time with high precision
-        const leftTimeDouble = state.offset / signal.pxPerSecond;
+        const leftTimeDouble = state.offset / state.pxPerSecond;
         
         // Split double precision into two float32 values for GPU
         // This emulates double precision arithmetic on the GPU
@@ -55,13 +50,13 @@ export class WaveformRenderObject extends RenderObject {
             gl.uniform1f(gl.getUniformLocation(program, 'u_width'), width);
             gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetHigh'), timeOffsetHigh);
             gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetLow'), timeOffsetLow);
-            gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), signal.pxPerSecond);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), state.pxPerSecond);
             
             gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.source.discrete ? 1 : 0);
 
             // Apply row-specific y-scale and y-offset
-            gl.uniform1f(gl.getUniformLocation(program, 'u_yScale'), row.yScale);
-            gl.uniform1f(gl.getUniformLocation(program, 'u_yOffset'), row.yOffset);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_yScale'), this.row.yScale);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_yOffset'), this.row.yOffset);
 
             const [r, g, b, a] = WebGLUtils.hexToRgba(color);
             gl.uniform4f(gl.getUniformLocation(program, 'u_color'), r, g, b, a);
@@ -72,7 +67,7 @@ export class WaveformRenderObject extends RenderObject {
             gl.uniform2f(gl.getUniformLocation(program, 'u_bounds'), bounds.width, bounds.height);
             gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetHigh'), timeOffsetHigh);
             gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetLow'), timeOffsetLow);
-            gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), signal.pxPerSecond);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), state.pxPerSecond);
 
             // Pass max value for color generation
             gl.uniform1f(gl.getUniformLocation(program, 'u_maxValue'), this.signal.maxValue);
@@ -120,8 +115,8 @@ export class WaveformRenderObject extends RenderObject {
         this.renderEnumInstancedLines(gl, program, bindUniforms);
 
         // Check if we should render text based on zoom level
-        const { signal, state } = context;
-        const pixelsPerSecond = signal.pxPerSecond;
+        const { state } = context;
+        const pixelsPerSecond = state.pxPerSecond;
         const minPixelsForText = 50; // Minimum pixels between points to show text (reduced threshold)
 
         if (pixelsPerSecond > minPixelsForText) {
@@ -134,12 +129,12 @@ export class WaveformRenderObject extends RenderObject {
         bounds: RenderBounds,
         valueTable: Map<number, string>
     ): void {
-        const { render, state, signal } = context;
+        const { render, state } = context;
         const { utils } = render;
 
         // Calculate visible time range
-        const startTime = state.offset / signal.pxPerSecond;
-        const endTime = (state.offset + bounds.width) / signal.pxPerSecond;
+        const startTime = state.offset / state.pxPerSecond;
+        const endTime = (state.offset + bounds.width) / state.pxPerSecond;
 
         const padding = 5; // Padding around text
         const font = '12px "Open Sans", sans-serif'; // Match the font used in drawText
@@ -166,8 +161,8 @@ export class WaveformRenderObject extends RenderObject {
             let enumText = valueTable.get(value) || value.toString();
             
             // Calculate segment boundaries in pixel space
-            const segmentStartX = segmentStartTime * signal.pxPerSecond - state.offset;
-            const segmentEndX = segmentEndTime * signal.pxPerSecond - state.offset;
+            const segmentStartX = segmentStartTime * state.pxPerSecond - state.offset;
+            const segmentEndX = segmentEndTime * state.pxPerSecond - state.offset;
             
             // Determine text position - snap to left edge if segment starts off-screen
             const textX = Math.max(padding, segmentStartX + padding);

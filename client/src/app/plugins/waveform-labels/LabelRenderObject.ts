@@ -22,7 +22,7 @@ export class LabelRenderObject extends RenderObject {
         const { render, state } = context;
         const { gl, utils } = render;
         
-        const labelWidth = state.labelWidth;
+        const labelWidth = bounds.width;
         
         // Draw background
         const vertices = new Float32Array([
@@ -43,7 +43,7 @@ export class LabelRenderObject extends RenderObject {
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
         
         const resolutionLocation = gl.getUniformLocation(utils.line, 'u_bounds');
-        gl.uniform2f(resolutionLocation, bounds.width, bounds.height);
+        gl.uniform2f(resolutionLocation, labelWidth, bounds.height);
         
         // Set background color
         const colorLocation = gl.getUniformLocation(utils.line, 'u_color');
@@ -100,7 +100,7 @@ export class LabelRenderObject extends RenderObject {
                     channelName,
                     padding, // Start after color bar + small gap
                     y,
-                    { width: bounds.width, height: bounds.height },
+                    { width: labelWidth, height: bounds.height },
                     {
                         fillStyle: textColor
                     }

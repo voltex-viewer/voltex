@@ -1,20 +1,31 @@
 import { Row } from './Plugin';
 import type { RenderObject } from './RenderObject';
+import { px } from './RenderObject';
 import type { Signal } from './Signal';
+import { ContainerRenderObject } from './ContainerRenderObject';
+import type { RowContainerRenderObject } from './RowContainerRenderObject';
+import { ViewportRenderObject } from './ViewportRenderObject';
 
 export class RowImpl implements Row {
     public readonly signals: Signal[] = [];
-    public readonly labelRenderObjects: RenderObject[] = [];
-    public readonly renderObjects: RenderObject[] = [];
+    public readonly rowRenderObject: ContainerRenderObject;
     public yScale: number = 1.0;
     public yOffset: number = 0.0;
     private _height: number;
+    public readonly labelViewport: ViewportRenderObject;
+    public readonly mainViewport: ViewportRenderObject;
     
     constructor(
         signals?: Signal[],
         height: number = 50
     ) {
         this._height = height;
+        this.rowRenderObject = new ContainerRenderObject();
+        this.labelViewport = new ViewportRenderObject(-1);
+        this.mainViewport = new ViewportRenderObject(-1);
+        this.rowRenderObject.addChild(this.labelViewport);
+        this.rowRenderObject.addChild(this.mainViewport);
+
         if (signals) {
             this.signals = [...signals];
             this.calculateOptimalScaleAndOffset();
@@ -27,14 +38,15 @@ export class RowImpl implements Row {
 
     setHeight(height: number): void {
         this._height = Math.max(20, height); // Minimum height of 20px
+        this.rowRenderObject.height = px(this._height);
     }
 
     addRenderObject(renderObject: RenderObject): void {
-        this.renderObjects.push(renderObject);
+        this.mainViewport.addChild(renderObject);
     }
     
     addLabelRenderObject(renderObject: RenderObject): void {
-        this.labelRenderObjects.push(renderObject);
+        this.labelViewport.addChild(renderObject);
     }
     
     private calculateOptimalScaleAndOffset(): void {

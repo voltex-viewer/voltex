@@ -1,7 +1,6 @@
 import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler } from './Plugin';
 import type { RenderObject, WebGlContext } from './RenderObject';
 import type { WaveformState } from './WaveformState';
-import type { SignalParams } from './SignalParams';
 import type { SignalMetadataManager } from './SignalMetadataManager';
 import { RowManager, RowChangedEvent } from './RowManager';
 import { PluginConfigManager } from './PluginConfigManager';
@@ -26,7 +25,6 @@ interface PluginData {
     sidebarEntries: SidebarEntry[];
     sidebarEntryInstances: import('./VerticalSidebar').SidebarEntry[];
     renderObjects: RenderObject[];
-    labelRenderObjects: RenderObject[];
     signalSources: SignalSource[];
     rowProxyCache: Map<Row, Row>; // Cache proxy rows to maintain identity
     proxyToActualRowMap: Map<Row, Row>; // Map proxy rows back to actual rows
@@ -41,7 +39,6 @@ export class PluginManager {
 
     constructor(
         private state: WaveformState,
-        private signal: SignalParams,
         private webgl: WebGlContext,
         private signalMetadata: SignalMetadataManager,
         private signalSources: SignalSourceManager,
@@ -49,7 +46,8 @@ export class PluginManager {
         private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
         private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
         private requestRender: () => void,
-        private renderProfiler: RenderProfiler
+        private renderProfiler: RenderProfiler,
+        private rootRenderObject: RenderObject
     ) {
         rowManager.onChange((event: RowChangedEvent) => {
             this.onRowsChanged(event);
@@ -82,7 +80,6 @@ export class PluginManager {
         
         const context: PluginContext = {
             state: this.state,
-            signal: this.signal,
             webgl: this.webgl,
             signalMetadata: this.signalMetadata,
             signalSources: this.createPluginSignalSourceManager(plugin),
@@ -161,7 +158,6 @@ export class PluginManager {
             sidebarEntryInstances: [],
             renderObjects: [],
             signalSources: [],
-            labelRenderObjects: [],
             rowProxyCache: new Map(),
             proxyToActualRowMap: new Map(),
         });
@@ -194,26 +190,12 @@ export class PluginManager {
         }
         
         // Remove render objects from all rows before disposing
-        for (const row of this.rowManager.getAllRows()) {
-            for (const renderObject of data.renderObjects) {
-                const index = row.renderObjects.indexOf(renderObject);
-                if (index !== -1) {
-                    row.renderObjects.splice(index, 1);
-                }
-            }
-            for (const renderObject of data.labelRenderObjects) {
-                const index = row.labelRenderObjects.indexOf(renderObject);
-                if (index !== -1) {
-                    row.labelRenderObjects.splice(index, 1);
-                }
-            }
+        for (const renderObject of data.renderObjects) {
+            renderObject.getParent().removeChild(renderObject);
         }
         
         // Dispose render objects
         for (const renderObject of data.renderObjects) {
-            renderObject.dispose();
-        }
-        for (const renderObject of data.labelRenderObjects) {
             renderObject.dispose();
         }
         
@@ -358,13 +340,13 @@ export class PluginManager {
                 row.addRenderObject(renderObject);
             },
             addLabelRenderObject: (renderObject: RenderObject) => {
-                data.labelRenderObjects.push(renderObject);
+                data.renderObjects.push(renderObject);
                 row.addLabelRenderObject(renderObject);
             },
             setHeight: (height: number) => {
                 row.setHeight(height);
                 this.requestRender();
-            }
+            },
         };
         
         // Cache the proxy row and maintain reverse mapping

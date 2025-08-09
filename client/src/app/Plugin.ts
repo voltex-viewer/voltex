@@ -1,5 +1,4 @@
 import type { WaveformState } from './WaveformState';
-import type { SignalParams } from './SignalParams';
 import type { RenderObject, WebGlContext } from './RenderObject';
 import type { SignalMetadataManager } from './SignalMetadataManager';
 import { Signal } from './Signal';
@@ -31,7 +30,7 @@ export interface Row {
     readonly addRenderObject: (renderObject: RenderObject) => void;
     readonly yScale: number;
     readonly yOffset: number;
-    addLabelRenderObject(renderObject: RenderObject): void;
+    readonly addLabelRenderObject: (renderObject: RenderObject) => void;
     setHeight(height: number): void;
 }
 
@@ -81,7 +80,6 @@ export interface RowInsert {
 
 export interface PluginContext {
     state: WaveformState;
-    signal: SignalParams;
     webgl: WebGlContext;
     signalMetadata: SignalMetadataManager;
     signalSources: SignalSourceManager;

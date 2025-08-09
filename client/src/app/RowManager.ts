@@ -1,5 +1,6 @@
 import { RowImpl } from './RowImpl';
 import { Row, RowParameters, RowInsert } from './Plugin';
+import { RowContainerRenderObject } from './RowContainerRenderObject';
 
 export interface RowChangedEvent {
     added: RowImpl[];
@@ -9,8 +10,10 @@ export interface RowChangedEvent {
 export type RowChangedCallback = (event: RowChangedEvent) => void;
 
 export class RowManager {
-    private rows: RowImpl[] = [];
     private changeCallbacks: RowChangedCallback[] = [];
+
+    constructor(private readonly rowContainer: RowContainerRenderObject) {
+    }
     
     onChange(callback: RowChangedCallback): void {
         this.changeCallbacks.push(callback);
@@ -19,19 +22,16 @@ export class RowManager {
     createRows(...rowParams: RowParameters[]): Row[] {
         const newRows = rowParams.map(({ channels, height }) => {
             const row = new RowImpl(channels, height);
+            this.rowContainer.addRow(row);
             return row;
         });
-        this.rows.push(...newRows);
         this.notifyChange({ added: newRows, removed: [] });
         return newRows;
     }
     
     removeRow(row: RowImpl): void {
-        const index = this.rows.indexOf(row);
-        if (index !== -1) {
-            this.rows.splice(index, 1);
-            this.notifyChange({ added: [], removed: [row] });
-        }
+        this.rowContainer.removeRow(row);
+        this.notifyChange({ added: [], removed: [row] });
     }
     
     mergeRows(rowsToMerge: RowImpl[]): RowImpl {
@@ -39,23 +39,9 @@ export class RowManager {
             throw new Error('Cannot merge empty row list');
         }
         
-        const firstRowIndex = this.rows.findIndex(r => rowsToMerge.includes(r));
-        
-        // Collect all channels from rows to merge
-        const allChannels = Array.from(new Set(rowsToMerge.flatMap(row => row.signals)));
-        
-        // Create new merged row
-        const mergedRow = new RowImpl(allChannels);
+        // Use the row container to group rows
+        const mergedRow = this.rowContainer.groupRows(rowsToMerge);
 
-        // Remove old rows and insert new one
-        this.rows = this.rows.filter(r => !rowsToMerge.includes(r));
-        
-        if (firstRowIndex >= 0) {
-            this.rows.splice(firstRowIndex, 0, mergedRow);
-        } else {
-            this.rows.push(mergedRow);
-        }
-        
         this.notifyChange({ added: [mergedRow], removed: rowsToMerge });
         return mergedRow;
     }
@@ -64,14 +50,9 @@ export class RowManager {
         const newRows: RowImpl[] = [];
         
         for (const row of rowsToSplit) {
-            const index = this.rows.indexOf(row);
-            if (index !== -1) {
-                this.rows.splice(index, 1);
-                
-                const individualRows = row.signals.map(channel => new RowImpl([channel]));
-                this.rows.splice(index, 0, ...individualRows);
-                newRows.push(...individualRows);
-            }
+            // Use the row container to ungroup rows
+            const individualRows = this.rowContainer.ungroupRows([row]);
+            newRows.push(...individualRows);
         }
         
         this.notifyChange({ added: newRows, removed: rowsToSplit });
@@ -84,19 +65,15 @@ export class RowManager {
         
         // Remove specified rows
         for (const row of rowsToRemove) {
-            const index = this.rows.indexOf(row as RowImpl);
-            if (index !== -1) {
-                const removed = this.rows.splice(index, 1)[0];
-                removedRows.push(removed);
-            }
+            this.rowContainer.removeRow(row as RowImpl);
+            removedRows.push(row as RowImpl);
         }
         
         // Add new rows at specified indices (sort by index descending to avoid index shifting)
         const sortedInserts = [...rowsToAdd].sort((a, b) => b.index - a.index);
         for (const insert of sortedInserts) {
             const newRow = new RowImpl(insert.row.channels, insert.row.height);
-            const insertIndex = Math.min(insert.index, this.rows.length);
-            this.rows.splice(insertIndex, 0, newRow);
+            this.rowContainer.insertRowAtIndex(newRow, insert.index);
             addedRows.push(newRow);
         }
         
@@ -105,11 +82,7 @@ export class RowManager {
     }
     
     getAllRows(): RowImpl[] {
-        return [...this.rows];
-    }
-    
-    getRowCount(): number {
-        return this.rows.length;
+        return this.rowContainer.getAllRows();
     }
     
     private notifyChange(event: RowChangedEvent): void {

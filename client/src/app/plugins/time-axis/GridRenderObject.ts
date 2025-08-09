@@ -7,11 +7,11 @@ export class GridRenderObject extends RenderObject {
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {
-        const {render, state, signal} = context;
+        const {render, state} = context;
         const { gl, utils } = render;
         
-        const gridSpacing = getGridSpacing(signal.pxPerSecond);
-        const pxPerGrid = gridSpacing * signal.pxPerSecond;
+        const gridSpacing = getGridSpacing(state.pxPerSecond);
+        const pxPerGrid = gridSpacing * state.pxPerSecond;
         const startPx = state.offset;
         const subdivisions = 10;
         const firstMajorPx = Math.floor(startPx / pxPerGrid) * pxPerGrid;
@@ -25,18 +25,18 @@ export class GridRenderObject extends RenderObject {
         
         const lines: number[] = [];
         
-        for (let px = firstMajorPx; px < startPx + state.canvasWidth; px += pxPerGrid) {
-            const x = Math.round(((px - startPx) / state.canvasWidth) * bounds.width);
+        for (let px = firstMajorPx; px < startPx + bounds.width; px += pxPerGrid) {
+            const x = Math.round(((px - startPx) / bounds.width) * bounds.width);
             lines.push(x, 0, x, bounds.height);
         }
-        
-        for (let majorPx = firstMajorPx; majorPx < startPx + state.canvasWidth; majorPx += pxPerGrid) {
+
+        for (let majorPx = firstMajorPx; majorPx < startPx + bounds.width; majorPx += pxPerGrid) {
             for (let j = 1; j < subdivisions; j++) {
                 const frac = j / subdivisions;
                 const px = majorPx + pxPerGrid * frac;
-                if (px < startPx || px > startPx + state.canvasWidth) continue;
-                
-                const x = Math.round(((px - startPx) / state.canvasWidth) * bounds.width);
+                if (px < startPx || px > startPx + bounds.width) continue;
+
+                const x = Math.round(((px - startPx) / bounds.width) * bounds.width);
                 lines.push(x, 0, x, bounds.height);
             }
         }
