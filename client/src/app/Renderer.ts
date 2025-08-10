@@ -5,7 +5,6 @@ import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
 import { WebGLUtils } from './WebGLUtils';
 import { PluginManager } from './PluginManager';
 import { setPluginManager } from './plugins/manager/PluginManagerPlugin';
-import { RowManager } from './RowManager';
 import { RenderProfiler } from './RenderProfiler';
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
 import PluginManagerMetadata from './plugins/manager/plugin.json';
@@ -28,7 +27,6 @@ export class Renderer {
     private pluginManager: PluginManager;
     private signalMetadata: SignalMetadataManager;
     private signalSources: SignalSourceManagerImpl;
-    private rowManager: RowManager;
     private renderProfiler: RenderProfiler;
     private rootRenderObject: ContainerRenderObject;
     private rowContainer: RowContainerRenderObject;
@@ -65,20 +63,17 @@ export class Renderer {
         // Create row container and add it to root
         this.rowContainer = new RowContainerRenderObject(this.state, this.requestRender);
         this.rootRenderObject.addChild(this.rowContainer);
-
-        this.rowManager = new RowManager(this.rowContainer);
         
         this.pluginManager = new PluginManager(
             this.state,
             { gl, utils: proxiedWebglUtils },
             this.signalMetadata,
             this.signalSources,
-            this.rowManager,
+            this.rowContainer,
             (entry) => this.verticalSidebar.addDynamicEntry(entry),
             (entry) => this.verticalSidebar.removeDynamicEntry(entry),
             this.requestRender,
-            this.renderProfiler,
-            this.rootRenderObject
+            this.renderProfiler
         );
         
         this.resizeCanvases(); // Setup the root size

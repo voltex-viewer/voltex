@@ -2,20 +2,18 @@ import { RenderObject, type RenderContext, type RenderBounds } from '../../Rende
 import type { Signal } from '../../Signal';
 import { WebGLUtils } from '../../WebGLUtils';
 import type { SignalMetadataManager } from '../../SignalMetadataManager';
+import type { Row } from '../../Plugin';
 
 export class LabelRenderObject extends RenderObject {
     private channels: Signal[];
-    private isSelected: boolean = false;
     private signalMetadata: SignalMetadataManager;
+    private row: Row;
 
-    constructor(channels: Signal[] | undefined, signalMetadata: SignalMetadataManager, zIndex: number = 0) {
+    constructor(channels: Signal[] | undefined, signalMetadata: SignalMetadataManager, row: Row, zIndex: number = 0) {
         super(zIndex);
         this.channels = channels || [];
         this.signalMetadata = signalMetadata;
-    }
-    
-    setSelected(selected: boolean): void {
-        this.isSelected = selected;
+        this.row = row;
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {
@@ -47,7 +45,7 @@ export class LabelRenderObject extends RenderObject {
         
         // Set background color
         const colorLocation = gl.getUniformLocation(utils.line, 'u_color');
-        if (this.isSelected) {
+        if (this.row.selected) {
             gl.uniform4f(colorLocation, 0.145, 0.388, 0.918, 1.0); // #2563eb
         } else {
             gl.uniform4f(colorLocation, 0.125, 0.141, 0.188, 1.0); // #202430
@@ -60,7 +58,7 @@ export class LabelRenderObject extends RenderObject {
             const borderWidth = 4;
             const borderHeight = bounds.height / this.channels.length;
 
-            const textColor = this.isSelected ? '#ffffff' : '#bfc7d5';
+            const textColor = this.row.selected ? '#ffffff' : '#bfc7d5';
             const padding = 8;
 
             const channelHeight = bounds.height / this.channels.length;

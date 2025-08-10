@@ -2,6 +2,8 @@ import { ContainerRenderObject } from './ContainerRenderObject';
 import { RowImpl } from './RowImpl';
 import type { WaveformState } from './WaveformState';
 import { px, type MouseEvent, type WheelEvent } from './RenderObject';
+import { RowChangedCallback, RowChangedEvent } from './RowManager';
+import { Row, RowInsert, RowParameters } from './Plugin';
 
 type ResizeState = 
     | { type: 'none' }
@@ -11,9 +13,14 @@ type ResizeState =
 
 export class RowContainerRenderObject extends ContainerRenderObject {
     private rows: RowImpl[] = [];
+    private changeCallbacks: RowChangedCallback[] = [];
     
     // Unified state for resizing and dragging
     private resizeState: ResizeState = { type: 'none' };
+    
+    // Selection state
+    private selectedRows: Set<RowImpl> = new Set();
+    private lastSelectedRow: RowImpl | null = null;
     
     private labelWidth = 100; // initial label width in pixels
 
@@ -120,7 +127,11 @@ export class RowContainerRenderObject extends ContainerRenderObject {
                     this.requestRender();
                 }
             } else {
-                this.updateCursor(event);
+                // No ongoing operation, show the available operations
+                const mousePosition = this.getMousePosition(event);
+                document.body.style.cursor = 
+                    mousePosition.type === 'horizontal' ? 'ew-resize' :
+                    mousePosition.type === 'vertical' ? 'ns-resize' : '';
             }
         });
         
@@ -157,6 +168,116 @@ export class RowContainerRenderObject extends ContainerRenderObject {
         });
 
         this.addChild(resizeOverlay);
+            
+        // Set up global event listeners for keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+                // Select all rows
+                e.preventDefault();
+                for (const row of this.rows.filter(r => r.signals.length > 0)) {
+                    this.selectedRows.add(row);
+                    row.selected = true;
+                }
+                this.requestRender();
+            } else if (e.key === 'Escape') {
+                // Clear selection
+                for (const row of this.selectedRows) {
+                    row.selected = false;
+                }
+                this.selectedRows.clear();
+                this.requestRender();
+            }
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g' && !e.shiftKey) {
+                // Ctrl+G or Cmd+G: Group selected channels
+                e.preventDefault();
+                if (this.selectedRows.size >= 2) {
+                    const selectedRowsArray = Array.from(this.selectedRows);
+                    const firstIndex = Math.min(...selectedRowsArray.map(row => this.rows.indexOf(row)));
+                    
+                    // Use spliceRows to remove selected rows and add merged row
+                    this.selectedRows = new Set(this.spliceRows(
+                        selectedRowsArray, // rows to remove
+                        [{ index: firstIndex, row: { channels: selectedRowsArray.flatMap(row => row.signals) } }] // rows to add
+                    ));
+
+                    for (const row of this.selectedRows) {
+                        row.selected = true;
+                    }
+                    requestRender();
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g' && e.shiftKey) {
+                // Ctrl+Shift+G or Cmd+Shift+G: Ungroup selected channels
+                e.preventDefault();
+                if (this.selectedRows.size > 0) {
+                    const selectedRowsArray = Array.from(this.selectedRows);
+                    const firstIndex = Math.min(...selectedRowsArray.map(row => this.rows.indexOf(row)));
+
+                    // Create individual row inserts - each channel gets inserted sequentially
+                    this.selectedRows = new Set(this.spliceRows(
+                        selectedRowsArray,
+                        selectedRowsArray
+                            .flatMap(row => row.signals.map(channel => ({ channels: [channel] })))
+                            .map(value => ({ index: firstIndex, row: value }))
+                    ));
+                    for (const row of this.selectedRows) {
+                        row.selected = true;
+                    }
+                    requestRender();
+                }
+            } else if (e.key === 'Delete' && this.selectedRows.size > 0) {
+                // Delete key: Remove selected rows
+                e.preventDefault();
+                this.spliceRows(Array.from(this.selectedRows), []);
+                this.selectedRows.clear();
+                requestRender();
+            }
+        });
+    }
+
+    private handleRowSelection(row: RowImpl, event: MouseEvent): void {
+        if (event.ctrlKey || event.metaKey) {
+            // Toggle selection
+            if (row.selected) {
+                this.selectedRows.delete(row);
+                row.selected = false;
+            } else {
+                this.selectedRows.add(row);
+                row.selected = true;
+            }
+            this.lastSelectedRow = row;
+        } else if (event.shiftKey && this.lastSelectedRow) {
+            // Range selection
+            const fromIndex = this.rows.indexOf(this.lastSelectedRow);
+            const toIndex = this.rows.indexOf(row);
+            const startIndex = Math.min(fromIndex, toIndex);
+            const endIndex = Math.max(fromIndex, toIndex);
+            
+            // Select range
+            for (let i = startIndex; i <= endIndex; i++) {
+                const rowToSelect = this.rows[i];
+                this.selectedRows.add(rowToSelect);
+                rowToSelect.selected = true;
+            }
+        } else {
+            // Single selection
+            if (this.selectedRows.size == 1 && this.selectedRows.has(row)) {
+                // If this is the only selected row, deselect it
+                row.selected = false;
+                this.selectedRows.clear();
+                this.lastSelectedRow = null;
+            } else {
+                // Otherwise select it
+                for (const row of this.selectedRows) {
+                    row.selected = false;
+                }
+                this.selectedRows.clear();
+                this.selectedRows.add(row);
+                row.selected = true;
+                this.lastSelectedRow = row;
+            }
+        }
+        
+        this.requestRender();
     }
 
     private setupGlobalDragHandlers(): void {
@@ -209,31 +330,6 @@ export class RowContainerRenderObject extends ContainerRenderObject {
 
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
-    }
-
-    addRow(row: RowImpl): void {
-        this.insertRowAtIndex(row, this.rows.length);
-    }
-
-    insertRowAtIndex(row: RowImpl, index: number): void {
-        const insertIndex = Math.max(0, Math.min(index, this.rows.length));
-        this.rows.splice(insertIndex, 0, row);
-        this.addChild(row.rowRenderObject);
-        this.updateRowPositions();
-        this.updateViewportWidths();
-        this.requestRender();
-    }
-
-    removeRow(row: RowImpl): void {
-        const index = this.rows.indexOf(row);
-        if (index === -1) return;
-        
-        this.rows.splice(index, 1);
-
-        row.rowRenderObject.dispose();
-        
-        this.updateRowPositions();
-        this.requestRender();
     }
 
     getAllRows(): RowImpl[] {
@@ -290,79 +386,53 @@ export class RowContainerRenderObject extends ContainerRenderObject {
         }
         return { type: 'none' };
     }
-
-    private updateCursor(event: MouseEvent): void {
-        const mousePosition = this.getMousePosition(event);
-        document.body.style.cursor = 
-            mousePosition.type === 'horizontal' ? 'ew-resize' :
-            mousePosition.type === 'vertical' ? 'ns-resize' : '';
+    
+    onChange(callback: RowChangedCallback): void {
+        this.changeCallbacks.push(callback);
     }
 
-    groupRows(rowsToMerge: RowImpl[]): RowImpl {
-        if (rowsToMerge.length === 0) {
-            throw new Error('Cannot merge empty row list');
-        }
+    createRows(...rowParams: RowParameters[]): RowImpl[] {
+        return this.spliceRows([], rowParams.map(row => ({ index: this.rows.length, row })));
+    }
+    
+    spliceRows(rowsToRemove: RowImpl[], rowsToAdd: RowInsert[]): RowImpl[] {
+        const removedRows: RowImpl[] = [];
+        const addedRows: RowImpl[] = [];
         
-        const firstRowIndex = this.rows.findIndex(r => rowsToMerge.includes(r));
-        
-        // Collect all channels from rows to merge
-        const allChannels = Array.from(new Set(rowsToMerge.flatMap(row => row.signals)));
-        
-        // Create new merged row (don't call addRow yet)
-        const mergedRow = new RowImpl(allChannels);
-        
-        // Remove old rows from our internal array first
-        this.rows = this.rows.filter(r => !rowsToMerge.includes(r));
-        
-        // Remove old rows from the render tree and clean up their viewports
-        for (const row of rowsToMerge) {
+        // Remove specified rows
+        for (const row of rowsToRemove) {
+            if (this.lastSelectedRow === row) {
+                this.lastSelectedRow = null;
+            }
+            this.selectedRows.delete(row);
+            this.rows.splice(this.rows.indexOf(row), 1);
+            removedRows.push(row);
             row.rowRenderObject.dispose();
         }
         
-        // Add the merged row at the appropriate position
-        const adjustedIndex = Math.min(Math.max(0, firstRowIndex), this.rows.length);
-        this.rows.splice(adjustedIndex, 0, mergedRow);
-        
-        // Set up the merged row properly
-        this.addChild(mergedRow.rowRenderObject);
-
-        this.updateRowPositions();
-        this.updateViewportWidths();
-        this.requestRender();
-        
-        return mergedRow;
-    }
-
-    ungroupRows(rowsToSplit: RowImpl[]): RowImpl[] {
-        const newRows: RowImpl[] = [];
-        
-        for (const row of rowsToSplit) {
-            const index = this.rows.indexOf(row);
-            if (index !== -1) {
-                // Create individual rows
-                const individualRows = row.signals.map(channel => new RowImpl([channel]));
-                
-                // Remove the old row from our internal array
-                this.rows.splice(index, 1);
-                
-                row.rowRenderObject.dispose();
-                
-                // Insert individual rows at the same position
-                this.rows.splice(index, 0, ...individualRows);
-                
-                // Set up each new row
-                for (const newRow of individualRows) {
-                    this.addChild(newRow.rowRenderObject);
-                }
-                
-                newRows.push(...individualRows);
+        // Add new rows at specified indices (sort by index descending to avoid index shifting)
+        for (const insert of [...rowsToAdd].reverse().sort((a, b) => b.index - a.index)) {
+            const row = new RowImpl(insert.row.channels, insert.row.height);
+            this.rows.splice(Math.max(0, Math.min(insert.index, this.rows.length)), 0, row);
+            this.addChild(row.rowRenderObject);
+            if (row.signals.length > 0) {
+                row.labelViewport.onMouseDown((event: MouseEvent) => {
+                    this.handleRowSelection(row, event);
+                    event.preventDefault();
+                    event.stopPropagation();
+                });
             }
+            addedRows.push(row);
         }
         
-        this.updateRowPositions();
         this.updateViewportWidths();
+        this.updateRowPositions();
         this.requestRender();
         
-        return newRows;
+        // Notify of the change
+        for (const callback of this.changeCallbacks) {
+            callback({ added: addedRows, removed: removedRows });
+        }
+        return addedRows;
     }
 }

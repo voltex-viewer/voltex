@@ -2,10 +2,12 @@ import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntry, Pl
 import type { RenderObject, WebGlContext } from './RenderObject';
 import type { WaveformState } from './WaveformState';
 import type { SignalMetadataManager } from './SignalMetadataManager';
-import { RowManager, RowChangedEvent } from './RowManager';
+import { RowChangedEvent } from './RowManager';
 import { PluginConfigManager } from './PluginConfigManager';
 import type { RenderProfiler } from './RenderProfiler';
 import * as t from 'io-ts';
+import { RowContainerRenderObject } from './RowContainerRenderObject';
+import { RowImpl } from './RowImpl';
 
 interface ActivePlugin {
     pluginFunction: PluginFunction;
@@ -26,8 +28,8 @@ interface PluginData {
     sidebarEntryInstances: import('./VerticalSidebar').SidebarEntry[];
     renderObjects: RenderObject[];
     signalSources: SignalSource[];
-    rowProxyCache: Map<Row, Row>; // Cache proxy rows to maintain identity
-    proxyToActualRowMap: Map<Row, Row>; // Map proxy rows back to actual rows
+    rowProxyCache: Map<RowImpl, Row>; // Cache proxy rows to maintain identity
+    proxyToActualRowMap: Map<Row, RowImpl>; // Map proxy rows back to actual rows
 }
 
 export class PluginManager {
@@ -42,12 +44,11 @@ export class PluginManager {
         private webgl: WebGlContext,
         private signalMetadata: SignalMetadataManager,
         private signalSources: SignalSourceManager,
-        private rowManager: RowManager,
+        private rowManager: RowContainerRenderObject,
         private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
         private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
         private requestRender: () => void,
-        private renderProfiler: RenderProfiler,
-        private rootRenderObject: RenderObject
+        private renderProfiler: RenderProfiler
     ) {
         rowManager.onChange((event: RowChangedEvent) => {
             this.onRowsChanged(event);
@@ -112,7 +113,7 @@ export class PluginManager {
                 const data = this.pluginData.get(plugin)!;
                 // Map proxy rows back to actual rows for removal
                 const actualRowsToRemove = rowsToRemove.map(proxyRow => 
-                    data.proxyToActualRowMap.get(proxyRow) || proxyRow
+                    data.proxyToActualRowMap.get(proxyRow)
                 );
                 const addedRows = this.rowManager.spliceRows(actualRowsToRemove, rowsToAdd);
                 return addedRows.map(row => this.createProxyRow(plugin, row));
@@ -232,10 +233,6 @@ export class PluginManager {
         return [...this.availablePlugins];
     }
 
-    getRowManager(): RowManager {
-        return this.rowManager;
-    }
-
     private addSidebarEntry(plugin: ActivePlugin, entry: SidebarEntry): void {
         const data = this.pluginData.get(plugin);
         if (data) {
@@ -314,7 +311,7 @@ export class PluginManager {
         return needsMoreRender;
     }
 
-    private createProxyRow(plugin: ActivePlugin, row: Row): Row {
+    private createProxyRow(plugin: ActivePlugin, row: RowImpl): Row {
         const data = this.pluginData.get(plugin)!;
         
         // Return cached proxy if it exists
@@ -346,6 +343,9 @@ export class PluginManager {
             setHeight: (height: number) => {
                 row.setHeight(height);
                 this.requestRender();
+            },
+            get selected() {
+                return row.selected;
             },
         };
         

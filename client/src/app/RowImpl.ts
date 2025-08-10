@@ -34,6 +34,7 @@ export class RowImpl implements Row {
     public yScale: number = 1.0;
     public yOffset: number = 0.0;
     private _height: number;
+    public selected: boolean = false;
     public readonly labelViewport: ViewportRenderObject;
     public readonly mainViewport: ViewportRenderObject;
     

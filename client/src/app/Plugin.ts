@@ -31,6 +31,7 @@ export interface Row {
     readonly yScale: number;
     readonly yOffset: number;
     readonly addLabelRenderObject: (renderObject: RenderObject) => void;
+    readonly selected: boolean;
     setHeight(height: number): void;
 }
 
