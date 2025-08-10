@@ -110,6 +110,7 @@ export class TimeAxisRenderObject extends RenderObject {
                 gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_bounds'), bounds.width, bounds.height);
                 gl.uniform4f(gl.getUniformLocation(utils.grid, 'u_color'), 0.267, 0.267, 0.267, 1.0);
                 gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_dashed'), 1);
+                gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_horizontal'), 0);
                 gl.uniform1f(gl.getUniformLocation(utils.grid, 'u_dashSize'), 3.0);
                 
                 gl.drawArrays(gl.LINES, 0, lineVertices.length / 2);

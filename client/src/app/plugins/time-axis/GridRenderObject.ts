@@ -56,6 +56,7 @@ export class GridRenderObject extends RenderObject {
             gl.uniform2f(resolutionLocation, bounds.width, bounds.height);
             gl.uniform4f(colorLocation, 0.267, 0.267, 0.267, 0.8);
             gl.uniform1i(dashedLocation, 1);
+            gl.uniform1i(gl.getUniformLocation(program, 'u_horizontal'), 0);
             gl.uniform1f(dashSizeLocation, 4.0);
             
             gl.drawArrays(gl.LINES, 0, lines.length / 2);

@@ -27,6 +27,7 @@ export class RowContainerRenderObject extends ContainerRenderObject {
     private readonly maxLabelWidth = 400;
     private readonly minRowHeight = 20;
     private readonly maxRowHeight = 200;
+    private readonly rowVerticalBorder = 1;
     private readonly resizeZoneWidth = 5;
     private readonly resizeZoneHeight = 5;
     private readonly minPxPerSecond = 1e-9;
@@ -244,7 +245,11 @@ export class RowContainerRenderObject extends ContainerRenderObject {
         for (const row of this.rows) {
             row.rowRenderObject.y = px(currentY);
             row.rowRenderObject.height = px(row.height);
-            
+            row.labelViewport.y = px(this.rowVerticalBorder);
+            row.labelViewport.height = px(row.height - this.rowVerticalBorder);
+            row.mainViewport.y = px(this.rowVerticalBorder);
+            row.mainViewport.height = px(row.height - this.rowVerticalBorder);
+
             currentY += row.height;
         }
     }

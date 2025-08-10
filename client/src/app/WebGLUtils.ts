@@ -28,12 +28,13 @@ export class WebGLUtils {
             precision mediump float;
             uniform vec4 u_color;
             uniform bool u_dashed;
+            uniform bool u_horizontal;
             uniform float u_dashSize;
             varying vec2 v_position;
             
             void main() {
                 if (u_dashed) {
-                    float dashCoord = v_position.y;
+                    float dashCoord = u_horizontal ? v_position.x : v_position.y;
                     float dashPos = mod(floor(dashCoord / u_dashSize), 2.0);
                     if (dashPos > 0.5) {
                         discard;

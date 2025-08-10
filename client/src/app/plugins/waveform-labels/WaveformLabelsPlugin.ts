@@ -1,5 +1,4 @@
 import type { PluginContext, Row } from '../../Plugin';
-import { HorizontalSeparatorRenderObject } from './HorizontalSeparatorRenderObject';
 import { LabelRenderObject } from './LabelRenderObject';
 
 export default (context: PluginContext): void => {
@@ -79,7 +78,6 @@ export default (context: PluginContext): void => {
                 event.stopPropagation();
             });
             row.addLabelRenderObject(labelRenderObject);
-            row.addRenderObject(new HorizontalSeparatorRenderObject());
         }
     });
 

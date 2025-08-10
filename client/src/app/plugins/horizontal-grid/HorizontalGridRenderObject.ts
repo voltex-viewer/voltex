@@ -1,37 +1,56 @@
 import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
-import type { WebGLUtils } from '../../WebGLUtils';
+import { GridLinePosition } from './HorizontalGridPlugin';
 
 export class HorizontalGridRenderObject extends RenderObject {
-    constructor() {
-        super(-50);
+    constructor(
+        private calculateGridPositions: (bounds: { height: number }) => GridLinePosition[]
+    ) {
+        super(-40); // Render behind waveforms but in front of horizontal grid
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {
-        const {render} = context;
+        const { render } = context;
         const { gl, utils } = render;
-
-        const program = utils.grid;
-
-        gl.useProgram(program);
         
-        const positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        // Get grid line positions from shared function
+        const gridPositions = this.calculateGridPositions(bounds);
         
-        const centerY = bounds.height / 2;
+        if (gridPositions.length === 0) {
+            return false;
+        }
         
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, centerY, bounds.width, centerY]), gl.STATIC_DRAW);
+        const lineVertices: number[] = [];
         
-        const positionLocation = gl.getAttribLocation(program, 'a_position');
-        gl.enableVertexAttribArray(positionLocation);
-        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+        for (const position of gridPositions) {
+            // Add horizontal grid line vertices
+            lineVertices.push(
+                0, position.y,
+                bounds.width, position.y
+            );
+        }
         
-        gl.uniform2f(gl.getUniformLocation(program, 'u_bounds'), bounds.width, bounds.height);
-        gl.uniform4f(gl.getUniformLocation(program, 'u_color'), 0.267, 0.267, 0.267, 1.0);
-        gl.uniform1i(gl.getUniformLocation(program, 'u_dashed'), 0);
-        
-        gl.drawArrays(gl.LINES, 0, 2);
-        
-        gl.deleteBuffer(positionBuffer);
+        // Draw all grid lines in a single draw call
+        if (lineVertices.length > 0) {
+            gl.useProgram(utils.grid);
+            
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lineVertices), gl.STATIC_DRAW);
+            
+            const positionLocation = gl.getAttribLocation(utils.grid, 'a_position');
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+            
+            gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_bounds'), bounds.width, bounds.height);
+            gl.uniform4f(gl.getUniformLocation(utils.grid, 'u_color'), 0.2, 0.2, 0.2, 0.8);
+            gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_dashed'), 1);
+            gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_horizontal'), 1);
+            gl.uniform1f(gl.getUniformLocation(utils.grid, 'u_dashSize'), 4.0);
+            
+            gl.drawArrays(gl.LINES, 0, lineVertices.length / 2);
+            
+            gl.deleteBuffer(positionBuffer);
+        }
 
         return false;
     }

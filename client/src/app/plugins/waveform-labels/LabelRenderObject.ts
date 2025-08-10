@@ -55,18 +55,6 @@ export class LabelRenderObject extends RenderObject {
         
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         
-        // Draw border
-        const borderVertices = new Float32Array([
-            0, 0, labelWidth, 0,
-            labelWidth, 0, labelWidth, bounds.height,
-            labelWidth, bounds.height, 0, bounds.height,
-            0, bounds.height, 0, 0
-        ]);
-        
-        gl.bufferData(gl.ARRAY_BUFFER, borderVertices, gl.STATIC_DRAW);
-        gl.uniform4f(colorLocation, 0.2, 0.2, 0.2, 1.0); // #333
-        gl.drawArrays(gl.LINES, 0, 8);
-        
         // Add channel color borders if we have individual channels
         if (this.channels.length > 0) {
             const borderWidth = 4;

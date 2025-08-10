@@ -8,8 +8,8 @@ export default (context: PluginContext): void => {
         discrete: true,
         signal: () => new FunctionSignal(
             squareWaveSource,
-            (t: number) => Math.sin(2 * Math.PI * freq * t) >= 0 ? 1 : -1,
-            -1,
+            (t: number) => Math.sin(2 * Math.PI * freq * t) >= 0 ? 1 : 0,
+            0,
             1
         )
     };
@@ -19,9 +19,9 @@ export default (context: PluginContext): void => {
         discrete: false,
         signal: () => new FunctionSignal(
             triangleWaveSource,
-            (t: number) => 10 * (2 * Math.abs(2 * (t * freq - Math.floor(t * freq + 0.5))) - 1),
-            -10,
-            10
+            (t: number) => 1000 * (2 * Math.abs(2 * (t * freq - Math.floor(t * freq + 0.5))) - 1),
+            -1000,
+            1000
         )
     };
     

@@ -1,14 +1,36 @@
 import { Row } from './Plugin';
-import type { RenderObject } from './RenderObject';
+import { RenderObject, type RenderContext, type RenderBounds } from './RenderObject';
 import { px } from './RenderObject';
 import type { Signal } from './Signal';
-import { ContainerRenderObject } from './ContainerRenderObject';
-import type { RowContainerRenderObject } from './RowContainerRenderObject';
 import { ViewportRenderObject } from './ViewportRenderObject';
+
+class RowRenderObject extends RenderObject {
+    render(context: RenderContext, bounds: RenderBounds): boolean {
+        const { gl } = context.render;
+        const { dpr } = context;
+        
+        // Convert UI coordinates to WebGL coordinates
+        // WebGL has (0,0) at bottom-left, UI has (0,0) at top-left
+        const canvasHeight = context.canvas.height;
+        const scissorX = Math.round(bounds.x * dpr);
+        const scissorY = Math.round(canvasHeight - (bounds.y + bounds.height) * dpr);
+        const scissorWidth = Math.round(bounds.width * dpr);
+        const scissorHeight = Math.round(bounds.height * dpr);
+        
+        // Clear background
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(scissorX, scissorY, scissorWidth, scissorHeight);
+        gl.clearColor(0.2, 0.2, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.disable(gl.SCISSOR_TEST);
+        
+        return false;
+    }
+}
 
 export class RowImpl implements Row {
     public readonly signals: Signal[] = [];
-    public readonly rowRenderObject: ContainerRenderObject;
+    public readonly rowRenderObject: RowRenderObject;
     public yScale: number = 1.0;
     public yOffset: number = 0.0;
     private _height: number;
@@ -20,9 +42,13 @@ export class RowImpl implements Row {
         height: number = 50
     ) {
         this._height = height;
-        this.rowRenderObject = new ContainerRenderObject();
+        this.rowRenderObject = new RowRenderObject();
         this.labelViewport = new ViewportRenderObject(-1);
         this.mainViewport = new ViewportRenderObject(-1);
+        
+        // Set black background for main viewport
+        this.mainViewport.backgroundColor = [0.0, 0.0, 0.0, 1.0];
+        
         this.rowRenderObject.addChild(this.labelViewport);
         this.rowRenderObject.addChild(this.mainViewport);
 
@@ -58,6 +84,7 @@ export class RowImpl implements Row {
         
         let minValue = Infinity;
         let maxValue = -Infinity;
+        const padding = 0.7;
         
         for (const signal of this.signals) {
             minValue = Math.min(minValue, signal.minValue);
@@ -68,7 +95,7 @@ export class RowImpl implements Row {
             this.yScale = 1.0;
             this.yOffset = 0.0;
         } else {
-            this.yScale = 2.0 / (maxValue - minValue);
+            this.yScale = 2.0 / (maxValue - minValue) * padding;
             this.yOffset = -(maxValue + minValue) / 2.0;
         }
     }
