@@ -254,7 +254,7 @@ export class RowContainerRenderObject extends ContainerRenderObject {
         }
     }
 
-    private updateViewportWidths(): void {
+    updateViewportWidths(): void {
         const containerBounds = this.getAbsoluteBounds();
         const labelWidth = this.labelWidth;
         const mainWidth = Math.max(0, containerBounds.width - labelWidth);

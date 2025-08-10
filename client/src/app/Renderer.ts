@@ -45,7 +45,6 @@ export class Renderer {
         
         // Create root render object
         this.rootRenderObject = new ContainerRenderObject();
-        this.resizeCanvases(); // Setup the root size
         
         // Initialize WebGL context
         const gl = this.canvas.getContext('webgl');
@@ -82,6 +81,8 @@ export class Renderer {
             this.rootRenderObject
         );
         
+        this.resizeCanvases(); // Setup the root size
+
         // Register and enable default plugins (only Plugin Manager)
         this.pluginManager.registerPluginType(PluginManagerPlugin);
         this.pluginManager.enablePlugin(PluginManagerPlugin);
@@ -232,7 +233,9 @@ export class Renderer {
 
         this.rootRenderObject.width = px(containerWidth);
         this.rootRenderObject.height = px(containerHeight);
-        
+
+        this.rowContainer.updateViewportWidths();
+
         this.requestRender();
     }
     
