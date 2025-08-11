@@ -72,7 +72,7 @@ export interface Size {
 }
 
 export abstract class RenderObject {
-    protected zIndex: number = 0;
+    public zIndex: number = 0;
     protected children: RenderObject[] = [];
     protected parent: RenderObject | null = null;
     protected mouseEventHandlers: MouseEventHandlers = {};
@@ -94,7 +94,6 @@ export abstract class RenderObject {
         }
         child.parent = this;
         this.children.push(child);
-        this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
 
     removeChild(child: RenderObject): void {
@@ -106,7 +105,7 @@ export abstract class RenderObject {
     }
 
     getChildren(): readonly RenderObject[] {
-        return this.children;
+        return this.children.toSorted((a, b) => a.zIndex - b.zIndex);
     }
 
     getParent(): RenderObject | null {
