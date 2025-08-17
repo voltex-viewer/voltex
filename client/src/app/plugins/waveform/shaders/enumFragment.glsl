@@ -1,6 +1,8 @@
 precision mediump float;
 uniform vec4 u_color;
 uniform float u_maxValue;
+uniform float u_nullValue;
+uniform int u_hasNullValue;
 
 varying float v_value;
 
@@ -11,8 +13,8 @@ vec3 hsv2rgb(vec3 c) {
 }
 
 void main() {
-    if (v_value < 0.0) {
-        // Invalid value, don't render
+    // Discard fragments with null values if null handling is enabled
+    if (u_hasNullValue == 1 && abs(v_value - u_nullValue) < 0.001) {
         discard;
         return;
     }

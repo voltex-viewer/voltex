@@ -1,19 +1,13 @@
 import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
 import { WebGLUtils } from '../../WebGLUtils';
 import type { ChannelBufferData } from './WaveformRendererPlugin';
-import { RenderMode, WaveformConfig } from './WaveformConfig';
+import { WaveformConfig } from './WaveformConfig';
+import { RenderMode } from '../../Plugin';
 import { WaveformShaders } from './WaveformShaders';
 import type { Signal } from '../../Signal';
 import { Row } from 'src/app/Plugin';
 
 export class WaveformRenderObject extends RenderObject {
-    private getSignalRenderMode(signal: Signal, defaultMode: RenderMode): RenderMode {
-        if (signal.source.discrete && 'valueTable' in signal) {
-            return RenderMode.Enum;
-        }
-        return defaultMode;
-    }
-
     constructor(
         private config: WaveformConfig,
         private bufferData: ChannelBufferData,
@@ -32,7 +26,6 @@ export class WaveformRenderObject extends RenderObject {
     render(context: RenderContext, bounds: RenderBounds): boolean {
         const {render, state} = context;
         const { gl } = render;
-        const renderMode = this.getSignalRenderMode(this.signal, this.config.renderMode);
         
         const color = this.color;
             
@@ -74,19 +67,35 @@ export class WaveformRenderObject extends RenderObject {
 
             const [r, g, b, a] = WebGLUtils.hexToRgba(color);
             gl.uniform4f(gl.getUniformLocation(program, 'u_color'), r, g, b, a);
+
+            // Find the numeric value that corresponds to "null" in the valueTable, if any
+            let nullValue: number | null = null;
+            for (const [numericValue, stringValue] of this.signal.valueTable.entries()) {
+                if (stringValue === "null") {
+                    nullValue = numericValue;
+                    break;
+                }
+            }
+            gl.uniform1f(gl.getUniformLocation(program, 'u_nullValue'), nullValue !== null ? nullValue : (this.signal.maxValue + 1.0));
+            gl.uniform1i(gl.getUniformLocation(program, 'u_hasNullValue'), nullValue !== null ? 1 : 0);
         };
 
         let linesBindUniforms = bindUniforms(this.config.lineWidth);
         let dotsBindUniforms = bindUniforms(this.config.dotSize);
         
+        const renderMode = this.row.renderMode;
         if (renderMode === RenderMode.Lines) {
             this.renderInstancedLines(gl, this.waveformPrograms.instancedLine, linesBindUniforms);
-            this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);
+            if (!this.signal.source.discrete) {
+                this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);
+            }
         } else if (renderMode === RenderMode.Dots) {
             this.renderSignal(gl, this.waveformPrograms.dot, dotsBindUniforms);
         } else if (renderMode === RenderMode.LinesDots) {
             this.renderInstancedLines(gl, this.waveformPrograms.instancedLine, linesBindUniforms);
-            this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);
+            if (!this.signal.source.discrete) {
+                this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);
+            }
             this.renderSignal(gl, this.waveformPrograms.dot, dotsBindUniforms);
         } else if (renderMode === RenderMode.Enum) {
             this.renderEnumSignal(gl, this.waveformPrograms.enumLine, enumLinesBindUniforms, context, bounds);
@@ -101,33 +110,15 @@ export class WaveformRenderObject extends RenderObject {
         context: RenderContext,
         bounds: RenderBounds
     ): void {
-        // Only render for discrete signals with valueTable
-        if (!this.signal.source.discrete || !('valueTable' in this.signal)) {
-            return;
-        }
-
-        const valueTable = (this.signal as any).valueTable as Map<number, string>;
-        if (!valueTable) {
-            return;
-        }
-
         // Use custom instanced line rendering for enum signals to handle pairs correctly
-        this.renderEnumInstancedLines(gl, program, bindUniforms);
-
-        // Check if we should render text based on zoom level
-        const { state } = context;
-        const pixelsPerSecond = state.pxPerSecond;
-        const minPixelsForText = 50; // Minimum pixels between points to show text (reduced threshold)
-
-        if (pixelsPerSecond > minPixelsForText) {
-            this.renderEnumText(context, bounds, valueTable);
-        }
+        this.renderInstancedLines(gl, program, bindUniforms);
+        this.renderEnumText(context, bounds, this.signal.valueTable);
     }
 
     private renderEnumText(
         context: RenderContext,
         bounds: RenderBounds,
-        valueTable: Map<number, string>
+        valueTable: ReadonlyMap<number, string>
     ): void {
         const { render, state } = context;
         const { utils } = render;
@@ -144,21 +135,20 @@ export class WaveformRenderObject extends RenderObject {
         const baselineMetrics = utils.measureText('Ag', font); // Use consistent reference text for baseline
         const y = (bounds.height - baselineMetrics.renderHeight) / 2;
 
-        // Find data points and determine which segments are visible
-        // We render text for segments that are at least partially visible
-        for (let i = 0; i < this.bufferData.updateIndex; i += 2) {
+        // Binary search to find the indices of visible segments
+        const startIndex = this.binarySearchTimeIndex(startTime, 0, this.bufferData.updateIndex - 1, true);
+        const endIndex = this.binarySearchTimeIndex(endTime, startIndex, this.bufferData.updateIndex - 1, false);
+
+        // Render text for segments in the visible range
+        for (let i = startIndex; i <= endIndex && i < this.bufferData.updateIndex - 1; i++) {
             const [segmentStartTime, value] = this.signal.data(i);
             
             // Get the end time of this segment (the second point of this pair)
-            if (i + 1 >= this.bufferData.updateIndex) continue;
             const [segmentEndTime] = this.signal.data(i + 1);
             
-            // Check if segment overlaps with visible time range
-            if (segmentEndTime < startTime || segmentStartTime > endTime) {
-                continue; // Segment is completely outside visible range
-            }
-            
             let enumText = valueTable.get(value) || value.toString();
+
+            if (enumText == "null") continue;
             
             // Calculate segment boundaries in pixel space
             const segmentStartX = segmentStartTime * state.pxPerSecond - state.offset;
@@ -215,11 +205,6 @@ export class WaveformRenderObject extends RenderObject {
                     displayText = enumText.substring(0, bestLength) + '...';
                 }
                 
-                // Final check - ensure we have meaningful text
-                if (displayText.length < 2) {
-                    continue;
-                }
-                
                 // Render text at center of viewport height using consistent baseline positioning
                 // Render text with white fill and black stroke for better visibility
                 utils.drawText(
@@ -237,52 +222,59 @@ export class WaveformRenderObject extends RenderObject {
             }
         }
     }
-    
-    private renderEnumInstancedLines(
-        gl: WebGLRenderingContext,
-        program: WebGLProgram,
-        bindUniforms: (program: WebGLProgram) => void,
-    ): void {
-        gl.useProgram(program);
-        bindUniforms(program);
-        
-        // Bind instance geometry (the quad geometry for each line segment)
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.sharedInstanceGeometryBuffer);
-        const positionLocation = gl.getAttribLocation(program, 'position');
-        gl.enableVertexAttribArray(positionLocation);
-        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
-        
-        // Bind points buffer for instanced data - reuse the main buffer
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.buffer);
-        
-        // For enum signals, we have pairs of points (start, end) with same value
-        // So we need to render every pair as a line segment, stride by 2 points
-        const pointALocation = gl.getAttribLocation(program, 'pointA');
-        gl.enableVertexAttribArray(pointALocation);
-        gl.vertexAttribPointer(pointALocation, 2, gl.FLOAT, false, 4 * 4, 0); // stride: 4 floats (2 points), offset: 0
-        this.instancingExt.vertexAttribDivisorANGLE(pointALocation, 1);
-        
-        const pointBLocation = gl.getAttribLocation(program, 'pointB');
-        gl.enableVertexAttribArray(pointBLocation);
-        gl.vertexAttribPointer(pointBLocation, 2, gl.FLOAT, false, 4 * 4, 2 * 4); // stride: 4 floats, offset: 1 point (2 floats)
-        this.instancingExt.vertexAttribDivisorANGLE(pointBLocation, 1);
-        
-        // Draw instanced - render every pair of points
-        const instanceCount = Math.floor(this.bufferData.updateIndex / 2);
-        if (instanceCount > 0) {
-            this.instancingExt.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, instanceCount);
+
+    /**
+     * Binary search to find the appropriate index for a given time.
+     * @param targetTime The time to search for
+     * @param left The left boundary of the search range
+     * @param right The right boundary of the search range
+     * @param findStart If true, finds the leftmost index where time >= targetTime (for start).
+     *                  If false, finds the rightmost index where time <= targetTime (for end).
+     * @returns The appropriate index
+     */
+    private binarySearchTimeIndex(targetTime: number, left: number, right: number, findStart: boolean): number {
+        if (left > right) {
+            return findStart ? left : right;
         }
-        
-        // Clean up divisors
-        this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointALocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointBLocation, 0);
-        
-        // Disable vertex attribute arrays
-        gl.disableVertexAttribArray(positionLocation);
-        gl.disableVertexAttribArray(pointALocation);
-        gl.disableVertexAttribArray(pointBLocation);
+
+        let result = findStart ? right + 1 : left - 1;
+
+        while (left <= right) {
+            const mid = Math.floor((left + right) / 2);
+            const [midTime] = this.signal.data(mid);
+
+            if (findStart) {
+                // For start index: find leftmost position where segment might be visible
+                // A segment at index i is visible if signal.data(i+1)[0] >= startTime
+                if (mid + 1 < this.bufferData.updateIndex) {
+                    const [nextTime] = this.signal.data(mid + 1);
+                    if (nextTime >= targetTime) {
+                        result = mid;
+                        right = mid - 1;
+                    } else {
+                        left = mid + 1;
+                    }
+                } else {
+                    // Last segment, check if it starts before target time
+                    if (midTime <= targetTime) {
+                        result = mid;
+                    }
+                    right = mid - 1;
+                }
+            } else {
+                // For end index: find rightmost position where segment might be visible
+                // A segment at index i is visible if signal.data(i)[0] <= endTime
+                if (midTime <= targetTime) {
+                    result = mid;
+                    left = mid + 1;
+                } else {
+                    right = mid - 1;
+                }
+            }
+        }
+
+        // Clamp result to valid range
+        return Math.max(0, Math.min(this.bufferData.updateIndex - 1, result));
     }
     
     private renderSignal(
@@ -354,11 +346,6 @@ export class WaveformRenderObject extends RenderObject {
         program: WebGLProgram,
         bindUniforms: (program: WebGLProgram) => void,
     ): void {
-        // Skip bevel joins for discrete signals as they use horizontal lines
-        if (this.signal.source.discrete) {
-            return;
-        }
-        
         gl.useProgram(program);
         bindUniforms(program);
         

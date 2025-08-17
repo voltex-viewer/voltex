@@ -1,7 +1,9 @@
-import type { PluginContext } from '../../Plugin';
+import type { PluginContext, Row } from '../../Plugin';
 import type { Signal } from '../../Signal';
-import { RenderMode, WaveformConfigSchema } from './WaveformConfig';
+import { WaveformConfigSchema } from './WaveformConfig';
 import { WaveformRenderObject } from './WaveformRenderObject';
+import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';
+import { WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
 import { WaveformShaders } from './WaveformShaders';
 
 export interface ChannelBufferData {
@@ -23,11 +25,17 @@ export default (context: PluginContext): void => {
     const config = context.loadConfig(
         WaveformConfigSchema,
         {
-            renderMode: RenderMode.Lines,
             dotSize: 6.0,
             lineWidth: 1.5,
             targetFps: 120,
+            formatTooltip: "name[name.length - 1] + \": \" + (valueTable.get(value) ?? value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2)))))",
+            hoverEnabled: true,
         });
+
+
+    // Create a single global tooltip render object
+    const tooltipRenderObject = new WaveformTooltipRenderObject(config);
+    context.addRootRenderObject(tooltipRenderObject);
 
     const channelBuffers = new Map<Signal, ChannelBufferData>();
     
@@ -142,6 +150,9 @@ export default (context: PluginContext): void => {
     
     context.onRowsChanged((event) => {
         for (const row of event.added) {
+            const rowSignals: Signal[] = [];
+            const rowSignalBuffers = new Map<Signal, ChannelBufferData>();
+            
             for (const channel of row.signals) {
                 if (!channelBuffers.has(channel)) {
                     const buffer = context.webgl.gl.createBuffer();
@@ -156,9 +167,13 @@ export default (context: PluginContext): void => {
                     });
                 }
                 
+                const bufferData = channelBuffers.get(channel)!;
+                rowSignals.push(channel);
+                rowSignalBuffers.set(channel, bufferData);
+                
                 row.addRenderObject(new WaveformRenderObject(
                     config,
-                    channelBuffers.get(channel),
+                    bufferData,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     instancingExt,
@@ -166,6 +181,23 @@ export default (context: PluginContext): void => {
                     waveformPrograms,
                     channel,
                     row,
+                ));
+            }
+
+            // Add a single hover overlay for the entire row
+            if (rowSignals.length > 0) {
+                row.addRenderObject(new WaveformRowHoverOverlayRenderObject(
+                    context,
+                    config,
+                    row,
+                    tooltipRenderObject,
+                    rowSignals,
+                    rowSignalBuffers,
+                    sharedInstanceGeometryBuffer,
+                    sharedBevelJoinGeometryBuffer,
+                    instancingExt,
+                    waveformPrograms,
+                    99
                 ));
             }
         }

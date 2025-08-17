@@ -4,6 +4,13 @@ import type { SignalMetadataManager } from './SignalMetadataManager';
 import { Signal } from './Signal';
 import * as t from 'io-ts';
 
+export enum RenderMode {
+    Lines = 'lines',
+    LinesDots = 'lines-dots',
+    Dots = 'dots',
+    Enum = 'enum',
+}
+
 export interface MeasureInfo {
     name: string;
     startTime: number;
@@ -32,6 +39,7 @@ export interface Row {
     readonly yOffset: number;
     readonly addLabelRenderObject: (renderObject: RenderObject) => void;
     readonly selected: boolean;
+    readonly renderMode: RenderMode;
     setHeight(height: number): void;
 }
 
@@ -89,6 +97,8 @@ export interface PluginContext {
     onBeforeRender(callback: () => boolean): void;
     onAfterRender(callback: () => boolean): void;
     addSidebarEntry(entry: SidebarEntry): void;
+    addRootRenderObject(renderObject: RenderObject): void;
+    removeRootRenderObject(renderObject: RenderObject): void;
     requestRender(): void;
     createRows(...rows: RowParameters[]): Row[];
     spliceRows(rowsToRemove: Row[], rowsToAdd: RowInsert[]): Row[];

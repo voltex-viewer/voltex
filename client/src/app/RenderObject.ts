@@ -21,8 +21,10 @@ export interface RenderBounds {
 }
 
 export interface MouseEvent {
-    x: number;
-    y: number;
+    clientX: number;
+    clientY: number;
+    offsetX: number;
+    offsetY: number;
     button: number;
     ctrlKey: boolean;
     metaKey: boolean;
@@ -87,6 +89,9 @@ export abstract class RenderObject {
     }
     
     abstract render(context: RenderContext, bounds: RenderBounds): boolean;
+
+    afterRender(context: RenderContext): void {
+    }
 
     addChild(child: RenderObject): void {
         if (child.parent) {

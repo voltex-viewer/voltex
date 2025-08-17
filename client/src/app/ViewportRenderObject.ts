@@ -3,6 +3,8 @@ import { RenderObject, type RenderContext, type RenderBounds } from './RenderObj
 export class ViewportRenderObject extends RenderObject {
     backgroundColor: [number, number, number, number] | null = null;
 
+    viewport: Int32Array;
+
     constructor(zIndex: number = 0) {
         super(zIndex);
     }
@@ -10,6 +12,8 @@ export class ViewportRenderObject extends RenderObject {
     render(context: RenderContext, bounds: RenderBounds): boolean {
         const dpr = context.dpr;
         const { gl } = context.render;
+
+        this.viewport = gl.getParameter(gl.VIEWPORT);
 
         gl.viewport(
             bounds.x * dpr,
@@ -37,5 +41,17 @@ export class ViewportRenderObject extends RenderObject {
         }
 
         return false;
+    }
+
+    afterRender(context: RenderContext): void {
+        const { render: { gl } } = context;
+        if (this.viewport && this.viewport.length === 4) {
+            gl.viewport(
+                this.viewport[0],
+                this.viewport[1],
+                this.viewport[2],
+                this.viewport[3]
+            );
+        }
     }
 }

@@ -7,6 +7,7 @@ import { PluginConfigManager } from './PluginConfigManager';
 import type { RenderProfiler } from './RenderProfiler';
 import * as t from 'io-ts';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
+import { ContainerRenderObject } from './ContainerRenderObject';
 import { RowImpl } from './RowImpl';
 
 interface ActivePlugin {
@@ -27,6 +28,7 @@ interface PluginData {
     sidebarEntries: SidebarEntry[];
     sidebarEntryInstances: import('./VerticalSidebar').SidebarEntry[];
     renderObjects: RenderObject[];
+    rootRenderObjects: RenderObject[];
     signalSources: SignalSource[];
     rowProxyCache: Map<RowImpl, Row>; // Cache proxy rows to maintain identity
     proxyToActualRowMap: Map<Row, RowImpl>; // Map proxy rows back to actual rows
@@ -45,6 +47,7 @@ export class PluginManager {
         private signalMetadata: SignalMetadataManager,
         private signalSources: SignalSourceManager,
         private rowManager: RowContainerRenderObject,
+        private rootRenderObject: ContainerRenderObject,
         private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
         private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
         private requestRender: () => void,
@@ -99,6 +102,12 @@ export class PluginManager {
             },
             addSidebarEntry: (entry: SidebarEntry) => {
                 this.addSidebarEntry(plugin, entry);
+            },
+            addRootRenderObject: (renderObject: RenderObject) => {
+                this.addRootRenderObject(plugin, renderObject);
+            },
+            removeRootRenderObject: (renderObject: RenderObject) => {
+                this.removeRootRenderObject(plugin, renderObject);
             },
             requestRender: () => {
                 if (this.requestRender) {
@@ -158,6 +167,7 @@ export class PluginManager {
             sidebarEntries: [],
             sidebarEntryInstances: [],
             renderObjects: [],
+            rootRenderObjects: [],
             signalSources: [],
             rowProxyCache: new Map(),
             proxyToActualRowMap: new Map(),
@@ -195,8 +205,18 @@ export class PluginManager {
             renderObject.getParent().removeChild(renderObject);
         }
         
+        // Remove root render objects
+        for (const renderObject of data.rootRenderObjects) {
+            this.rootRenderObject.removeChild(renderObject);
+        }
+        
         // Dispose render objects
         for (const renderObject of data.renderObjects) {
+            renderObject.dispose();
+        }
+        
+        // Dispose root render objects
+        for (const renderObject of data.rootRenderObjects) {
             renderObject.dispose();
         }
         
@@ -243,6 +263,25 @@ export class PluginManager {
                 if (instance) {
                     data.sidebarEntryInstances.push(instance);
                 }
+            }
+        }
+    }
+
+    private addRootRenderObject(plugin: ActivePlugin, renderObject: RenderObject): void {
+        const data = this.pluginData.get(plugin);
+        if (data) {
+            data.rootRenderObjects.push(renderObject);
+            this.rootRenderObject.addChild(renderObject);
+        }
+    }
+
+    private removeRootRenderObject(plugin: ActivePlugin, renderObject: RenderObject): void {
+        const data = this.pluginData.get(plugin);
+        if (data) {
+            const index = data.rootRenderObjects.indexOf(renderObject);
+            if (index !== -1) {
+                data.rootRenderObjects.splice(index, 1);
+                this.rootRenderObject.removeChild(renderObject);
             }
         }
     }
@@ -347,6 +386,9 @@ export class PluginManager {
             get selected() {
                 return row.selected;
             },
+            get renderMode() {
+                return row.renderMode;
+            }
         };
         
         // Cache the proxy row and maintain reverse mapping

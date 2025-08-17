@@ -1,7 +1,7 @@
 import { ContainerRenderObject } from './ContainerRenderObject';
 import { RowImpl } from './RowImpl';
 import type { WaveformState } from './WaveformState';
-import { px, type MouseEvent, type WheelEvent } from './RenderObject';
+import { px, RenderBounds, RenderContext, RenderObject, type MouseEvent, type WheelEvent } from './RenderObject';
 import { RowChangedCallback } from './RowManager';
 import { RowInsert, RowParameters } from './Plugin';
 
@@ -13,7 +13,7 @@ type ResizeState =
     | { type: 'dragging-rows'; draggedRows: RowImpl[]; startY: number; offsetY: number; offsetX: number; insertIndex: number }
     | { type: 'potential-row-drag'; row: RowImpl; startX: number; startY: number; event: MouseEvent };
 
-export class RowContainerRenderObject extends ContainerRenderObject {
+export class RowContainerRenderObject extends RenderObject {
     private rows: RowImpl[] = [];
     private changeCallbacks: RowChangedCallback[] = [];
     
@@ -60,14 +60,14 @@ export class RowContainerRenderObject extends ContainerRenderObject {
                 if (mousePosition.type === 'horizontal') {
                     this.resizeState = { 
                         type: 'horizontal', 
-                        startX: event.x - this.labelWidth 
+                        startX: event.clientX - this.labelWidth 
                     };
                     
                     document.body.style.cursor = 'ew-resize';
                 } else if (mousePosition.type === 'vertical') {
                     this.resizeState = { 
                         type: 'vertical', 
-                        startY: event.y - mousePosition.row.height,
+                        startY: event.clientY - mousePosition.row.height,
                         row: mousePosition.row
                     };
 
@@ -78,17 +78,17 @@ export class RowContainerRenderObject extends ContainerRenderObject {
                 this.requestRender();
             } else {
                 // Don't start panning if clicking in the label area
-                if (event.x < this.labelWidth) return;
+                if (event.clientX < this.labelWidth) return;
                 
                 // Start drag-to-scroll
-                const mouseXInViewport = event.x - this.labelWidth;
+                const mouseXInViewport = event.clientX - this.labelWidth;
                 const timeAtCursor = (this.state.offset + mouseXInViewport) / this.state.pxPerSecond;
                 
                 this.resizeState = {
                     type: 'time-offset',
-                    startX: event.x,
+                    startX: event.clientX,
                     startTimeAtCursor: timeAtCursor,
-                    lastX: event.x,
+                    lastX: event.clientX,
                     lastTime: performance.now(),
                     velocity: 0
                 };
@@ -109,7 +109,7 @@ export class RowContainerRenderObject extends ContainerRenderObject {
             if (this.resizeState.type === 'horizontal') {
                 const newWidth = Math.max(
                     this.minLabelWidth, 
-                    Math.min(this.maxLabelWidth, event.x - this.resizeState.startX)
+                    Math.min(this.maxLabelWidth, event.clientX - this.resizeState.startX)
                 );
                 
                 if (newWidth !== this.labelWidth) {
@@ -118,7 +118,7 @@ export class RowContainerRenderObject extends ContainerRenderObject {
                     this.requestRender();
                 }
             } else if (this.resizeState.type === 'vertical') {
-                const height = event.y - this.resizeState.startY;
+                const height = event.clientY - this.resizeState.startY;
                 const newHeight = Math.max(
                     this.minRowHeight,
                     Math.min(this.maxRowHeight, height)
@@ -163,7 +163,7 @@ export class RowContainerRenderObject extends ContainerRenderObject {
                 this.state.pxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / zoomFactor);
             }
             
-            const mouseX = event.x - this.labelWidth;
+            const mouseX = event.clientX - this.labelWidth;
             const mouseTime = (this.state.offset + mouseX) / oldPxPerSecond;
             this.state.offset = mouseTime * this.state.pxPerSecond - mouseX;
             
@@ -295,8 +295,8 @@ export class RowContainerRenderObject extends ContainerRenderObject {
             this.resizeState = {
                 type: 'potential-row-drag',
                 row: row,
-                startX: event.x,
-                startY: event.y,
+                startX: event.clientX,
+                startY: event.clientY,
                 event: event
             };
             
@@ -416,9 +416,9 @@ export class RowContainerRenderObject extends ContainerRenderObject {
         this.resizeState = {
             type: 'dragging-rows',
             draggedRows: rowsToDrag,
-            startY: event.y,
-            offsetY: event.y - (clickedRowBounds.y - offsetToClickedRow),
-            offsetX: event.x - clickedRowBounds.x,
+            startY: event.clientY,
+            offsetY: event.clientY - (clickedRowBounds.y - offsetToClickedRow),
+            offsetX: event.clientX - clickedRowBounds.x,
             insertIndex: this.rows.indexOf(rowsToDrag[0])
         };
 
@@ -604,16 +604,16 @@ export class RowContainerRenderObject extends ContainerRenderObject {
         const labelWidth = this.labelWidth;
         const halfResizeZoneWidth = this.resizeZoneWidth / 2;
         const halfResizeZoneHeight = this.resizeZoneHeight / 2;
-        if (event.x >= labelWidth - halfResizeZoneWidth &&
-            event.x <= labelWidth + halfResizeZoneWidth &&
-            event.y <= this.rows.map(r => r.height).reduce((a, b) => a + b, 0) + halfResizeZoneHeight) {
+        if (event.clientX >= labelWidth - halfResizeZoneWidth &&
+            event.clientX <= labelWidth + halfResizeZoneWidth &&
+            event.clientY <= this.rows.map(r => r.height).reduce((a, b) => a + b, 0) + halfResizeZoneHeight) {
             return { type: 'horizontal' };
         }
-        if (event.x >= 0 && event.x < labelWidth) {
+        if (event.clientX >= 0 && event.clientX < labelWidth) {
             let currentY = 0;
             for (const row of this.rows) {
                 const rowBottom = currentY + row.height;
-                if (event.y >= rowBottom - halfResizeZoneHeight && event.y <= rowBottom + halfResizeZoneHeight) {
+                if (event.clientY >= rowBottom - halfResizeZoneHeight && event.clientY <= rowBottom + halfResizeZoneHeight) {
                     return { type: 'vertical', row };
                 }
                 currentY = rowBottom;
@@ -669,5 +669,9 @@ export class RowContainerRenderObject extends ContainerRenderObject {
             callback({ added: addedRows, removed: removedRows });
         }
         return addedRows;
+    }
+
+    render(context: RenderContext, bounds: RenderBounds): boolean {
+        return false;
     }
 }

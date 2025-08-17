@@ -1,4 +1,4 @@
-import { Row } from './Plugin';
+import { Row, RenderMode } from './Plugin';
 import { RenderObject, type RenderContext, type RenderBounds } from './RenderObject';
 import { px } from './RenderObject';
 import type { Signal } from './Signal';
@@ -37,6 +37,7 @@ export class RowImpl implements Row {
     public selected: boolean = false;
     public readonly labelViewport: ViewportRenderObject;
     public readonly mainViewport: ViewportRenderObject;
+    public readonly renderMode: RenderMode;
     
     constructor(
         signals?: Signal[],
@@ -57,6 +58,10 @@ export class RowImpl implements Row {
             this.signals = [...signals];
             this.calculateOptimalScaleAndOffset();
         }
+        
+        this.renderMode = this.signals.some(signal => signal.valueTable.size > 0) 
+            ? RenderMode.Enum 
+            : RenderMode.Lines;
     }
 
     get height(): number {

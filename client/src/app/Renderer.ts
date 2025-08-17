@@ -1,5 +1,5 @@
 import type { WaveformState } from './WaveformState';
-import { RenderObject, RenderBounds, px, percent, MouseEvent } from './RenderObject';
+import { RenderObject, RenderBounds, px, percent, MouseEvent, MouseEventHandlers } from './RenderObject';
 import { SignalMetadataManager } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
 import { WebGLUtils } from './WebGLUtils';
@@ -70,6 +70,7 @@ export class Renderer {
             this.signalMetadata,
             this.signalSources,
             this.rowContainer,
+            this.rootRenderObject,
             (entry) => this.verticalSidebar.addDynamicEntry(entry),
             (entry) => this.verticalSidebar.removeDynamicEntry(entry),
             this.requestRender,
@@ -116,12 +117,13 @@ export class Renderer {
     }
 
     private createMouseEvent(e: globalThis.MouseEvent): InternalMouseEvent {
-        const rect = this.canvas.getBoundingClientRect();
         let stopPropagationCalled = false;
         
         const mouseEvent: InternalMouseEvent = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            offsetX: e.offsetX,
+            offsetY: e.offsetY,
             button: e.button,
             ctrlKey: e.ctrlKey,
             metaKey: e.metaKey,
@@ -151,32 +153,38 @@ export class Renderer {
         };
     }
 
-    private dispatchMouseEvent(eventType: keyof import('./RenderObject').MouseEventHandlers, event: InternalMouseEvent): void {
+    private dispatchMouseEvent(eventType: keyof MouseEventHandlers, event: InternalMouseEvent): void {
         const dispatchMouseEventRecursive = (
             renderObject: RenderObject, 
-            eventType: keyof import('./RenderObject').MouseEventHandlers, 
-            event: InternalMouseEvent, 
             bounds: RenderBounds
         ): void => {
             // Process children first (in reverse z-order)
             const children = [...renderObject.getChildren()].reverse();
             for (const child of children) {
-                dispatchMouseEventRecursive(child, eventType, event, child.calculateBounds(bounds));
+                dispatchMouseEventRecursive(child, child.calculateBounds(bounds));
                 if (event.stopPropagationCalled) {
                     return;
                 }
             }
 
-            if (isPointInBounds(event.x, event.y, bounds)) {
-                renderObject.emitMouseEvent(eventType, event);
+            if (isPointInBounds(event.clientX, event.clientY, bounds)) {
+                renderObject.emitMouseEvent(eventType, {
+                    ...event,
+                    offsetX: event.clientX - bounds.x,
+                    offsetY: event.clientY - bounds.y
+                });
             }
         }
-        dispatchMouseEventRecursive(this.rootRenderObject, eventType, event, this.getRootBounds());
+        dispatchMouseEventRecursive(this.rootRenderObject, this.getRootBounds());
     }
 
     private updateMouseOverStates(event: InternalMouseEvent): void {
         const updateMouseOverStatesRecursive = (renderObject: RenderObject, event: InternalMouseEvent, bounds: RenderBounds): void => {
-            renderObject.updateMouseOver(isPointInBounds(event.x, event.y, bounds), event);
+            renderObject.updateMouseOver(isPointInBounds(event.clientX, event.clientY, bounds), {
+                    ...event,
+                    offsetX: event.clientX - bounds.x,
+                    offsetY: event.clientY - bounds.y
+                });
 
             for (const child of renderObject.getChildren()) {
                 updateMouseOverStatesRecursive(child, event, child.calculateBounds(bounds));
@@ -287,6 +295,7 @@ export class Renderer {
         for (const child of renderObject.getChildren()) {
             rerenderRequested = this.renderRecursive(child, context, child.calculateBounds(bounds)) || rerenderRequested;
         }
+        renderObject.afterRender(context);
         this.renderProfiler.endMeasure();
         
         return rerenderRequested;

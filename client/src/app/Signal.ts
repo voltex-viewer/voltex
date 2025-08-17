@@ -10,6 +10,7 @@ export interface Signal {
     maxTime: number;
     minValue: number;
     maxValue: number;
+    valueTable: ReadonlyMap<number, string>;
 }
 
 export class InMemorySignal implements Signal {
@@ -19,6 +20,7 @@ export class InMemorySignal implements Signal {
     public readonly maxTime: number;
     public readonly minValue: number;
     public readonly maxValue: number;
+    public readonly valueTable: ReadonlyMap<number, string>;
     
     constructor(source: SignalSource, data: ChannelPoint[]) {
         this.source = source;
@@ -41,6 +43,8 @@ export class InMemorySignal implements Signal {
         this.maxTime = maxTime === -Infinity ? 0 : maxTime;
         this.minValue = minValue === Infinity ? 0 : minValue;
         this.maxValue = maxValue === -Infinity ? 0 : maxValue;
+
+        this.valueTable = new Map<number, string>();
     }
     
     data(index: number): ChannelPoint {
@@ -61,6 +65,7 @@ export class FunctionSignal implements Signal {
     public readonly maxTime: number;
     public readonly minValue: number;
     public readonly maxValue: number;
+    public readonly valueTable: ReadonlyMap<number, string>;
     
     constructor(source: SignalSource, generator: (time: number) => number, minValue: number, maxValue: number) {
         this.source = source;
@@ -68,6 +73,7 @@ export class FunctionSignal implements Signal {
         this.maxTime = this._duration;
         this.minValue = minValue;
         this.maxValue = maxValue;
+        this.valueTable = new Map<number, string>();
     }
     
     data(index: number): ChannelPoint {

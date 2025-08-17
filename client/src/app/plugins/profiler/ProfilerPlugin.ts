@@ -17,8 +17,10 @@ export default (context: PluginContext): void => {
         name: ['Profiler', 'Frame Time (ms)'],
         discrete: false,
         signal: () => {
+            const valueTable = new Map<number, string>();
             return {
                 source: signalSource,
+                valueTable,
                 data: (index: number) => {
                     if (index < 0 || index >= frameData.length) {
                         return [0, 0] as [number, number];
@@ -66,6 +68,8 @@ export default (context: PluginContext): void => {
                         const timelineData: Array<{ timestamp: number; active: number }> = [];
                         const nameToIdMap = new Map<string, number>();
                         const idToNameMap = new Map<number, string>();
+                        nameToIdMap.set("null", -1);
+                        idToNameMap.set(-1, "null");
                         let nextId = 0;
                         
                         for (const entry of flameGraphData) {
@@ -85,7 +89,7 @@ export default (context: PluginContext): void => {
                                 const relativeEnd = (measure.endTime - firstMeasurementTime) / 1000;
                                 
                                 timelineData.push({ timestamp: relativeStart, active: measureId });
-                                timelineData.push({ timestamp: relativeEnd, active: measureId });
+                                timelineData.push({ timestamp: relativeEnd, active: -1 });
                             }
                         }
                         
