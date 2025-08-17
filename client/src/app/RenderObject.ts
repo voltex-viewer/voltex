@@ -6,6 +6,7 @@ export interface RenderContext {
     render: WebGlContext;
     state: WaveformState;
     dpr: number;
+    viewport: [number, number, number, number];
 }
 
 export interface WebGlContext {
@@ -74,7 +75,7 @@ export interface Size {
 }
 
 export abstract class RenderObject {
-    public zIndex: number = 0;
+    public zIndex: number;
     protected children: RenderObject[] = [];
     protected parent: RenderObject | null = null;
     protected mouseEventHandlers: MouseEventHandlers = {};
@@ -83,15 +84,14 @@ export abstract class RenderObject {
     public y: PositionValue = px(0);
     public width: PositionValue = percent(100);
     public height: PositionValue = percent(100);
+    public readonly viewport: boolean;
 
-    constructor(zIndex: number = 0) {
+    constructor(zIndex: number = 0, viewport: boolean = false) {
         this.zIndex = zIndex;
+        this.viewport = viewport;
     }
     
     abstract render(context: RenderContext, bounds: RenderBounds): boolean;
-
-    afterRender(context: RenderContext): void {
-    }
 
     addChild(child: RenderObject): void {
         if (child.parent) {

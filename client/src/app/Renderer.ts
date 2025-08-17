@@ -1,5 +1,5 @@
 import type { WaveformState } from './WaveformState';
-import { RenderObject, RenderBounds, px, percent, MouseEvent, MouseEventHandlers } from './RenderObject';
+import { RenderObject, RenderBounds, px, percent, MouseEvent, MouseEventHandlers, RenderContext } from './RenderObject';
 import { SignalMetadataManager } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
 import { WebGLUtils } from './WebGLUtils';
@@ -256,14 +256,6 @@ export class Renderer {
         }
         
         const dpr = window.devicePixelRatio || 1;
-        
-        // Clear the entire canvas first
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        gl.clearColor(0, 0, 0, 1.0); // Black background 
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
         const baseContext = {
             canvas: this.canvas,
@@ -272,8 +264,17 @@ export class Renderer {
                 utils: this.webglUtils
             },
             state: this.state,
-            dpr
+            dpr,
+            viewport: [ 0, 0, this.canvas.width, this.canvas.height ] as [number, number, number, number],
         };
+
+        // Clear the entire canvas first
+        gl.viewport(baseContext.viewport[0], baseContext.viewport[1], baseContext.viewport[2], baseContext.viewport[3]);
+        gl.clearColor(0, 0, 0, 1.0); // Black background 
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
         const rootBounds = this.getRootBounds();
 
@@ -287,15 +288,38 @@ export class Renderer {
         return renderRequested;
     }
 
-    private renderRecursive(renderObject: RenderObject, context: any, bounds: RenderBounds): boolean {
+    private renderRecursive(renderObject: RenderObject, context: RenderContext, bounds: RenderBounds): boolean {
         let rerenderRequested = false;
 
         this.renderProfiler.startMeasure("render-" + renderObject.constructor.name);
-        rerenderRequested = renderObject.render(context, bounds) || rerenderRequested;
-        for (const child of renderObject.getChildren()) {
-            rerenderRequested = this.renderRecursive(child, context, child.calculateBounds(bounds)) || rerenderRequested;
+        let nextContext = context;
+        if (renderObject.viewport) {
+            nextContext = {
+                ...context,
+                viewport: [
+                    bounds.x * context.dpr,
+                    context.canvas.height - (bounds.y + bounds.height) * context.dpr,
+                    bounds.width * context.dpr,
+                    bounds.height * context.dpr
+                ]
+            };
+            context.render.gl.viewport(
+                nextContext.viewport[0],
+                nextContext.viewport[1],
+                nextContext.viewport[2],
+                nextContext.viewport[3]
+            );
         }
-        renderObject.afterRender(context);
+        rerenderRequested = renderObject.render(nextContext, bounds) || rerenderRequested;
+        for (const child of renderObject.getChildren()) {
+            rerenderRequested = this.renderRecursive(child, nextContext, child.calculateBounds(bounds)) || rerenderRequested;
+        }
+        context.render.gl.viewport(
+            context.viewport[0],
+            context.viewport[1],
+            context.viewport[2],
+            context.viewport[3]
+        );
         this.renderProfiler.endMeasure();
         
         return rerenderRequested;
