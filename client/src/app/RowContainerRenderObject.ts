@@ -672,6 +672,7 @@ export class RowContainerRenderObject extends RenderObject {
     }
 
     render(context: RenderContext, bounds: RenderBounds): boolean {
+        this.rows.forEach(row => row.calculateOptimalScaleAndOffset());
         return false;
     }
 }

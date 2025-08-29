@@ -81,7 +81,7 @@ export class RowImpl implements Row {
         this.labelViewport.addChild(renderObject);
     }
     
-    private calculateOptimalScaleAndOffset(): void {
+    calculateOptimalScaleAndOffset(): void {
         if (this.signals.length === 0) {
             this.yScale = 1.0;
             this.yOffset = 0.0;
