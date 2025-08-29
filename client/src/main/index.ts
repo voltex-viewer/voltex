@@ -69,6 +69,17 @@ const createWindow = () => {
         },
     });
 
+    // Set up cross-origin isolation headers
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Cross-Origin-Embedder-Policy': ['require-corp'],
+                'Cross-Origin-Opener-Policy': ['same-origin'],
+            },
+        });
+    });
+
     // and load the index.html of the app.
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
         mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
