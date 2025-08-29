@@ -13,27 +13,24 @@ uniform float u_yOffset;
 
 void main() {
     // Emulated double precision
-    float diffA = pointA.x - u_timeOffsetHigh;
-    diffA = diffA - u_timeOffsetLow;
-    float diffB = pointB.x - u_timeOffsetHigh;
-    diffB = diffB - u_timeOffsetLow;
-    float diffC = pointC.x - u_timeOffsetHigh;
-    diffC = diffC - u_timeOffsetLow;
+    float diffA = (pointA.x - u_timeOffsetHigh) - u_timeOffsetLow;
+    float diffB = (pointB.x - u_timeOffsetHigh) - u_timeOffsetLow;
+    float diffC = (pointC.x - u_timeOffsetHigh) - u_timeOffsetLow;
     
     // Transform signal points to screen coordinates
     vec2 screenPointA = vec2(
         diffA * u_pxPerSecond,
-        u_bounds.y / 2.0 - (pointA.y + u_yOffset) * u_yScale * u_bounds.y * 0.4
+        u_bounds.y / 2.0 - (pointA.y + u_yOffset) * u_yScale * u_bounds.y * 0.5
     );
     
     vec2 screenPointB = vec2(
         diffB * u_pxPerSecond,
-        u_bounds.y / 2.0 - (pointB.y + u_yOffset) * u_yScale * u_bounds.y * 0.4
+        u_bounds.y / 2.0 - (pointB.y + u_yOffset) * u_yScale * u_bounds.y * 0.5
     );
     
     vec2 screenPointC = vec2(
         diffC * u_pxPerSecond,
-        u_bounds.y / 2.0 - (pointC.y + u_yOffset) * u_yScale * u_bounds.y * 0.4
+        u_bounds.y / 2.0 - (pointC.y + u_yOffset) * u_yScale * u_bounds.y * 0.5
     );
     
     // Calculate tangent and normal vectors
