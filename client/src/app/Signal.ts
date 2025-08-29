@@ -16,10 +16,10 @@ export interface Signal {
 export class InMemorySignal implements Signal {
     source: SignalSource;
     private _data: ChannelPoint[];
-    public readonly minTime: number;
-    public readonly maxTime: number;
-    public readonly minValue: number;
-    public readonly maxValue: number;
+    private _minTime: number;
+    private _maxTime: number;
+    private _minValue: number;
+    private _maxValue: number;
     public readonly valueTable: ReadonlyMap<number, string>;
     
     constructor(source: SignalSource, data: ChannelPoint[]) {
@@ -38,11 +38,11 @@ export class InMemorySignal implements Signal {
             minValue = Math.min(minValue, v);
             maxValue = Math.max(maxValue, v);
         }
-        
-        this.minTime = minTime === Infinity ? 0 : minTime;
-        this.maxTime = maxTime === -Infinity ? 0 : maxTime;
-        this.minValue = minValue === Infinity ? 0 : minValue;
-        this.maxValue = maxValue === -Infinity ? 0 : maxValue;
+
+        this._minTime = minTime === Infinity ? 0 : minTime;
+        this._maxTime = maxTime === -Infinity ? 0 : maxTime;
+        this._minValue = minValue === Infinity ? 0 : minValue;
+        this._maxValue = maxValue === -Infinity ? 0 : maxValue;
 
         this.valueTable = new Map<number, string>();
     }
@@ -50,9 +50,35 @@ export class InMemorySignal implements Signal {
     data(index: number): ChannelPoint {
         return this._data[index];
     }
+
+    append(...points: ChannelPoint[]) {
+        this._data.push(...points);
+        for (const [t, v] of points) {
+            this._minTime = Math.min(this._minTime, t);
+            this._maxTime = Math.max(this._maxTime, t);
+            this._minValue = Math.min(this._minValue, v);
+            this._maxValue = Math.max(this._maxValue, v);
+        }
+    }
     
     get length(): number {
         return this._data.length;
+    }
+
+    get minTime(): number {
+        return this._minTime;
+    }
+
+    get maxTime(): number {
+        return this._maxTime;
+    }
+
+    get minValue(): number {
+        return this._minValue;
+    }
+
+    get maxValue(): number {
+        return this._maxValue;
     }
 }
 
