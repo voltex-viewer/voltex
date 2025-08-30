@@ -45,7 +45,8 @@ export class RowContainerRenderObject extends RenderObject {
 
     constructor(
         private state: WaveformState,
-        private requestRender: () => void
+        private requestRender: () => void,
+        private canvas: HTMLCanvasElement,
     ) {
         super();
 
@@ -237,6 +238,15 @@ export class RowContainerRenderObject extends RenderObject {
         });
     }
 
+    // Helper method to convert global mouse coordinates to canvas-relative coordinates
+    private convertGlobalMouseToCanvasCoords(globalX: number, globalY: number): { x: number; y: number } {
+        const canvasRect = this.canvas.getBoundingClientRect();
+        return {
+            x: globalX - canvasRect.left,
+            y: globalY - canvasRect.top
+        };
+    }
+
     private getSelectedRowsInOrder(): RowImpl[] {
         // Convert Set to array sorted by row position in this.rows
         return this.rows.filter(row => this.selectedRows.has(row));
@@ -304,8 +314,9 @@ export class RowContainerRenderObject extends RenderObject {
             const handleMouseMove = (e: globalThis.MouseEvent) => {
                 if (this.resizeState.type !== 'potential-row-drag') return;
                 
-                const deltaX = e.clientX - this.resizeState.startX;
-                const deltaY = e.clientY - this.resizeState.startY;
+                const canvasCoords = this.convertGlobalMouseToCanvasCoords(e.clientX, e.clientY);
+                const deltaX = canvasCoords.x - this.resizeState.startX;
+                const deltaY = canvasCoords.y - this.resizeState.startY;
 
                 if (Math.sqrt(deltaX * deltaX + deltaY * deltaY) > this.dragThreshold) {
                     // Exceeded threshold, start drag
@@ -345,14 +356,15 @@ export class RowContainerRenderObject extends RenderObject {
             const now = performance.now();
             
             // Calculate new offset based on constant time at cursor
-            const currentMouseXInViewport = e.clientX - this.labelWidth;
+            const canvasCoords = this.convertGlobalMouseToCanvasCoords(e.clientX, e.clientY);
+            const currentMouseXInViewport = canvasCoords.x - this.labelWidth;
             this.state.offset = this.resizeState.startTimeAtCursor * this.state.pxPerSecond - currentMouseXInViewport;
 
-            const velocity = (e.clientX - this.resizeState.lastX) / (now - this.resizeState.lastTime + 0.0001);
+            const velocity = (canvasCoords.x - this.resizeState.lastX) / (now - this.resizeState.lastTime + 0.0001);
             
             this.resizeState = {
                 ...this.resizeState,
-                lastX: e.clientX,
+                lastX: canvasCoords.x,
                 lastTime: now,
                 velocity: velocity
             };
@@ -436,6 +448,7 @@ export class RowContainerRenderObject extends RenderObject {
             if (this.resizeState.type !== 'dragging-rows') return;
 
             const dragState = this.resizeState; // Capture resizeState so that the closure knows the type
+            const canvasCoords = this.convertGlobalMouseToCanvasCoords(e.clientX, e.clientY);
 
             const calculateInsertIndex = (mouseY: number): number => {
                 let currentY = 0;
@@ -458,8 +471,8 @@ export class RowContainerRenderObject extends RenderObject {
                 return this.rows.length;
             }
             
-            const mouseX = e.clientX - dragState.offsetX;
-            const mouseY = e.clientY - dragState.offsetY;
+            const mouseX = canvasCoords.x - dragState.offsetX;
+            const mouseY = canvasCoords.y - dragState.offsetY;
             
             // Update dragged rows positions
             let currentY = mouseY;

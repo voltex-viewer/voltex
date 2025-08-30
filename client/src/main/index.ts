@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import { spawn } from 'child_process';
 import { setupMainMenu } from './main_menu';
 import path from 'path';
@@ -10,6 +10,31 @@ if (started) {
 }
 
 let rustProcess: ReturnType<typeof spawn> | null = null;
+
+// IPC handlers for menu actions
+ipcMain.handle('open-file-dialog', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        filters: [
+            { name: 'Waveform Files', extensions: ['json', 'mf4'] },
+            { name: 'All Files', extensions: ['*'] }
+        ],
+        properties: ['openFile']
+    });
+    
+    if (!canceled && filePaths.length > 0) {
+        // Get the focused window and send the file path
+        const focusedWindow = BrowserWindow.getFocusedWindow();
+        if (focusedWindow) {
+            focusedWindow.webContents.send('open-waveform-file', filePaths[0]);
+        }
+        return filePaths[0];
+    }
+    return null;
+});
+
+ipcMain.handle('quit-app', () => {
+    app.quit();
+});
 
 const startRustServer = () => {
     // Dynamically resolve the Rust server binary path for dev and packaged modes
@@ -87,8 +112,8 @@ const createWindow = () => {
         mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
     }
 
-    // Set up the main menu with File->Open
-    setupMainMenu(mainWindow);
+    // Disable native menu since we're using HTML menu
+    Menu.setApplicationMenu(null);
 
     // Open the DevTools only in development
     if (!app.isPackaged) {

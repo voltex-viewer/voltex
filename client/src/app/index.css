@@ -1,3 +1,92 @@
+/* CSS Custom Properties */
+:root {
+    --menu-bar-height: 24px;
+}
+
+/* Menu Bar Styles - Consistent with Application Theme */
+.menu-bar {
+    display: flex;
+    align-items: center;
+    height: var(--menu-bar-height);
+    background: #23272e; /* Match sidebar background */
+    border-bottom: 1px solid #2c313a; /* Match sidebar border */
+    font-family: "Open Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 13px;
+    color: #bfc7d5; /* Match sidebar text color */
+    user-select: none;
+    position: relative;
+    z-index: 1000;
+    flex-shrink: 0; /* Prevent shrinking */
+    box-sizing: border-box;
+}
+
+.menu-item {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    white-space: nowrap; /* Prevent text wrapping */
+}
+
+.menu-item:hover, .menu-item.active {
+    background: #424242;
+}
+
+.submenu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 160px;
+    background: #23272e; /* Match sidebar background */
+    border: 1px solid #2c313a;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
+    display: none;
+    z-index: 1001;
+    padding: 4px 0;
+    overflow: hidden; /* Prevent scroll bars in submenu */
+}
+
+.menu-item.active .submenu {
+    display: block;
+}
+
+.submenu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    cursor: pointer;
+    white-space: nowrap; /* Prevent text wrapping */
+    overflow: hidden; /* Prevent content overflow */
+}
+
+.submenu-item:hover {
+    background: #0078d4;
+    color: #ffffff; /* White font on hover */
+}
+
+.submenu-item span:first-child {
+    flex: 1;
+}
+
+.accelerator {
+    color: #888888;
+    font-size: 12px;
+    margin-left: 20px;
+}
+
+.submenu-item:hover .accelerator {
+    color: #ffffff; /* White accelerator text on hover */
+}
+
+.submenu-separator {
+    height: 1px;
+    background: #2c313a; /* Match border color */
+    margin: 4px 0;
+}
+
 /* Make the time axis row label compact */
 .waveform-timeaxis-row .channel-label {
   padding: 2px 8px;
@@ -13,9 +102,9 @@ body {
 
 .vertical-sidebar {
     position: fixed;
-    top: 0;
+    top: var(--menu-bar-height); /* Account for menu bar */
     right: 0;
-    height: 100vh;
+    height: calc(100vh - var(--menu-bar-height)); /* Account for menu bar */
     width: 320px;
     background: transparent;
     display: flex;
@@ -36,7 +125,7 @@ body {
 .sidebar-panel-container {
     width: 272px;
     min-width: 0;
-    height: 100vh;
+    height: calc(100vh - var(--menu-bar-height)); /* Account for menu bar */
     display: flex;
     flex-direction: column;
     position: relative;
@@ -156,8 +245,9 @@ html, body {
   gap: 0px;
   background: #181a20;
   padding: 0;
-  height: 100vh;
+  height: calc(100vh - var(--menu-bar-height)); /* Account for menu bar */
   box-sizing: border-box;
+  overflow: hidden; /* Prevent any scroll bars */
 }
 
 /* Container styles updated for single canvas approach */

@@ -61,7 +61,7 @@ export class Renderer {
         this.signalSources = new SignalSourceManagerImpl();
 
         // Create row container and add it to root
-        this.rowContainer = new RowContainerRenderObject(this.state, this.requestRender);
+        this.rowContainer = new RowContainerRenderObject(this.state, this.requestRender, this.canvas);
         this.rootRenderObject.addChild(this.rowContainer);
         
         this.pluginManager = new PluginManager(
@@ -119,9 +119,12 @@ export class Renderer {
     private createMouseEvent(e: globalThis.MouseEvent): InternalMouseEvent {
         let stopPropagationCalled = false;
         
+        // Get canvas position to properly offset mouse coordinates
+        const canvasRect = this.canvas.getBoundingClientRect();
+        
         const mouseEvent: InternalMouseEvent = {
-            clientX: e.clientX,
-            clientY: e.clientY,
+            clientX: e.clientX - canvasRect.left,
+            clientY: e.clientY - canvasRect.top,
             offsetX: e.offsetX,
             offsetY: e.offsetY,
             button: e.button,

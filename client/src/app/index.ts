@@ -2,8 +2,12 @@ import './index.css';
 import { WaveformState } from './WaveformState';
 import { Renderer } from './Renderer';
 import { VerticalSidebar } from './VerticalSidebar';
+import { setupMenuBar } from './MenuBar';
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Setup menu bar first
+    setupMenuBar();
+
     const root = document.getElementById('root');
     if (!root) return;
     root.classList.add('waveform-root');
