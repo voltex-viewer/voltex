@@ -1,6 +1,8 @@
 attribute vec2 position;
-attribute vec2 pointA;
-attribute vec2 pointB;
+attribute float pointATime;
+attribute float pointAValue;
+attribute float pointBTime;
+attribute float pointBValue;
 
 uniform vec2 u_bounds;
 uniform float u_timeOffsetHigh;
@@ -10,6 +12,9 @@ uniform float u_pxPerSecond;
 varying float v_value;
 
 void main() {
+    vec2 pointA = vec2(pointATime, pointAValue);
+    vec2 pointB = vec2(pointBTime, pointBValue);
+    
     // Pass the value to fragment shader for coloring
     v_value = pointA.y;
     

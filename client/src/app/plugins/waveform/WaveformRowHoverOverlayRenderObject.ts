@@ -78,14 +78,16 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                 
                 this.highlightSignals.set(signal, highlightSignal);
 
-                // Create dedicated highlight buffer for this signal
-                const highlightBuffer = context.webgl.gl.createBuffer();
-                if (!highlightBuffer) {
-                    throw new Error('Failed to create highlight buffer');
+                // Create dedicated highlight buffers for this signal
+                const highlightTimeBuffer = context.webgl.gl.createBuffer();
+                const highlightValueBuffer = context.webgl.gl.createBuffer();
+                if (!highlightTimeBuffer || !highlightValueBuffer) {
+                    throw new Error('Failed to create highlight buffers');
                 }
 
                 const highlightBufferData: ChannelBufferData = {
-                    buffer: highlightBuffer,
+                    timeBuffer: highlightTimeBuffer,
+                    valueBuffer: highlightValueBuffer,
                     lastDataLength: 0,
                     updateIndex: 0,
                     pointCount: 0
@@ -284,19 +286,23 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         if (highlightRenderObject) {
             const bufferData = (highlightRenderObject as any).bufferData;
             if (bufferData) {
-                // Convert points to flat array for WebGL buffer
-                const flatData = new Float32Array(pointData.length * 2);
+                // Convert points to separate time and value arrays for WebGL buffers
+                const timeData = new Float32Array(pointData.length);
+                const valueData = new Float32Array(pointData.length);
                 for (let i = 0; i < pointData.length; i++) {
-                    flatData[i * 2] = pointData[i][0];     // time
-                    flatData[i * 2 + 1] = pointData[i][1]; // value
+                    timeData[i] = pointData[i][0];
+                    valueData[i] = pointData[i][1];
                 }
 
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.buffer);
-                gl.bufferData(gl.ARRAY_BUFFER, flatData, gl.DYNAMIC_DRAW);
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, timeData, gl.DYNAMIC_DRAW);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);
                 
                 // Update buffer metadata
                 bufferData.updateIndex = pointData.length;
-                bufferData.lastDataLength = flatData.length;
+                bufferData.lastDataLength = pointData.length;
                 bufferData.pointCount = pointData.length;
             }
         }

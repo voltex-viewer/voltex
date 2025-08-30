@@ -1,4 +1,5 @@
-attribute vec2 position;
+attribute float timePos;
+attribute float valuePos;
 uniform vec2 u_bounds;
 uniform float u_width;
 uniform float u_timeOffsetHigh;
@@ -8,6 +9,8 @@ uniform float u_yScale;
 uniform float u_yOffset;
 
 void main() {
+    vec2 position = vec2(timePos, valuePos);
+
     // Emulated double precision
     float diff = (position.x - u_timeOffsetHigh) - u_timeOffsetLow;
     

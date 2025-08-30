@@ -7,7 +7,8 @@ import { WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
 import { WaveformShaders } from './WaveformShaders';
 
 export interface ChannelBufferData {
-    buffer: WebGLBuffer;
+    timeBuffer: WebGLBuffer;
+    valueBuffer: WebGLBuffer;
     lastDataLength: number;
     updateIndex: number;
     pointCount: number;
@@ -105,15 +106,16 @@ export default (context: PluginContext): void => {
             const sigLen = channel.length;
             
             if (bufferData.lastDataLength !== sigLen) {
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.buffer);
-                const totalPoints = sigLen * 2;
-                gl.bufferData(gl.ARRAY_BUFFER, totalPoints * 4, gl.DYNAMIC_DRAW);
+                // Allocate separate buffers for time and value data
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, sigLen * 4, gl.DYNAMIC_DRAW);
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, sigLen * 4, gl.DYNAMIC_DRAW);
                 
                 bufferData.lastDataLength = sigLen;
                 bufferData.updateIndex = 0;
                 bufferData.pointCount = sigLen;
-            } else {
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.buffer);
             }
             
             if (bufferData.updateIndex < sigLen) {
@@ -131,13 +133,23 @@ export default (context: PluginContext): void => {
                 );
                 
                 const endIndex = Math.min(bufferData.updateIndex + maxPointsThisFrame, sigLen);
-                const buffer = new Float32Array((endIndex - bufferData.updateIndex) * 2);
+                const timeBuffer = new Float32Array(endIndex - bufferData.updateIndex);
+                const valueBuffer = new Float32Array(endIndex - bufferData.updateIndex);
 
-                for (let i = 0, j = bufferData.updateIndex; j < endIndex; i += 2, j++) {
-                    [buffer[i], buffer[i + 1]] = channel.data(j);
+                for (let i = 0, j = bufferData.updateIndex; j < endIndex; i++, j++) {
+                    const [time, value] = channel.data(j);
+                    timeBuffer[i] = time;
+                    valueBuffer[i] = value;
                 }
 
-                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.updateIndex * 2 * 4, buffer);
+                // Upload time data
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.updateIndex * 4, timeBuffer);
+                
+                // Upload value data
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.updateIndex * 4, valueBuffer);
+                
                 bufferData.updateIndex = endIndex;
                 
                 if (bufferData.updateIndex < sigLen) {
@@ -155,12 +167,14 @@ export default (context: PluginContext): void => {
             
             for (const channel of row.signals) {
                 if (!channelBuffers.has(channel)) {
-                    const buffer = context.webgl.gl.createBuffer();
-                    if (!buffer) {
-                        throw new Error('Failed to create WebGL buffer');
+                    const timeBuffer = context.webgl.gl.createBuffer();
+                    const valueBuffer = context.webgl.gl.createBuffer();
+                    if (!timeBuffer || !valueBuffer) {
+                        throw new Error('Failed to create WebGL buffers');
                     }
                     channelBuffers.set(channel, {
-                        buffer,
+                        timeBuffer,
+                        valueBuffer,
                         lastDataLength: 0,
                         updateIndex: 0,
                         pointCount: 0
@@ -206,8 +220,12 @@ export default (context: PluginContext): void => {
         for (const row of event.removed) {
             for (const channel of row.signals) {
                 if (!activeChannels.has(channel)) {
-                    context.webgl.gl.deleteBuffer(channelBuffers.get(channel).buffer);
-                    channelBuffers.delete(channel);
+                    const bufferData = channelBuffers.get(channel);
+                    if (bufferData) {
+                        context.webgl.gl.deleteBuffer(bufferData.timeBuffer);
+                        context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
+                        channelBuffers.delete(channel);
+                    }
                 }
             }
         }
