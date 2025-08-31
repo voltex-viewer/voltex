@@ -6,6 +6,7 @@ mod frame;
 mod trc;
 
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io::{Read, Seek, Error, ErrorKind, SeekFrom};
 
@@ -174,6 +175,7 @@ pub struct ChannelGroupInfo {
 pub struct ChannelInfo {
     pub name: String,
     pub unit: String,
+    pub conversion: Expression,
 }
 
 pub struct DecodedChannelInfo {
@@ -271,6 +273,27 @@ where
     }
 }
 
+impl<T> Link<T>
+where
+    T: BinRead + binrw::meta::ReadEndian,
+    for<'a> T::Args<'a>: Default,
+{
+    pub fn read(&self, file: &mut File) -> binrw::BinResult<T> {
+        file.seek(SeekFrom::Start(self.get()))?;
+        T::read(file)
+    }
+}
+
+impl<T> NullableLink<T>
+where
+    T: BinRead + binrw::meta::ReadEndian,
+    for<'a> T::Args<'a>: Default,
+{
+    pub fn read_optional(&self, file: &mut File) -> Result<Option<T>, binrw::Error> {
+        self.as_option().as_ref().map(|link| link.read(file)).transpose()
+    }
+}
+
 impl Link<TextBlock> {
     pub fn get_text(&self, file: &mut File) -> Result<String, Error> {
         file.seek(SeekFrom::Start(self.get()))?;
@@ -278,6 +301,98 @@ impl Link<TextBlock> {
             Ok(text_block) => Ok(text_block.data),
             Err(e) => Err(Error::new(ErrorKind::InvalidData, e)),
         }
+    }
+}
+
+pub struct Expression {
+    nodes: Vec<Node>,
+}
+
+pub enum Node {
+    Arg,
+    Text(String),
+    Value(f64),
+    Values(Vec<f64>),
+    Group(u32),
+    FunctionCall(String),
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Node::Arg => write!(f, "x"),
+            Node::Text(text) => write!(f, "\"{}\"", text),
+            Node::Value(value) => write!(f, "{}", value),
+            Node::Values(values) => {
+                let values_str = values.iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "[{}, ]", values_str)
+            },
+            Node::Group(args) => write!(f, "Group({})", args),
+            Node::FunctionCall(name) => write!(f, "{}()", name),
+        }
+    }
+}
+
+impl Expression {
+    pub fn new() -> Self {
+        Expression { nodes: Vec::new() }
+    }
+
+    pub fn push(&mut self, node: Node) {
+        self.nodes.push(node);
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut stack = Vec::<Vec<String>>::new();
+        
+        for node in &self.nodes {
+            match node {
+                Node::Arg => stack.push(vec!["x".to_string()]),
+                Node::Text(text) => stack.push(vec![format!("\"{}\"", text)]),
+                Node::Value(value) => stack.push(vec![value.to_string()]),
+                Node::Values(values) => {
+                    let values_str = values.iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    stack.push(vec![format!("[{}]", values_str)]);
+                },
+                Node::Group(args) => {
+                    if stack.len() < *args as usize {
+                        return Err(fmt::Error);
+                    }
+                    let start_idx = stack.len() - *args as usize;
+                    let operands: Vec<String> = stack.drain(start_idx..)
+                        .flat_map(|v| v)
+                        .collect();
+                    stack.push(operands);
+                },
+                Node::FunctionCall(name) => {
+                    if stack.is_empty() {
+                        return Err(fmt::Error);
+                    }
+                    let operands = stack.pop().unwrap();
+                    
+                    let result = match (name.as_str(), operands.len()) {
+                        (op @ ("+" | "-" | "*" | "/" | "??"), 2) => format!("({} {} {})", operands[0], op, operands[1]),
+                        ("+", n) if n > 2 => format!("({})", operands.join(" + ")),
+                        ("*", n) if n > 2 => format!("({})", operands.join(" * ")),
+                        _ => format!("{}({})", name, operands.join(", ")),
+                    };
+                    stack.push(vec![result]);
+                },
+            }
+        }
+        
+        let results: Vec<String> = stack.into_iter()
+            .map(|g| g.join(", "))
+            .collect();
+        write!(f, "{}", results.join("; "))
     }
 }
 
@@ -309,10 +424,253 @@ impl Mf4 {
                         .map(|link| link.get_text(&mut self.file))
                         .transpose()?
                         .unwrap_or_default();
-                    
+
+                    let mut expression = Expression::new();
+                    if let Some(conversion_block_link) = channel.conversion.as_option().as_ref() {
+                        fn recurse(link: Link<ChannelConversionOrTextBlock>, file: &mut File, expr: &mut Expression) -> Result<(), Error> {
+                            let conversion = link.read(file).unwrap();
+                            match conversion {
+                                ChannelConversionOrTextBlock::ChannelConversionBlock(conversion_block) => match conversion_block.conversion_type {
+                                    ConversionType::OneToOne => {
+                                        if conversion_block.values.len() != 0 {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+                                        expr.push(Node::Arg);
+                                        Ok(())
+                                    }
+                                    ConversionType::Linear => {
+                                        if conversion_block.values.len() != 2 {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Value(conversion_block.values[1].clone()));
+                                        expr.push(Node::Group(2));
+                                        expr.push(Node::FunctionCall(String::from("*")));
+                                        expr.push(Node::Value(conversion_block.values[0].clone()));
+                                        expr.push(Node::Group(2));
+                                        expr.push(Node::FunctionCall(String::from("+")));
+                                        Ok(())
+                                    },
+                                    ConversionType::Rational => {
+                                        if conversion_block.values.len() != 6 {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Value(conversion_block.values[0].clone()));
+                                        expr.push(Node::Group(3));
+                                        expr.push(Node::FunctionCall(String::from("*")));
+                                        // [ (x * x * v0) ]
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Value(conversion_block.values[1].clone()));
+                                        expr.push(Node::Group(2));
+                                        expr.push(Node::FunctionCall(String::from("*")));
+                                        // [ (x * x * v0) + (x * v1) ]
+
+                                        expr.push(Node::Value(conversion_block.values[2].clone()));
+                                        expr.push(Node::Group(3));
+                                        expr.push(Node::FunctionCall(String::from("+")));
+                                        // [ (x * x * v0) + (x * v1) + (v2) ]
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Value(conversion_block.values[3].clone()));
+                                        expr.push(Node::Group(3));
+                                        expr.push(Node::FunctionCall(String::from("*")));
+                                        // [ (x * x * v0) + (x * v1) + (v2), (x * x * v3) ]
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Value(conversion_block.values[4].clone()));
+                                        expr.push(Node::Group(2));
+                                        expr.push(Node::FunctionCall(String::from("*")));
+                                        // [ (x * x * v0) + (x * v1) + (v2), ((x * x * v3) + (x * v4)) ]
+
+                                        expr.push(Node::Value(conversion_block.values[5].clone()));
+                                        expr.push(Node::Group(3));
+                                        expr.push(Node::FunctionCall(String::from("+")));
+                                        // [ (x * x * v0) + (x * v1) + (v2), ((x * x * v3) + (x * v4)) + (v5) ]
+
+                                        expr.push(Node::Group(2));
+                                        expr.push(Node::FunctionCall(String::from("/")));
+
+                                        Ok(())
+                                    },
+                                    ConversionType::ValueToValueTableWithInterpolation => {
+                                        // Need to map with interpolation:
+                                        //   values[0] => values[1]
+                                        //   values[2] => values[3]
+                                        //   etc.
+                                        //       ( values[0]                                                                for x <= keys[0]
+                                        // x  =  ( lerp(values[i], values[i + 1], (x - keys[i]) / (keys[i + 1] - keys[i]))) for keys[i] < x < keys[i + 1]
+                                        //       ( values[$ - 1]                                                            for x >= keys[$ - 1]
+                                        if conversion_block.values.len() % 2 != 0 {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+                                        let rows = conversion_block.values.len() / 2;
+                                        let mut keys: Vec<f64> = Vec::with_capacity(rows);
+                                        let mut values: Vec<f64> = Vec::with_capacity(rows);
+
+                                        for chunk in conversion_block.values.chunks(2) {
+                                            keys.push(chunk[0]);
+                                            values.push(chunk[1]);
+                                        }
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Values(keys));
+                                        expr.push(Node::Values(values));
+                                        expr.push(Node::Group(3));
+                                        expr.push(Node::FunctionCall(String::from("lerp")));
+
+                                        Ok(())
+                                    }
+                                    ConversionType::ValueToValueTableWithoutInterpolation => {
+                                        // Need to map to the nearest value in the table:
+                                        // key       | value
+                                        // values[0] | values[1]
+                                        // values[2] | values[3]
+                                        // etc..
+                                        if conversion_block.values.len() % 2 != 0 {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+                                        let rows = conversion_block.values.len() / 2;
+                                        let mut keys: Vec<f64> = Vec::with_capacity(rows);
+                                        let mut values: Vec<f64> = Vec::with_capacity(rows);
+
+                                        for chunk in conversion_block.values.chunks(2) {
+                                            keys.push(chunk[0]);
+                                            values.push(chunk[1]);
+                                        }
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Values(keys));
+                                        expr.push(Node::Values(values));
+                                        expr.push(Node::Group(3));
+                                        expr.push(Node::FunctionCall(String::from("nearest")));
+
+                                        Ok(())
+                                    }
+                                    ConversionType::ValueRangeToValueTable => {
+                                        // Have a table:
+                                        // min       | max       | value
+                                        // values[0] | values[1] | values[2]
+                                        // values[3] | values[4] | values[5]
+                                        // etc., with default: values[$-1]
+                                        // will give value if min <= x < max, otherwise will give default
+                                        if conversion_block.values.len() % 3 != 1 {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+                                        let rows = conversion_block.values.len() / 3;
+                                        let mut min: Vec<f64> = Vec::with_capacity(rows);
+                                        let mut max: Vec<f64> = Vec::with_capacity(rows);
+                                        let mut values: Vec<f64> = Vec::with_capacity(rows);
+
+                                        for chunk in conversion_block.values.chunks(3) {
+                                            min.push(chunk[0]);
+                                            max.push(chunk[1]);
+                                            values.push(chunk[2]);
+                                        }
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Values(min));
+                                        expr.push(Node::Values(max));
+                                        expr.push(Node::Values(values));
+                                        expr.push(Node::Group(4));
+                                        expr.push(Node::FunctionCall(String::from("range_map")));
+                                        Ok(())
+                                    }
+                                    ConversionType::ValueToTextOrScale => {
+                                        // Have a table:
+                                        // keys      | refs
+                                        // values[0] | refs[0]
+                                        // values[1] | refs[1]
+                                        // etc.
+                                        // refs is either a text block or a conversion, which can be nested
+                                        // keys = [values[0], values[1], ...]
+                                        // refs = [refs[0], refs[1], ...]
+                                        let key_count = conversion_block.values.len();
+                                        let ref_count = conversion_block.refs.len();
+                                        if key_count != ref_count && ref_count != key_count + 1 {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Values(conversion_block.values.clone())); // keys
+                                        for ref_link in conversion_block.refs.iter().take(key_count) {
+                                            recurse(ref_link.clone(), file, expr)?; // Recurse will push refs
+                                        }
+                                        expr.push(Node::Group(key_count as u32 + 2));
+                                        expr.push(Node::FunctionCall(String::from("map")));
+                                        if ref_count > key_count {
+                                            let last = conversion_block.refs.last().unwrap();
+                                            if last.get() != 0 {
+                                                recurse(conversion_block.refs.last().unwrap().clone(), file, expr)?;
+                                                expr.push(Node::Group(2));
+                                                expr.push(Node::FunctionCall(String::from("??")));
+                                            }
+                                        }
+                                        Ok(())
+                                    }
+                                    ConversionType::ValueRangeToTextOrScale => {
+                                        // Have a table:
+                                        // min       | max       | refs
+                                        // values[0] | values[1] | refs[0]
+                                        // values[2] | values[3] | refs[1]
+                                        // etc.
+                                        // refs is either a text block or a conversion, which can be nested
+                                        // keys = [values[0], values[1], ...]
+                                        // refs = [refs[0], refs[1], ...]
+                                        let key_count = conversion_block.values.len() / 2;
+                                        let ref_count = conversion_block.refs.len();
+                                        if conversion_block.values.len() % 2 != 0 || (key_count != ref_count && ref_count != key_count + 1) {
+                                            return Err(Error::new(ErrorKind::InvalidData, "Invalid number of conversion parameters"));
+                                        }
+
+                                        let mut min: Vec<f64> = Vec::with_capacity(key_count);
+                                        let mut max: Vec<f64> = Vec::with_capacity(key_count);
+                                        for chunk in conversion_block.values.chunks(2) {
+                                            min.push(chunk[0]);
+                                            max.push(chunk[1]);
+                                        }
+
+                                        expr.push(Node::Arg);
+                                        expr.push(Node::Values(min));
+                                        expr.push(Node::Values(max));
+                                        for ref_link in conversion_block.refs.iter().take(key_count) {
+                                            recurse(ref_link.clone(), file, expr)?; // Recurse will push refs
+                                        }
+                                        expr.push(Node::Group(key_count as u32 + 3));
+                                        expr.push(Node::FunctionCall(String::from("map_range")));
+                                        if ref_count > key_count {
+                                            let last = conversion_block.refs.last().unwrap();
+                                            if last.get() != 0 {
+                                                recurse(conversion_block.refs.last().unwrap().clone(), file, expr)?;
+                                                expr.push(Node::Group(2));
+                                                expr.push(Node::FunctionCall(String::from("??")));
+                                            }
+                                        }
+                                        Ok(())
+                                    }
+                                    _ => {
+                                        expr.push(Node::FunctionCall(String::from("unsupported")));
+                                        Ok(())
+                                    },
+                                },
+                                ChannelConversionOrTextBlock::TextBlock(text_block) => {
+                                    expr.push(Node::Text(text_block.data));
+                                    Ok(())
+                                },
+                            }
+                        }
+                        recurse(Link::<ChannelConversionOrTextBlock>::from(conversion_block_link.get()), &mut self.file, &mut expression)?;
+                    } else {
+                        expression.push(Node::Arg);
+                    };
+
                     channels.push(ChannelInfo {
                         name: channel_name,
                         unit: channel_unit,
+                        conversion: expression,
                     });
                 }
                 
@@ -324,7 +682,7 @@ impl Mf4 {
         }
         Ok(all_channel_groups)
     }
-
+    
     pub fn decode_all_data(&mut self) -> Result<Vec<DecodedChannelGroupInfo>, Error> {
         let mut all_channel_groups = Vec::new();
         

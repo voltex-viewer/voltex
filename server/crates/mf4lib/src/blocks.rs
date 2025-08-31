@@ -314,7 +314,7 @@ pub struct ChannelBlock {
     pub component: NullableLink<()>,
     pub tx_name: NullableLink<TextBlock>,
     pub si_source: NullableLink<()>,
-    pub cc_conversion: NullableLink<()>,
+    pub conversion: NullableLink<ChannelConversionBlock>,
     pub data: NullableLink<()>,
     pub unit: NullableLink<TextBlock>,
     pub comment: NullableLink<TextBlock>,
@@ -335,6 +335,80 @@ pub struct ChannelBlock {
     pub limit_maximum: f64,
     pub limit_extended_minimum: f64,
     pub limit_extended_maximum: f64,
+}
+
+#[derive(Debug)]
+pub enum ConversionType {
+    OneToOne = 0,
+    Linear = 1,
+    Rational = 2,
+    Algebraic = 3,
+    ValueToValueTableWithInterpolation = 4,
+    ValueToValueTableWithoutInterpolation = 5,
+    ValueRangeToValueTable = 6,
+    ValueToTextOrScale = 7,
+    ValueRangeToTextOrScale = 8,
+    TextToValue = 9,
+    TextToText = 10,
+}
+
+impl BinRead for ConversionType {
+    type Args<'a> = ();
+    
+    fn read_options<R: binrw::io::Read + binrw::io::Seek>(
+        reader: &mut R,
+        endian: binrw::Endian,
+        (): Self::Args<'_>,
+    ) -> binrw::BinResult<Self> {
+        let val = u8::read_options(reader, endian, ())?;
+        match val {
+            0 => Ok(ConversionType::OneToOne),
+            1 => Ok(ConversionType::Linear),
+            2 => Ok(ConversionType::Rational),
+            3 => Ok(ConversionType::Algebraic),
+            4 => Ok(ConversionType::ValueToValueTableWithInterpolation),
+            5 => Ok(ConversionType::ValueToValueTableWithoutInterpolation),
+            6 => Ok(ConversionType::ValueRangeToValueTable),
+            7 => Ok(ConversionType::ValueToTextOrScale),
+            8 => Ok(ConversionType::ValueRangeToTextOrScale),
+            9 => Ok(ConversionType::TextToValue),
+            10 => Ok(ConversionType::TextToText),
+            _ => Err(binrw::Error::BadMagic {
+                pos: reader.stream_position().unwrap_or(0),
+                found: Box::new(val)
+            }),
+        }
+    }
+}
+
+#[derive(BinRead, Debug)]
+#[br(little, magic = b"##CC")]
+pub struct ChannelConversionBlock {
+    _reserved1: u32,
+    length: u64,
+    links: u64,
+    pub tx_name: NullableLink<TextBlock>,
+    pub md_unit: NullableLink<()>, // TextBlock or MetadataBlock
+    pub md_comment: NullableLink<()>, // TextBlock or MetadataBlock
+    pub inverse: NullableLink<ChannelConversionBlock>,
+    #[br(count = links - 4)]
+    pub refs: Vec<Link<ChannelConversionOrTextBlock>>,
+    pub conversion_type: ConversionType,
+    pub precision: u8,
+    pub flags: u16,
+    pub reference_count: u16,
+    pub value_count: u16,
+    pub physical_range_minimum: f64,
+    pub physical_range_maximum: f64,
+    #[br(count = value_count)]
+    pub values: Vec<f64>,
+}
+
+#[derive(BinRead, Debug)]
+#[br(little)]
+pub enum ChannelConversionOrTextBlock {
+    ChannelConversionBlock(ChannelConversionBlock),
+    TextBlock(TextBlock),
 }
 
 
