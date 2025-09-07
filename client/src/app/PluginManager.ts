@@ -1,4 +1,4 @@
-import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler } from './Plugin';
+import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileHandler, FileSaveHandler } from './Plugin';
 import type { RenderObject, WebGlContext } from './RenderObject';
 import type { WaveformState } from './WaveformState';
 import type { SignalMetadataManager } from './SignalMetadataManager';
@@ -32,6 +32,8 @@ interface PluginData {
     signalSources: SignalSource[];
     rowProxyCache: Map<RowImpl, Row>; // Cache proxy rows to maintain identity
     proxyToActualRowMap: Map<Row, RowImpl>; // Map proxy rows back to actual rows
+    fileExtensionHandlers: FileHandler[];
+    fileSaveHandlers: FileSaveHandler[];
 }
 
 export class PluginManager {
@@ -154,6 +156,14 @@ export class PluginManager {
                 }
 
                 return 'browser';
+            },
+            registerFileOpenHandler: (handler: FileHandler) => {
+                const data = this.pluginData.get(plugin)!;
+                data.fileExtensionHandlers.push(handler);
+            },
+            registerFileSaveHandler: (handler: FileSaveHandler) => {
+                const data = this.pluginData.get(plugin)!;
+                data.fileSaveHandlers.push(handler);
             }
         };
 
@@ -171,6 +181,8 @@ export class PluginManager {
             signalSources: [],
             rowProxyCache: new Map(),
             proxyToActualRowMap: new Map(),
+            fileExtensionHandlers: [],
+            fileSaveHandlers: [],
         });
         
         pluginModule.plugin(context);
@@ -417,5 +429,66 @@ export class PluginManager {
                 self.renderProfiler.endMeasure();
             }
         };
+    }
+
+    async handleFileOpen(file: File): Promise<boolean> {
+        let fileExtension = file.name.split('.').pop()?.toLowerCase();
+        if (!fileExtension) {
+            return false;
+        }
+        fileExtension = `.${fileExtension}`;
+
+        let handled = false;
+        for (const plugin of this.plugins) {
+            for (const handler of this.pluginData.get(plugin).fileExtensionHandlers) {
+                if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
+                    try {
+                        await handler.handler(file);
+                        handled = true;
+                    } catch (error) {
+                        console.error(`Error handling file ${file.name} with plugin ${plugin.metadata.name}:`, error);
+                    }
+                }
+            }
+        }
+
+        return handled;
+    }
+
+    getFileOpenTypes(): FilePickerAcceptType[] {
+        return this.plugins.flatMap(plugin =>
+            this.pluginData.get(plugin).fileExtensionHandlers.map(handler => ({
+                description: handler.description,
+                accept: { [handler.mimeType]: handler.extensions }
+            }))
+        );
+    }
+
+    async handleFileSave(name: string, file: FileSystemWritableFileStream): Promise<boolean> {
+        let fileExtension = name.split('.').pop()?.toLowerCase();
+        if (!fileExtension) {
+            return false;
+        }
+        fileExtension = `.${fileExtension}`;
+
+        for (const plugin of this.plugins) {
+            for (const handler of this.pluginData.get(plugin).fileSaveHandlers) {
+                if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
+                    await handler.handler(file);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    getFileSaveTypes(): FilePickerAcceptType[] {
+        return this.plugins.flatMap(plugin =>
+            this.pluginData.get(plugin).fileSaveHandlers.map(handler => ({
+                description: handler.description,
+                accept: { [handler.mimeType]: handler.extensions }
+            }))
+        );
     }
 }

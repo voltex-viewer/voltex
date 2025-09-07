@@ -1,64 +1,121 @@
-export function setupMenuBar() {
-    const menuItems = document.querySelectorAll('.menu-item');
-    const submenuItems = document.querySelectorAll('.submenu-item');
+interface MenuAction {
+    label: string;
+    accelerator?: string;
+    action: () => void;
+}
 
-    // Close all menus
+interface MenuSeparator {
+    type: 'separator';
+}
+
+interface MenuDefinition {
+    label: string;
+    items: (MenuAction | MenuSeparator)[];
+}
+
+export function createMenuBar(menuDefinition: MenuDefinition[]): HTMLElement {
+    const menuBar = document.createElement('div');
+    menuBar.className = 'menu-bar';
+
+    const menuItems: HTMLElement[] = [];
+    const acceleratorMap = new Map<string, () => void>();
+
     function closeAllMenus() {
         menuItems.forEach(item => item.classList.remove('active'));
     }
 
-    // Handle menu item clicks
-    menuItems.forEach(item => {
-        item.addEventListener('click', (e) => {
+    // Build accelerator map from menu definition
+    function buildAcceleratorMap(menus: MenuDefinition[]) {
+        menus.forEach(menu => {
+            menu.items.forEach(item => {
+                if ('accelerator' in item && item.accelerator) {
+                    acceleratorMap.set(item.accelerator.toLowerCase(), item.action);
+                }
+            });
+        });
+    }
+
+    buildAcceleratorMap(menuDefinition);
+
+    menuDefinition.forEach(menu => {
+        const menuItem = document.createElement('div');
+        menuItem.className = 'menu-item';
+        
+        const menuLabel = document.createElement('span');
+        menuLabel.textContent = menu.label;
+        menuItem.appendChild(menuLabel);
+
+        const submenu = document.createElement('div');
+        submenu.className = 'submenu';
+
+        menu.items.forEach(item => {
+            if ('type' in item && item.type === 'separator') {
+                const separator = document.createElement('div');
+                separator.className = 'submenu-separator';
+                submenu.appendChild(separator);
+            } else {
+                const menuAction = item as MenuAction;
+                const submenuItem = document.createElement('div');
+                submenuItem.className = 'submenu-item';
+
+                const labelSpan = document.createElement('span');
+                labelSpan.textContent = menuAction.label;
+                submenuItem.appendChild(labelSpan);
+
+                if (menuAction.accelerator) {
+                    const acceleratorSpan = document.createElement('span');
+                    acceleratorSpan.className = 'accelerator';
+                    acceleratorSpan.textContent = menuAction.accelerator;
+                    submenuItem.appendChild(acceleratorSpan);
+                }
+
+                submenuItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeAllMenus();
+                    menuAction.action();
+                });
+
+                submenu.appendChild(submenuItem);
+            }
+        });
+
+        menuItem.appendChild(submenu);
+        menuItems.push(menuItem);
+
+        menuItem.addEventListener('click', (e) => {
             e.stopPropagation();
-            const isActive = item.classList.contains('active');
+            const isActive = menuItem.classList.contains('active');
             closeAllMenus();
             if (!isActive) {
-                item.classList.add('active');
+                menuItem.classList.add('active');
             }
         });
-    });
 
-    // Handle submenu item clicks
-    submenuItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const action = item.getAttribute('data-action');
-            closeAllMenus();
-            
-            switch (action) {
-                case 'open':
-                    handleFileOpen();
-                    break;
-                case 'exit':
-                    handleAppExit();
-                    break;
-            }
-        });
+        menuBar.appendChild(menuItem);
     });
 
     // Close menus when clicking outside
     document.addEventListener('click', closeAllMenus);
 
-    // Handle keyboard shortcuts
+    // Handle keyboard shortcuts using accelerator map
     document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.key === 'o') {
+        const acceleratorKey = buildAcceleratorKey(e);
+        const action = acceleratorMap.get(acceleratorKey);
+        if (action) {
             e.preventDefault();
-            handleFileOpen();
+            action();
         }
     });
-}
 
-function handleFileOpen() {
-    // Send message to main process to open file dialog
-    if (window.waveformApi) {
-        window.waveformApi.openFileDialog();
+    function buildAcceleratorKey(e: KeyboardEvent): string {
+        const parts: string[] = [];
+        if (e.ctrlKey) parts.push('ctrl');
+        if (e.altKey) parts.push('alt');
+        if (e.shiftKey) parts.push('shift');
+        if (e.metaKey) parts.push('meta');
+        parts.push(e.key.toLowerCase());
+        return parts.join('+');
     }
-}
 
-function handleAppExit() {
-    // Send message to main process to quit app
-    if (window.waveformApi) {
-        window.waveformApi.quitApp();
-    }
+    return menuBar;
 }

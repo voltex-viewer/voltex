@@ -87,6 +87,20 @@ export interface RowInsert {
     row: RowParameters;
 }
 
+export interface FileHandler {
+    extensions: `.${string}`[];
+    description: string;
+    mimeType: `${string}/${string}`;
+    handler: (file: File) => Promise<void>;
+}
+
+export interface FileSaveHandler {
+    extensions: `.${string}`[];
+    description: string;
+    mimeType: `${string}/${string}`;
+    handler: (file: FileSystemWritableFileStream) => Promise<void>;
+}
+
 export interface PluginContext {
     state: WaveformState;
     webgl: WebGlContext;
@@ -105,6 +119,8 @@ export interface PluginContext {
     getRows(): Row[];
     loadConfig<T>(schema: t.Type<T>, defaultConfig: T): T;
     getEnvironment(): 'electron' | 'browser';
+    registerFileOpenHandler(handler: FileHandler): void;
+    registerFileSaveHandler(handler: FileSaveHandler): void;
 }
 
 export interface PluginMetadata {

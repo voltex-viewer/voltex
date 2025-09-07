@@ -13,10 +13,10 @@ import TimeAxisFunction from './time-axis/TimeAxisPlugin';
 import TimeAxisMetadata from './time-axis/plugin.json';
 import WaveformLabelsFunction from './waveform-labels/WaveformLabelsPlugin';
 import WaveformLabelsMetadata from './waveform-labels/plugin.json';
-import FileLoaderFunction from './file-loader/FileLoaderPlugin';
-import FileLoaderMetadata from './file-loader/plugin.json';
 import ProfilerFunction from './profiler/ProfilerPlugin';
 import ProfilerMetadata from './profiler/plugin.json';
+import mdfLoaderFunction from './mdfLoader/mdfLoaderPlugin';
+import mdfLoaderMetadata from './mdfLoader/plugin.json';
 
 const FpsPlugin: PluginModule = {
     plugin: FpsPluginFunction,
@@ -53,14 +53,26 @@ const WaveformLabelsPlugin: PluginModule = {
     metadata: WaveformLabelsMetadata
 };
 
-const FileLoaderPlugin: PluginModule = {
-    plugin: FileLoaderFunction,
-    metadata: FileLoaderMetadata
-};
-
 const ProfilerPlugin: PluginModule = {
     plugin: ProfilerFunction,
     metadata: ProfilerMetadata
 };
 
-export { FpsPlugin, HorizontalGridPlugin, SignalManagerPlugin, WaveformRendererPlugin, DemoSignalsPlugin, TimeAxisPlugin, WaveformLabelsPlugin, FileLoaderPlugin, ProfilerPlugin };
+const mdfLoaderPlugin: PluginModule = {
+    plugin: mdfLoaderFunction,
+    metadata: mdfLoaderMetadata
+};
+
+export function getAvailablePlugins(): PluginModule[] {
+    return [
+        FpsPlugin,
+        HorizontalGridPlugin,
+        TimeAxisPlugin,
+        SignalManagerPlugin,
+        WaveformRendererPlugin,
+        WaveformLabelsPlugin,
+        DemoSignalsPlugin,
+        ProfilerPlugin,
+        mdfLoaderPlugin,
+    ];
+}

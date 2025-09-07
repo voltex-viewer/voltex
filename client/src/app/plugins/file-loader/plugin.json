@@ -1,6 +1,0 @@
-{
-  "name": "File Loader",
-  "version": "1.0.0",
-  "description": "Loads waveform files and provides them as signal sources",
-  "author": "Voltex"
-}

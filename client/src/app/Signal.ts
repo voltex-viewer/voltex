@@ -13,6 +13,93 @@ export interface Signal {
     valueTable: ReadonlyMap<number, string>;
 }
 
+export class Sequence {
+    private _min: number;
+    private _max: number;
+    private _data: Float32Array;
+    private _length: number;
+
+    constructor() {
+        this._min = Infinity;
+        this._max = -Infinity;
+        this._data = new Float32Array(1024);
+        this._length = 0;
+    }
+
+    push(value: number) {
+        if (value < this._min) {
+            this._min = value;
+        }
+        if (value > this._max) {
+            this._max = value;
+        }
+        if (this._length === this._data.length) {
+            const newData = new Float32Array(Math.max(this._data.length * 2, 1024));
+            newData.set(this._data);
+            this._data = newData;
+        }
+        this._data[this._length] = value;
+        this._length++;
+    }
+
+    get min(): number {
+        return this._min == Infinity ? 0 : this._min;
+    }
+
+    get max(): number {
+        return this._max == -Infinity ? 0 : this._max;
+    }
+
+    get data(): Float32Array {
+        return this._data.subarray(0, this._length);
+    }
+
+    get length(): number {
+        return this._length;
+    }
+}
+
+export class SequenceSignal implements Signal {
+    private _time: Sequence;
+    private _value: Sequence;
+
+    constructor(
+        public source: SignalSource,
+        time: Sequence,
+        value: Sequence) {
+        this._time = time;
+        this._value = value;
+    }
+
+    data(index: number): ChannelPoint {
+        return [this._time.data[index], this._value.data[index]];
+    }
+
+    get length(): number {
+        return Math.min(this._time.length, this._value.length);
+    }
+
+    get minTime(): number {
+        return this._time.min;
+    }
+
+    get maxTime(): number {
+        return this._time.max;
+    }
+
+    get minValue(): number {
+        return this._value.min;
+    }
+
+    get maxValue(): number {
+        return this._value.max;
+    }
+
+    get valueTable(): ReadonlyMap<number, string> {
+        return new Map();
+    }
+}
+
 export class InMemorySignal implements Signal {
     source: SignalSource;
     private _data: ChannelPoint[];

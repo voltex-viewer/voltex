@@ -1,7 +1,7 @@
+import { getAvailablePlugins } from '..';
 import type { PluginContext, SidebarEntry } from '../../Plugin';
 import type { PluginManager } from '../../PluginManager';
 import { ConfigUIGenerator } from './ConfigUIGenerator';
-import { getAvailablePlugins } from '../../PluginRegistry';
 import * as t from 'io-ts';
 
 const PluginManagerConfigSchema = t.type({

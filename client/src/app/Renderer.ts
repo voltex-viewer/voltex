@@ -11,6 +11,7 @@ import PluginManagerMetadata from './plugins/manager/plugin.json';
 import { PluginModule } from './Plugin';
 import { ContainerRenderObject } from './ContainerRenderObject';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
+import { Signal } from './Signal';
 
 interface InternalMouseEvent extends MouseEvent {
     readonly stopPropagationCalled: boolean;
@@ -24,7 +25,7 @@ const PluginManagerPlugin: PluginModule = {
 export class Renderer {
     private canvas: HTMLCanvasElement;
     private webglUtils: WebGLUtils;
-    private pluginManager: PluginManager;
+    public readonly pluginManager: PluginManager;
     private signalMetadata: SignalMetadataManager;
     private signalSources: SignalSourceManagerImpl;
     private renderProfiler: RenderProfiler;
@@ -83,6 +84,8 @@ export class Renderer {
         this.pluginManager.registerPluginType(PluginManagerPlugin);
         this.pluginManager.enablePlugin(PluginManagerPlugin);
         setPluginManager(this.pluginManager);
+
+        (window as any).saveCsv = this.saveCsv.bind(this);
         
         // Set up mouse event handlers on the canvas
         this.setupMouseEventHandlers();
@@ -326,6 +329,51 @@ export class Renderer {
         this.renderProfiler.endMeasure();
         
         return rerenderRequested;
+    }
+
+    async saveCsv(): Promise<void> {
+        const rows = this.rowContainer.getAllRows();
+
+        // Collect all signals from all rows
+        const allSignals: Array<{signal: Signal, rowIndex: number, signalIndex: number}> = [];
+        for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+            const row = rows[rowIndex];
+            if (row.selected) {
+                for (let signalIndex = 0; signalIndex < row.signals.length; signalIndex++) {
+                    allSignals.push({
+                        signal: row.signals[signalIndex],
+                        rowIndex,
+                        signalIndex
+                    });
+                }
+            }
+        }
+
+        // Create a separate CSV file for each signal
+        for (const {signal, rowIndex, signalIndex} of allSignals) {
+            const signalName = signal.source.name.join('_') || `Row${rowIndex}_Signal${signalIndex}`;
+            
+            // Generate CSV content for this signal
+            let csvContent = 'Time,Value\n';
+            
+            // Add all data points for this signal
+            for (let i = 0; i < signal.length; i++) {
+                const [time, value] = signal.data(i);
+                csvContent += `${time},${value}\n`;
+            }
+
+            // Use browser download API to save this signal's CSV
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${signalName}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     }
 }
 

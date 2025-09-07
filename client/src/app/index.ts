@@ -2,12 +2,9 @@ import './index.css';
 import { WaveformState } from './WaveformState';
 import { Renderer } from './Renderer';
 import { VerticalSidebar } from './VerticalSidebar';
-import { setupMenuBar } from './MenuBar';
+import { createMenuBar } from './MenuBar';
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Setup menu bar first
-    setupMenuBar();
-
     const root = document.getElementById('root');
     if (!root) return;
     root.classList.add('waveform-root');
@@ -48,4 +45,78 @@ document.addEventListener('DOMContentLoaded', () => {
     renderer.resizeCanvases();
     window.addEventListener('resize', () => renderer.resizeCanvases());
     requestRender();
+
+    // Create and insert menu bar first
+    document.body.insertBefore(
+        createMenuBar([
+            {
+                label: 'File',
+                items: [
+                    {
+                        label: 'Open...',
+                        accelerator: 'Ctrl+O',
+                        action: async () => {
+                            try {
+                                // Show file picker
+                                const fileHandles = await window.showOpenFilePicker({
+                                    multiple: false,
+                                    excludeAcceptAllOption: true,
+                                    types: renderer.pluginManager.getFileOpenTypes(),
+                                });
+
+                                const file = await fileHandles[0].getFile();
+                                
+                                const handled = await renderer.pluginManager.handleFileOpen(file);
+                                
+                                if (!handled) {
+                                    throw Error(`No plugin found to handle file: ${file.name}`);
+                                }
+                            } catch (error) {
+                                if (error.name === 'AbortError') {
+                                    // User cancelled the file picker
+                                    return;
+                                }
+                                throw error;
+                            }
+                        }
+                    },
+                    {
+                        label: 'Save As...',
+                        accelerator: 'Ctrl+S',
+                        action: async () => {
+                            try {
+                                // Show file picker
+                                const fileHandle = await window.showSaveFilePicker({
+                                    excludeAcceptAllOption: true,
+                                    types: renderer.pluginManager.getFileSaveTypes(),
+                                });
+
+                                const writable = await fileHandle.createWritable({ keepExistingData: false });
+                                const handled = await renderer.pluginManager.handleFileSave(fileHandle.name, writable);
+                                
+                                if (!handled) {
+                                    throw Error(`No plugin found to handle file`);
+                                }
+                            } catch (error) {
+                                if (error.name === 'AbortError') {
+                                    // User cancelled the file picker
+                                    return;
+                                }
+                                throw error;
+                            }
+                        }
+                    },
+                    { type: 'separator' },
+                    {
+                        label: 'Exit',
+                        action: () => {
+                            if (window.waveformApi) {
+                                window.waveformApi.quitApp();
+                            }
+                        }
+                    }
+                ]
+            }
+        ]),
+        document.body.firstChild);
 });
