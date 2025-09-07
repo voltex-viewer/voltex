@@ -1,5 +1,0 @@
-target/
-
-# PCAN files (proprietary, must be downloaded separately)
-crates/pcan-basic/
-crates/pcan-basic-bindings/

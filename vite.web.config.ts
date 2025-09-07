@@ -3,16 +3,16 @@ import path from 'path';
 
 // https://vitejs.dev/config
 export default defineConfig({
-  root: 'src/app',
+  root: '.', // Use project root instead of src/app
   base: './', // Use relative paths for GitHub Pages compatibility
   build: {
-    outDir: '../../dist-web',
+    outDir: 'dist-web',
     emptyOutDir: true,
     sourcemap: true,
     minify: false,
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'src/app/index.html')
+        main: path.resolve(__dirname, 'index.html')
       }
     }
   },

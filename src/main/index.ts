@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
-import { spawn } from 'child_process';
 import path from 'path';
 import started from 'electron-squirrel-startup';
 
@@ -7,8 +6,6 @@ import started from 'electron-squirrel-startup';
 if (started) {
     app.quit();
 }
-
-let rustProcess: ReturnType<typeof spawn> | null = null;
 
 // IPC handlers for menu actions
 ipcMain.handle('open-file-dialog', async () => {
@@ -34,48 +31,6 @@ ipcMain.handle('open-file-dialog', async () => {
 ipcMain.handle('quit-app', () => {
     app.quit();
 });
-
-const startRustServer = () => {
-    // Dynamically resolve the Rust server binary path for dev and packaged modes
-    let exe: string;
-    if (app.isPackaged) {
-        exe = process.platform === 'win32'
-            ? path.resolve(process.resourcesPath, 'server.exe')
-            : path.resolve(process.resourcesPath, 'server');
-    } else {
-        // In development, use the debug build
-        exe = process.platform === 'win32'
-            ? path.resolve(__dirname, '../../../server/target/debug/server.exe')
-            : path.resolve(__dirname, '../../../server/target/debug/server');
-    }
-
-    const rust = spawn(exe, [], {
-        cwd: path.dirname(exe),
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: false,
-    });
-    rust.on('error', (err) => {
-        console.error('Failed to start Rust server:', err);
-    });
-    if (rust.stdout) {
-        rust.stdout.on('data', (data) => {
-            console.log(`[Rust server] ${data.toString().trim()}`);
-        });
-    }
-    if (rust.stderr) {
-        rust.stderr.on('data', (data) => {
-            console.error(`[Rust server] ${data.toString().trim()}`);
-        });
-    }
-    rustProcess = rust;
-};
-
-const stopRustServer = () => {
-    if (rustProcess) {
-        rustProcess.kill();
-        rustProcess = null;
-    }
-};
 
 const createWindow = () => {
     // Create the browser window.
@@ -124,10 +79,6 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
-    // Start Rust server unless --no-server flag is passed
-    if (!process.argv.includes('--no-server')) {
-        startRustServer();
-    }
     createWindow();
 });
 
@@ -138,10 +89,6 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
-});
-
-app.on('before-quit', () => {
-    stopRustServer();
 });
 
 app.on('activate', () => {
