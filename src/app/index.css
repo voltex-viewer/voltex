@@ -3,6 +3,41 @@
     --menu-bar-height: 24px;
 }
 
+/* Custom Scrollbars - Dark Theme */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1e24;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #3a404a;
+    border-radius: 4px;
+    border: 1px solid #2c313a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4a505a;
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: #5a606a;
+}
+
+::-webkit-scrollbar-corner {
+    background: #1a1e24;
+}
+
+/* Firefox scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #3a404a #1a1e24;
+}
+
 /* Menu Bar Styles - Consistent with Application Theme */
 .menu-bar {
     display: flex;

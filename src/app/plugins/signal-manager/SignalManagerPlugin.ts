@@ -133,7 +133,7 @@ function renderContent(): HTMLElement {
             </div>
             <input type="text" id="signal-search" placeholder="Search signals..." class="search-input">
         </div>
-        <div id="signal-tree" style="display: flex; flex-direction: column; max-height: 500px; overflow-y: auto;">
+        <div id="signal-tree" style="display: flex; flex-direction: column;">
         </div>
     `;
 
