@@ -1,5 +1,4 @@
 import * as t from 'io-ts';
-import { RenderMode } from '../../Plugin';
 
 // Config schema for WaveformRenderer
 export const WaveformConfigSchema = t.type({

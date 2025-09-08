@@ -19,7 +19,7 @@ export class Sequence {
     private _data: Float32Array;
     private _length: number;
 
-    constructor() {
+    constructor(private conversion?: (value: number) => number | string) {
         this._min = Infinity;
         this._max = -Infinity;
         this._data = new Float32Array(1024);
@@ -57,6 +57,34 @@ export class Sequence {
     get length(): number {
         return this._length;
     }
+
+    valueAt(index: number): number {
+        const value = this._data[index];
+        if (this.conversion !== undefined) {
+            const result = this.conversion(value);
+            if (typeof result === 'number') {
+                return result;
+            } else {
+                return value;
+            }
+        } else {
+            return value;
+        }
+    }
+
+    convertedValueAt(index: number): number | string {
+        const value = this._data[index];
+        if (this.conversion !== undefined) {
+            const result = this.conversion(value);
+            if (typeof result !== 'undefined') {
+                return result;
+            } else {
+                return value;
+            }
+        } else {
+            return value;
+        }
+    }
 }
 
 export class SequenceSignal implements Signal {
@@ -72,7 +100,11 @@ export class SequenceSignal implements Signal {
     }
 
     data(index: number): ChannelPoint {
-        return [this._time.data[index], this._value.data[index]];
+        return [this._time.valueAt(index), this._value.valueAt(index)];
+    }
+
+    convertedData(index: number): [t: number, v: number | string] {
+        return [this._time.valueAt(index), this._value.convertedValueAt(index)];
     }
 
     get length(): number {

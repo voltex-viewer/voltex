@@ -4,7 +4,7 @@ import { RenderObject, type RenderContext, type RenderBounds, type MouseEvent } 
 import { WebGLUtils } from '../../WebGLUtils';
 import { type WaveformConfig } from './WaveformConfig';
 import { RenderMode } from '../../Plugin';
-import type { WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
+import type { SignalTooltipData, WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
 import type { ChannelBufferData } from './WaveformRendererPlugin';
 import type { WaveformShaders } from './WaveformShaders';
 import { WaveformRenderObject } from './WaveformRenderObject';
@@ -190,13 +190,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         const mouseTimeDouble = (state.offset + this.mouse.offsetX) / state.pxPerSecond;
         
         // Aggregate tooltip data
-        const signalData: Array<{
-            signal: Signal;
-            time: number;
-            value: number;
-            dataIndex: number;
-            color: string;
-        }> = [];
+        const signalData: Array<SignalTooltipData> = [];
 
         // Find data for all signals at this time and render highlight dots
         for (const signal of this.signals) {
@@ -204,15 +198,13 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
             if (dataPoint !== null && signal.valueTable.get(dataPoint.value) !== "null") {
                 const color = this.context.signalMetadata.getColor(signal);
                 signalData.push({
+                    ...dataPoint,
                     signal: signal,
-                    time: dataPoint.time,
-                    value: dataPoint.value,
-                    dataIndex: dataPoint.index,
                     color: color
                 });
                 
                 // Render highlight for this signal using the existing WaveformRenderObject
-                this.renderHighlightedSignal(context, bounds, signal, dataPoint.index);
+                this.renderHighlightedSignal(context, bounds, signal, dataPoint.dataIndex);
             }
         }
 
@@ -308,7 +300,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         }
     }
 
-    private getSignalValueAtTime(signal: Signal, time: number): { time: number; value: number; index: number } | null {
+    private getSignalValueAtTime(signal: Signal, time: number): { time: number; value: number; display: number | string; dataIndex: number } | null {
         const bufferData = this.signalBuffers.get(signal);
         if (!bufferData || bufferData.updateIndex === 0) return null;
 
@@ -358,6 +350,10 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         }
 
         const [dataTime, value] = signal.data(closestIndex);
-        return { time: dataTime, value, index: closestIndex };
+        let display: number | string = value;
+        if ('convertedData' in signal && typeof signal.convertedData === 'function') {
+            [, display] = signal.convertedData(closestIndex);
+        }
+        return { time: dataTime, value, display, dataIndex: closestIndex };
     }
 }

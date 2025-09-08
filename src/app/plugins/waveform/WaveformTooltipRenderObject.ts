@@ -3,10 +3,11 @@ import { WebGLUtils } from '../../WebGLUtils';
 import { WaveformConfig } from './WaveformConfig';
 import type { Signal } from '../../Signal';
 
-interface SignalTooltipData {
+export interface SignalTooltipData {
     signal: Signal;
     time: number;
     value: number;
+    display: number | string;
     dataIndex: number;
     color: string;
 }
@@ -44,14 +45,14 @@ export class WaveformTooltipRenderObject extends RenderObject {
 
     private formatValue(signalData: SignalTooltipData, yScale: number): string {
         try {
-            const { signal, value, time, color, dataIndex } = signalData;
+            const { signal, value, time, color, dataIndex, display } = signalData;
             const name = signal.source.name;
             const valueTable = signal.valueTable;
             
             const formatFunction = new Function(
-                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'valueTable',
+                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'valueTable', 'display',
                 `return ${this.config.formatTooltip}`);
-            return String(formatFunction(value, time, name, color, dataIndex, yScale, valueTable));
+            return String(formatFunction(value, time, name, color, dataIndex, yScale, valueTable, display));
         } catch (error) {
             console.warn('Error in custom tooltip formatter:', error);
             return "Error";
@@ -76,9 +77,8 @@ export class WaveformTooltipRenderObject extends RenderObject {
         const lines: Array<{ text: string; color: string }> = [];
         
         for (const signal of this.tooltipData.signals) {
-            const formattedValue = this.formatValue(signal, this.tooltipData.yScale);
             lines.push({
-                text: `${formattedValue}`,
+                text: this.formatValue(signal, this.tooltipData.yScale),
                 color: signal.color
             });
         }

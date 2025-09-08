@@ -191,7 +191,7 @@ class DataGroupLoader {
         } else {
             this.loaded = true;
         }
-        let records = new Map<number, {length: number, sequences: {sequence: Sequence, loader: ((buffer: DataView) => number), conversion: (value: number) => number | string}[]}>();
+        let records = new Map<number, {length: number, sequences: {sequence: Sequence, loader: ((buffer: DataView) => number)}[]}>();
         for (const {group, channels} of this.groups) {
             const recordId = Number(group.recordId);
             if (records.has(recordId)) {
@@ -203,11 +203,10 @@ class DataGroupLoader {
             const sequences = [];
             for (let i = 0; i < channels.length; i++) {
                 const {channel, source, conversion, name} = channels[i];
-                const sequence = new Sequence();
+                const sequence = new Sequence(conversion);
                 sequences.push({
                     sequence,
                     loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
-                    conversion,
                 });
                 this.signals.set(channels[i].channel, new SequenceSignal(source, sequences[0].sequence, sequence));
             }
@@ -215,16 +214,8 @@ class DataGroupLoader {
         }
         let rowCount = 0;
         await parseData(this.dataGroup, this.file, (context, view) => {
-            for (const {sequence, loader, conversion} of context.sequences)
-            {
-                const result = conversion(loader(view));
-                if (typeof result === 'number') {
-                    sequence.push(result);
-                } else {
-                    // For string results, we can either skip or convert to a number
-                    // For now, we'll push 0 as a placeholder for string values
-                    sequence.push(0);
-                }
+            for (const {sequence, loader} of context.sequences) {
+                sequence.push(loader(view));
             }
             rowCount += 1;
         }, records);
