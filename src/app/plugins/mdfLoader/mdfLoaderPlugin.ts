@@ -1,4 +1,4 @@
-import { Sequence, SequenceSignal, Signal } from '../../Signal';
+import { InMemorySequence, SequenceSignal, Signal } from '../../Signal';
 import { PluginContext, SignalSource } from '../../Plugin';
 import {
     Link, newLink, getLink, readBlock,
@@ -191,7 +191,7 @@ class DataGroupLoader {
         } else {
             this.loaded = true;
         }
-        let records = new Map<number, {length: number, sequences: {sequence: Sequence, loader: ((buffer: DataView) => number)}[]}>();
+        let records = new Map<number, {length: number, sequences: {sequence: InMemorySequence, loader: ((buffer: DataView) => number)}[]}>();
         for (const {group, channels} of this.groups) {
             const recordId = Number(group.recordId);
             if (records.has(recordId)) {
@@ -203,7 +203,7 @@ class DataGroupLoader {
             const sequences = [];
             for (let i = 0; i < channels.length; i++) {
                 const {channel, source, conversion, name} = channels[i];
-                const sequence = new Sequence(conversion);
+                const sequence = new InMemorySequence(conversion);
                 sequences.push({
                     sequence,
                     loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),

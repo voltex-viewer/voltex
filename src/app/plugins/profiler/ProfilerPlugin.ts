@@ -1,4 +1,5 @@
 import { MeasureInfo, PluginContext } from '../../Plugin';
+import { Sequence } from '../../Signal';
 
 export default (context: PluginContext): void => {
     const profiler = context.renderProfiler;
@@ -20,29 +21,9 @@ export default (context: PluginContext): void => {
             const valueTable = new Map<number, string>();
             return {
                 source: signalSource,
-                valueTable,
-                data: (index: number) => {
-                    if (index < 0 || index >= frameData.length) {
-                        return [0, 0] as [number, number];
-                    }
-                    const frameEntry = frameData[index];
-                    return [frameEntry.timestamp, frameEntry.frameTime] as [number, number];
-                },
-                get length() {
-                    return frameData.length;
-                },
-                get minTime() {
-                    return frameData.length > 0 ? frameData[0].timestamp : 0;
-                },
-                get maxTime() {
-                    return frameData.length > 0 ? frameData[frameData.length - 1].timestamp : 0;
-                },
-                get minValue() {
-                    return frameData.length === 0 ? 0 : (minFrameTime === Infinity ? 0 : minFrameTime);
-                },
-                get maxValue() {
-                    return frameData.length === 0 ? 0 : (maxFrameTime === -Infinity ? 0 : maxFrameTime);
-                }
+                time: new ProfilerTimeSequence(frameData),
+                values: new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
+                valueTable
             };
         }
     };
@@ -95,29 +76,9 @@ export default (context: PluginContext): void => {
                         
                         return {
                             source: depthSource,
-                            valueTable: idToNameMap,
-                            data: (index: number) => {
-                                if (index < 0 || index >= timelineData.length) {
-                                    return [0, 0] as [number, number];
-                                }
-                                const entry = timelineData[index];
-                                return [entry.timestamp, entry.active] as [number, number];
-                            },
-                            get length() {
-                                return timelineData.length;
-                            },
-                            get minTime() {
-                                return timelineData.length > 0 ? timelineData[0].timestamp : 0;
-                            },
-                            get maxTime() {
-                                return timelineData.length > 0 ? timelineData[timelineData.length - 1].timestamp : 0;
-                            },
-                            get minValue() {
-                                return 0;
-                            },
-                            get maxValue() {
-                                return Math.max(1, nextId - 1);
-                            }
+                            time: new FlameGraphTimeSequence(timelineData),
+                            values: new FlameGraphValueSequence(timelineData, nextId),
+                            valueTable: idToNameMap
                         };
                     }
                 };
@@ -332,3 +293,91 @@ export default (context: PluginContext): void => {
         }
     });
 };
+
+class ProfilerTimeSequence implements Sequence {
+    constructor(private frameData: Array<{ timestamp: number; frameTime: number }>) {}
+
+    get min(): number {
+        return this.frameData.length > 0 ? this.frameData[0].timestamp : 0;
+    }
+
+    get max(): number {
+        return this.frameData.length > 0 ? this.frameData[this.frameData.length - 1].timestamp : 0;
+    }
+
+    get length(): number {
+        return this.frameData.length;
+    }
+
+    valueAt(index: number): number {
+        if (index < 0 || index >= this.frameData.length) return 0;
+        return this.frameData[index].timestamp;
+    }
+}
+
+class ProfilerValueSequence implements Sequence {
+    constructor(
+        private frameData: Array<{ timestamp: number; frameTime: number }>,
+        private minFrameTime: number,
+        private maxFrameTime: number
+    ) {}
+
+    get min(): number {
+        return this.frameData.length === 0 ? 0 : (this.minFrameTime === Infinity ? 0 : this.minFrameTime);
+    }
+
+    get max(): number {
+        return this.frameData.length === 0 ? 0 : (this.maxFrameTime === -Infinity ? 0 : this.maxFrameTime);
+    }
+
+    get length(): number {
+        return this.frameData.length;
+    }
+
+    valueAt(index: number): number {
+        if (index < 0 || index >= this.frameData.length) return 0;
+        return this.frameData[index].frameTime;
+    }
+}
+
+class FlameGraphTimeSequence implements Sequence {
+    constructor(private timelineData: Array<{ timestamp: number; active: number }>) {}
+
+    get min(): number {
+        return this.timelineData.length > 0 ? this.timelineData[0].timestamp : 0;
+    }
+
+    get max(): number {
+        return this.timelineData.length > 0 ? this.timelineData[this.timelineData.length - 1].timestamp : 0;
+    }
+
+    get length(): number {
+        return this.timelineData.length;
+    }
+
+    valueAt(index: number): number {
+        if (index < 0 || index >= this.timelineData.length) return 0;
+        return this.timelineData[index].timestamp;
+    }
+}
+
+class FlameGraphValueSequence implements Sequence {
+    constructor(private timelineData: Array<{ timestamp: number; active: number }>, private maxId: number) {}
+
+    get min(): number {
+        return 0;
+    }
+
+    get max(): number {
+        return Math.max(1, this.maxId - 1);
+    }
+
+    get length(): number {
+        return this.timelineData.length;
+    }
+
+    valueAt(index: number): number {
+        if (index < 0 || index >= this.timelineData.length) return 0;
+        return this.timelineData[index].active;
+    }
+}

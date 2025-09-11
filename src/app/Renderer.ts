@@ -357,8 +357,9 @@ export class Renderer {
             let csvContent = 'Time,Value\n';
             
             // Add all data points for this signal
-            for (let i = 0; i < signal.length; i++) {
-                const [time, value] = signal.data(i);
+            for (let i = 0; i < signal.time.length; i++) {
+                const time = signal.time.valueAt(i);
+                const value = signal.values.valueAt(i);
                 csvContent += `${time},${value}\n`;
             }
 

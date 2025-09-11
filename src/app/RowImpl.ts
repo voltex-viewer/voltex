@@ -93,8 +93,8 @@ export class RowImpl implements Row {
         const padding = 0.7;
         
         for (const signal of this.signals) {
-            minValue = Math.min(minValue, signal.minValue);
-            maxValue = Math.max(maxValue, signal.maxValue);
+            minValue = Math.min(minValue, signal.values.min);
+            maxValue = Math.max(maxValue, signal.values.max);
         }
         
         if (minValue === Infinity || maxValue === -Infinity || minValue === maxValue) {

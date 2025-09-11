@@ -103,7 +103,7 @@ export default (context: PluginContext): void => {
             }
 
             const gl = context.webgl.gl;
-            const sigLen = channel.length;
+            const sigLen = channel.time.length;
             
             if (bufferData.lastDataLength !== sigLen) {
                 // Allocate separate buffers for time and value data
@@ -137,7 +137,8 @@ export default (context: PluginContext): void => {
                 const valueBuffer = new Float32Array(endIndex - bufferData.updateIndex);
 
                 for (let i = 0, j = bufferData.updateIndex; j < endIndex; i++, j++) {
-                    const [time, value] = channel.data(j);
+                    const time = channel.time.valueAt(j);
+                    const value = channel.values.valueAt(j);
                     timeBuffer[i] = time;
                     valueBuffer[i] = value;
                 }

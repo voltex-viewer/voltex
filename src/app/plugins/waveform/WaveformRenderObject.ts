@@ -63,7 +63,7 @@ export class WaveformRenderObject extends RenderObject {
             gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), state.pxPerSecond);
 
             // Pass max value for color generation
-            gl.uniform1f(gl.getUniformLocation(program, 'u_maxValue'), this.signal.maxValue);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_maxValue'), this.signal.values.max);
 
             const [r, g, b, a] = WebGLUtils.hexToRgba(color);
             gl.uniform4f(gl.getUniformLocation(program, 'u_color'), r, g, b, a);
@@ -76,7 +76,7 @@ export class WaveformRenderObject extends RenderObject {
                     break;
                 }
             }
-            gl.uniform1f(gl.getUniformLocation(program, 'u_nullValue'), nullValue !== null ? nullValue : (this.signal.maxValue + 1.0));
+            gl.uniform1f(gl.getUniformLocation(program, 'u_nullValue'), nullValue !== null ? nullValue : (this.signal.values.max + 1.0));
             gl.uniform1i(gl.getUniformLocation(program, 'u_hasNullValue'), nullValue !== null ? 1 : 0);
         };
 
@@ -141,10 +141,11 @@ export class WaveformRenderObject extends RenderObject {
 
         // Render text for segments in the visible range
         for (let i = startIndex; i <= endIndex && i < this.bufferData.updateIndex - 1; i++) {
-            const [segmentStartTime, value] = this.signal.data(i);
+            const segmentStartTime = this.signal.time.valueAt(i);
+            const value = this.signal.values.valueAt(i);
             
             // Get the end time of this segment (the second point of this pair)
-            const [segmentEndTime] = this.signal.data(i + 1);
+            const segmentEndTime = this.signal.time.valueAt(i + 1);
             
             let enumText = valueTable.get(value) || value.toString();
 
@@ -241,13 +242,13 @@ export class WaveformRenderObject extends RenderObject {
 
         while (left <= right) {
             const mid = Math.floor((left + right) / 2);
-            const [midTime] = this.signal.data(mid);
+            const midTime = this.signal.time.valueAt(mid);
 
             if (findStart) {
                 // For start index: find leftmost position where segment might be visible
-                // A segment at index i is visible if signal.data(i+1)[0] >= startTime
+                // A segment at index i is visible if signal.time.valueAt(i+1) >= startTime
                 if (mid + 1 < this.bufferData.updateIndex) {
-                    const [nextTime] = this.signal.data(mid + 1);
+                    const nextTime = this.signal.time.valueAt(mid + 1);
                     if (nextTime >= targetTime) {
                         result = mid;
                         right = mid - 1;
@@ -263,7 +264,7 @@ export class WaveformRenderObject extends RenderObject {
                 }
             } else {
                 // For end index: find rightmost position where segment might be visible
-                // A segment at index i is visible if signal.data(i)[0] <= endTime
+                // A segment at index i is visible if signal.time.valueAt(i) <= endTime
                 if (midTime <= targetTime) {
                     result = mid;
                     left = mid + 1;

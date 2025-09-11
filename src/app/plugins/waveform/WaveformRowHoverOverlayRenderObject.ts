@@ -1,5 +1,5 @@
 import type { PluginContext, Row } from '../../Plugin';
-import type { Signal, ChannelPoint } from '../../Signal';
+import type { Signal, ChannelPoint, Sequence } from '../../Signal';
 import { RenderObject, type RenderContext, type RenderBounds, type MouseEvent } from '../../RenderObject';
 import { WebGLUtils } from '../../WebGLUtils';
 import { type WaveformConfig } from './WaveformConfig';
@@ -20,10 +20,8 @@ class HighlightSignal implements Signal {
         public readonly source: Signal['source'],
         data: ChannelPoint[],
         public readonly valueTable: ReadonlyMap<number, string>,
-        public readonly minTime: number,
-        public readonly maxTime: number,
-        public readonly minValue: number,
-        public readonly maxValue: number
+        public readonly time: ArrayTimeSequence,
+        public readonly values: ArrayValueSequence
     ) {
         this._data = data;
     }
@@ -66,14 +64,13 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
             const bufferData = signalBuffers.get(signal);
             if (bufferData) {
                 // Create a highlight signal that will hold just the highlighted data
+                const emptyData: ChannelPoint[] = [];
                 const highlightSignal = new HighlightSignal(
                     signal.source,
-                    [], // Start with empty data
+                    emptyData, // Start with empty data
                     signal.valueTable, // Preserve the original valueTable
-                    signal.minTime,
-                    signal.maxTime,
-                    signal.minValue,
-                    signal.maxValue
+                    new ArrayTimeSequence(emptyData),
+                    new ArrayValueSequence(emptyData)
                 );
                 
                 this.highlightSignals.set(signal, highlightSignal);
@@ -261,12 +258,15 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
             // For enum, render the segment (paired points)
             if (dataIndex >= originalBufferData.updateIndex - 1) return;
             
-            const [time1, value1] = signal.data(dataIndex);
-            const [time2, value2] = signal.data(dataIndex + 1);
+            const time1 = signal.time.valueAt(dataIndex);
+            const value1 = signal.values.valueAt(dataIndex);
+            const time2 = signal.time.valueAt(dataIndex + 1);
+            const value2 = signal.values.valueAt(dataIndex + 1);
             pointData = [[time1, value1], [time2, value2]];
         } else {
             // For all other modes (Lines, Dots, LinesDots), just show the single point as a dot
-            const [time, value] = signal.data(dataIndex);
+            const time = signal.time.valueAt(dataIndex);
+            const value = signal.values.valueAt(dataIndex);
             pointData = [[time, value]];
         }
 
@@ -310,7 +310,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         
         while (left < right) {
             const mid = Math.floor((left + right) / 2);
-            const [midTime] = signal.data(mid);
+            const midTime = signal.time.valueAt(mid);
             
             if (midTime < time) {
                 left = mid + 1;
@@ -325,7 +325,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
             // For enum signals, always look leftwards (backwards in time)
             // Find the last data point that is <= the mouse time
             if (left < bufferData.updateIndex) {
-                if (signal.data(left)[0] > time && left > 0) {
+                if (signal.time.valueAt(left) > time && left > 0) {
                     // If the found point is after the mouse time, go back one
                     closestIndex = left - 1;
                 }
@@ -336,8 +336,8 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         } else {
             // For non-enum signals, use the closest-point
             if (left > 0) {
-                const distToLeft = Math.abs(signal.data(left)[0] - time);
-                const distToPrev = Math.abs(signal.data(left - 1)[0] - time);
+                const distToLeft = Math.abs(signal.time.valueAt(left) - time);
+                const distToPrev = Math.abs(signal.time.valueAt(left - 1) - time);
                 
                 if (distToPrev < distToLeft) {
                     closestIndex = left - 1;
@@ -349,11 +349,56 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
             }
         }
 
-        const [dataTime, value] = signal.data(closestIndex);
+        const dataTime = signal.time.valueAt(closestIndex);
+        const value = signal.values.valueAt(closestIndex);
         let display: number | string = value;
-        if ('convertedData' in signal && typeof signal.convertedData === 'function') {
-            [, display] = signal.convertedData(closestIndex);
+        if (signal.values.convertedValueAt) {
+            display = signal.values.convertedValueAt(closestIndex);
         }
         return { time: dataTime, value, display, dataIndex: closestIndex };
+    }
+}
+
+class ArrayTimeSequence implements Sequence {
+    constructor(private data: ChannelPoint[]) {}
+
+    get min(): number {
+        if (this.data.length === 0) return 0;
+        return Math.min(...this.data.map(([t]) => t));
+    }
+
+    get max(): number {
+        if (this.data.length === 0) return 0;
+        return Math.max(...this.data.map(([t]) => t));
+    }
+
+    get length(): number {
+        return this.data.length;
+    }
+
+    valueAt(index: number): number {
+        return this.data[index]?.[0] ?? 0;
+    }
+}
+
+class ArrayValueSequence implements Sequence {
+    constructor(private data: ChannelPoint[]) {}
+
+    get min(): number {
+        if (this.data.length === 0) return 0;
+        return Math.min(...this.data.map(([, v]) => v));
+    }
+
+    get max(): number {
+        if (this.data.length === 0) return 0;
+        return Math.max(...this.data.map(([, v]) => v));
+    }
+
+    get length(): number {
+        return this.data.length;
+    }
+
+    valueAt(index: number): number {
+        return this.data[index]?.[1] ?? 0;
     }
 }
