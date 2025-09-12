@@ -442,7 +442,18 @@ function highlightSearchMatch(text: string, searchTerm: string): string {
 }
 
 function addSignalToWaveform(signalSource: SignalSource): void {
-    context.createRows({ channels: [signalSource.signal()] });
+    function getExistingSignal() {
+        for (const row of context.getRows()) {
+            for (const signal of row.signals) {
+                if (signal.source === signalSource) {
+                    // Signal already present in a row
+                    return signal;
+                }
+            }
+        }
+        return null;
+    }
+    context.createRows({ channels: [getExistingSignal() ?? signalSource.signal()] });
     context.requestRender();
 }
 

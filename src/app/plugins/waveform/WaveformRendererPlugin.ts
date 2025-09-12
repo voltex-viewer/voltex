@@ -1,14 +1,13 @@
 import type { PluginContext, Row } from '../../Plugin';
-import type { Signal } from '../../Signal';
+import type { Signal, Sequence } from '../../Signal';
 import { WaveformConfigSchema } from './WaveformConfig';
 import { WaveformRenderObject } from './WaveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';
 import { WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
 import { WaveformShaders } from './WaveformShaders';
 
-export interface ChannelBufferData {
-    timeBuffer: WebGLBuffer;
-    valueBuffer: WebGLBuffer;
+export interface SequenceBufferData {
+    buffer: WebGLBuffer;
     lastDataLength: number;
     updateIndex: number;
     pointCount: number;
@@ -38,7 +37,7 @@ export default (context: PluginContext): void => {
     const tooltipRenderObject = new WaveformTooltipRenderObject(config);
     context.addRootRenderObject(tooltipRenderObject);
 
-    const channelBuffers = new Map<Signal, ChannelBufferData>();
+    const sequenceBuffers = new Map<Sequence, SequenceBufferData>();
     
     // Create shared instance geometry for line segments (2 triangles, 6 vertices)
     const segmentInstanceGeometry = new Float32Array([
@@ -95,7 +94,7 @@ export default (context: PluginContext): void => {
         let anyBufferNeedsUpdate = false;
         const availableTime = Math.max(1, targetFrameTime - frameTimeOverhead);
 
-        for (const [channel, bufferData] of channelBuffers.entries()) {
+        for (const [sequence, bufferData] of sequenceBuffers.entries()) {
             const renderTime = performance.now() - frameStartTime;
             if (renderTime >= availableTime) {
                 anyBufferNeedsUpdate = true;
@@ -103,22 +102,19 @@ export default (context: PluginContext): void => {
             }
 
             const gl = context.webgl.gl;
-            const sigLen = channel.time.length;
+            const seqLen = sequence.length;
             
-            if (bufferData.lastDataLength !== sigLen) {
-                // Allocate separate buffers for time and value data
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, sigLen * 4, gl.DYNAMIC_DRAW);
+            if (bufferData.lastDataLength !== seqLen) {
+                // Allocate buffer for sequence data
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, seqLen * 4, gl.DYNAMIC_DRAW);
                 
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, sigLen * 4, gl.DYNAMIC_DRAW);
-                
-                bufferData.lastDataLength = sigLen;
+                bufferData.lastDataLength = seqLen;
                 bufferData.updateIndex = 0;
-                bufferData.pointCount = sigLen;
+                bufferData.pointCount = seqLen;
             }
             
-            if (bufferData.updateIndex < sigLen) {
+            if (bufferData.updateIndex < seqLen) {
                 const remainingTime = availableTime - (performance.now() - frameStartTime);
                 if (remainingTime <= 0) {
                     anyBufferNeedsUpdate = true;
@@ -128,32 +124,24 @@ export default (context: PluginContext): void => {
                 // Estimate how many points we can process in remaining time
                 const pointsPerMs = adaptiveChunkSize / Math.max(1, frameRenderTime || 5);
                 const maxPointsThisFrame = Math.min(
-                    sigLen - bufferData.updateIndex,
+                    seqLen - bufferData.updateIndex,
                     Math.max(100, Math.floor(pointsPerMs * remainingTime))
                 );
                 
-                const endIndex = Math.min(bufferData.updateIndex + maxPointsThisFrame, sigLen);
-                const timeBuffer = new Float32Array(endIndex - bufferData.updateIndex);
-                const valueBuffer = new Float32Array(endIndex - bufferData.updateIndex);
+                const endIndex = Math.min(bufferData.updateIndex + maxPointsThisFrame, seqLen);
+                const dataBuffer = new Float32Array(endIndex - bufferData.updateIndex);
 
                 for (let i = 0, j = bufferData.updateIndex; j < endIndex; i++, j++) {
-                    const time = channel.time.valueAt(j);
-                    const value = channel.values.valueAt(j);
-                    timeBuffer[i] = time;
-                    valueBuffer[i] = value;
+                    dataBuffer[i] = sequence.valueAt(j);
                 }
 
-                // Upload time data
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.updateIndex * 4, timeBuffer);
-                
-                // Upload value data
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.updateIndex * 4, valueBuffer);
+                // Upload sequence data
+                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.buffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.updateIndex * 4, dataBuffer);
                 
                 bufferData.updateIndex = endIndex;
                 
-                if (bufferData.updateIndex < sigLen) {
+                if (bufferData.updateIndex < seqLen) {
                     anyBufferNeedsUpdate = true;
                 }
             }
@@ -164,31 +152,34 @@ export default (context: PluginContext): void => {
     context.onRowsChanged((event) => {
         for (const row of event.added) {
             const rowSignals: Signal[] = [];
-            const rowSignalBuffers = new Map<Signal, ChannelBufferData>();
+            const rowSignalBuffers = new Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }>();
             
             for (const channel of row.signals) {
-                if (!channelBuffers.has(channel)) {
-                    const timeBuffer = context.webgl.gl.createBuffer();
-                    const valueBuffer = context.webgl.gl.createBuffer();
-                    if (!timeBuffer || !valueBuffer) {
-                        throw new Error('Failed to create WebGL buffers');
+                // Create buffers
+                for (const sequence of [channel.time, channel.values]) {
+                    if (!sequenceBuffers.has(sequence)) {
+                        const buffer = context.webgl.gl.createBuffer();
+                        if (!buffer) {
+                            throw new Error('Failed to create WebGL buffer for sequence');
+                        }
+                        sequenceBuffers.set(sequence, {
+                            buffer,
+                            lastDataLength: 0,
+                            updateIndex: 0,
+                            pointCount: 0
+                        });
                     }
-                    channelBuffers.set(channel, {
-                        timeBuffer,
-                        valueBuffer,
-                        lastDataLength: 0,
-                        updateIndex: 0,
-                        pointCount: 0
-                    });
                 }
                 
-                const bufferData = channelBuffers.get(channel)!;
+                const timeBufferData = sequenceBuffers.get(channel.time)!;
+                const valueBufferData = sequenceBuffers.get(channel.values)!;
                 rowSignals.push(channel);
-                rowSignalBuffers.set(channel, bufferData);
+                rowSignalBuffers.set(channel, { timeBuffer: timeBufferData, valueBuffer: valueBufferData });
                 
                 row.addRenderObject(new WaveformRenderObject(
                     config,
-                    bufferData,
+                    timeBufferData,
+                    valueBufferData,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     instancingExt,
@@ -217,17 +208,18 @@ export default (context: PluginContext): void => {
             }
         }
 
-        const activeChannels = new Set<Signal>(context.getRows().flatMap(row => row.signals));
-        for (const row of event.removed) {
-            for (const channel of row.signals) {
-                if (!activeChannels.has(channel)) {
-                    const bufferData = channelBuffers.get(channel);
-                    if (bufferData) {
-                        context.webgl.gl.deleteBuffer(bufferData.timeBuffer);
-                        context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
-                        channelBuffers.delete(channel);
-                    }
-                }
+        const activeSequences = new Set<Sequence>();
+        for (const row of context.getRows()) {
+            for (const signal of row.signals) {
+                activeSequences.add(signal.time);
+                activeSequences.add(signal.values);
+            }
+        }
+        
+        for (const [sequence, bufferData] of sequenceBuffers.entries()) {
+            if (!activeSequences.has(sequence)) {
+                context.webgl.gl.deleteBuffer(bufferData.buffer);
+                sequenceBuffers.delete(sequence);
             }
         }
     });

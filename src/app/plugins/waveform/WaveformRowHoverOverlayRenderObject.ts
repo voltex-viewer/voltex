@@ -5,7 +5,7 @@ import { WebGLUtils } from '../../WebGLUtils';
 import { type WaveformConfig } from './WaveformConfig';
 import { RenderMode } from '../../Plugin';
 import type { SignalTooltipData, WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
-import type { ChannelBufferData } from './WaveformRendererPlugin';
+import type { SequenceBufferData } from './WaveformRendererPlugin';
 import type { WaveformShaders } from './WaveformShaders';
 import { WaveformRenderObject } from './WaveformRenderObject';
 
@@ -38,7 +38,7 @@ class HighlightSignal implements Signal {
 export class WaveformRowHoverOverlayRenderObject extends RenderObject {
     private mouse: { offsetX: number; clientX: number; clientY: number } | null = null;
     private readonly signals: Signal[];
-    private readonly signalBuffers: Map<Signal, ChannelBufferData>;
+    private readonly signalBuffers: Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }>;
     private readonly highlightRenderObjects: Map<Signal, WaveformRenderObject> = new Map();
     private readonly highlightSignals: Map<Signal, HighlightSignal> = new Map();
 
@@ -48,7 +48,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         private readonly row: Row,
         private readonly tooltipRenderObject: WaveformTooltipRenderObject,
         signals: Signal[],
-        signalBuffers: Map<Signal, ChannelBufferData>,
+        signalBuffers: Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }>,
         sharedInstanceGeometryBuffer: WebGLBuffer,
         sharedBevelJoinGeometryBuffer: WebGLBuffer,
         instancingExt: ANGLE_instanced_arrays,
@@ -82,9 +82,15 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                     throw new Error('Failed to create highlight buffers');
                 }
 
-                const highlightBufferData: ChannelBufferData = {
-                    timeBuffer: highlightTimeBuffer,
-                    valueBuffer: highlightValueBuffer,
+                const highlightTimeBufferData: SequenceBufferData = {
+                    buffer: highlightTimeBuffer,
+                    lastDataLength: 0,
+                    updateIndex: 0,
+                    pointCount: 0
+                };
+
+                const highlightValueBufferData: SequenceBufferData = {
+                    buffer: highlightValueBuffer,
                     lastDataLength: 0,
                     updateIndex: 0,
                     pointCount: 0
@@ -109,7 +115,8 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
 
                 const highlightRenderObject = new WaveformRenderObject(
                     highlightConfig,
-                    highlightBufferData,
+                    highlightTimeBufferData,
+                    highlightValueBufferData,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     instancingExt,
@@ -244,19 +251,20 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
     private updateHighlightSignal(
         signal: Signal,
         dataIndex: number,
-        originalBufferData: ChannelBufferData,
+        originalBufferData: { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData },
         highlightSignal: HighlightSignal,
         context: RenderContext
     ): void {
         const { gl } = context.render;
         
-        if (dataIndex >= originalBufferData.updateIndex) return;
+        const maxUpdateIndex = Math.min(originalBufferData.timeBuffer.updateIndex, originalBufferData.valueBuffer.updateIndex);
+        if (dataIndex >= maxUpdateIndex) return;
 
         let pointData: ChannelPoint[];
 
         if (this.row.renderMode === RenderMode.Enum) {
             // For enum, render the segment (paired points)
-            if (dataIndex >= originalBufferData.updateIndex - 1) return;
+            if (dataIndex >= maxUpdateIndex - 1) return;
             
             const time1 = signal.time.valueAt(dataIndex);
             const value1 = signal.values.valueAt(dataIndex);
@@ -302,11 +310,14 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
 
     private getSignalValueAtTime(signal: Signal, time: number): { time: number; value: number; display: number | string; dataIndex: number } | null {
         const bufferData = this.signalBuffers.get(signal);
-        if (!bufferData || bufferData.updateIndex === 0) return null;
+        if (!bufferData) return null;
+        
+        const maxUpdateIndex = Math.min(bufferData.timeBuffer.updateIndex, bufferData.valueBuffer.updateIndex);
+        if (maxUpdateIndex === 0) return null;
 
         // Use binary search to find the closest data point
         let left = 0;
-        let right = bufferData.updateIndex - 1;
+        let right = maxUpdateIndex - 1;
         
         while (left < right) {
             const mid = Math.floor((left + right) / 2);
@@ -324,14 +335,14 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         if (this.row.renderMode === RenderMode.Enum) {
             // For enum signals, always look leftwards (backwards in time)
             // Find the last data point that is <= the mouse time
-            if (left < bufferData.updateIndex) {
+            if (left < maxUpdateIndex) {
                 if (signal.time.valueAt(left) > time && left > 0) {
                     // If the found point is after the mouse time, go back one
                     closestIndex = left - 1;
                 }
             } else {
                 // If we're past the end, use the last point
-                closestIndex = bufferData.updateIndex - 1;
+                closestIndex = maxUpdateIndex - 1;
             }
         } else {
             // For non-enum signals, use the closest-point
@@ -344,8 +355,8 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                 }
             }
             
-            if (left >= bufferData.updateIndex) {
-                closestIndex = bufferData.updateIndex - 1;
+            if (left >= maxUpdateIndex) {
+                closestIndex = maxUpdateIndex - 1;
             }
         }
 

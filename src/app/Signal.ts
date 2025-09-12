@@ -131,8 +131,8 @@ export class InMemorySignal implements Signal {
     }
 }
 
-class FunctionTimeSequence implements Sequence {
-    constructor(private duration: number, private sampleRate: number) {}
+export class FunctionTimeSequence implements Sequence {
+    constructor(public readonly duration: number, public readonly sampleRate: number) {}
 
     get min(): number {
         return 0;
@@ -151,10 +151,10 @@ class FunctionTimeSequence implements Sequence {
     }
 }
 
-class FunctionValueSequence implements Sequence {
+export class FunctionValueSequence implements Sequence {
     constructor(
         private generator: (time: number) => number,
-        private sampleRate: number,
+        private time: FunctionTimeSequence,
         private minVal: number,
         private maxVal: number
     ) {}
@@ -168,29 +168,27 @@ class FunctionValueSequence implements Sequence {
     }
 
     get length(): number {
-        return Infinity;
+        return this.time.length;
     }
 
     valueAt(index: number): number {
-        const time = index / this.sampleRate;
+        const time = index / this.time.sampleRate;
         return this.generator(time);
     }
 }
 
 export class FunctionSignal implements Signal {
     source: SignalSource;
-    private _duration: number = 1000;
-    private _sampleRate: number = 1000;
     private _generator: (time: number) => number;
     public readonly time: FunctionTimeSequence;
     public readonly values: FunctionValueSequence;
     public readonly valueTable: ReadonlyMap<number, string>;
     
-    constructor(source: SignalSource, generator: (time: number) => number, minValue: number, maxValue: number) {
+    constructor(source: SignalSource, time: FunctionTimeSequence, generator: (time: number) => number, minValue: number, maxValue: number) {
         this.source = source;
         this._generator = generator;
-        this.time = new FunctionTimeSequence(this._duration, this._sampleRate);
-        this.values = new FunctionValueSequence(this._generator, this._sampleRate, minValue, maxValue);
+        this.time = time;
+        this.values = new FunctionValueSequence(this._generator, this.time, minValue, maxValue);
         this.valueTable = new Map<number, string>();
     }
 }
