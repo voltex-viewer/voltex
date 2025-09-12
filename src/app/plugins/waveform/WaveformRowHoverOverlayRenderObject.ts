@@ -33,6 +33,12 @@ class HighlightSignal implements Signal {
     get length(): number {
         return this._data.length;
     }
+
+    updateData(newData: ChannelPoint[]): void {
+        this._data = newData;
+        this.time.updateData(newData);
+        this.values.updateData(newData);
+    }
 }
 
 export class WaveformRowHoverOverlayRenderObject extends RenderObject {
@@ -41,6 +47,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
     private readonly signalBuffers: Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }>;
     private readonly highlightRenderObjects: Map<Signal, WaveformRenderObject> = new Map();
     private readonly highlightSignals: Map<Signal, HighlightSignal> = new Map();
+    private readonly highlightBuffers: Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }> = new Map();
 
     constructor(
         private readonly context: PluginContext,
@@ -95,6 +102,12 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                     updateIndex: 0,
                     pointCount: 0
                 };
+
+                // Store the buffer references for direct access
+                this.highlightBuffers.set(signal, {
+                    timeBuffer: highlightTimeBufferData,
+                    valueBuffer: highlightValueBufferData
+                });
 
                 const baseColor = this.context.signalMetadata.getColor(signal);
                 const highlightColor = this.createHighlightColor(baseColor);
@@ -161,8 +174,16 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         for (const renderObject of this.highlightRenderObjects.values()) {
             renderObject.dispose();
         }
+        
+        // Clean up highlight buffers
+        for (const bufferData of this.highlightBuffers.values()) {
+            this.context.webgl.gl.deleteBuffer(bufferData.timeBuffer.buffer);
+            this.context.webgl.gl.deleteBuffer(bufferData.valueBuffer.buffer);
+        }
+        
         this.highlightRenderObjects.clear();
         this.highlightSignals.clear();
+        this.highlightBuffers.clear();
         
         super.dispose();
     }
@@ -279,32 +300,33 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         }
 
         // Update the highlight signal's data
-        (highlightSignal as any)._data = pointData;
+        highlightSignal.updateData(pointData);
 
-        // Get the highlight render object's buffer and update it
-        const highlightRenderObject = this.highlightRenderObjects.get(signal);
-        if (highlightRenderObject) {
-            const bufferData = (highlightRenderObject as any).bufferData;
-            if (bufferData) {
-                // Convert points to separate time and value arrays for WebGL buffers
-                const timeData = new Float32Array(pointData.length);
-                const valueData = new Float32Array(pointData.length);
-                for (let i = 0; i < pointData.length; i++) {
-                    timeData[i] = pointData[i][0];
-                    valueData[i] = pointData[i][1];
-                }
-
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, timeData, gl.DYNAMIC_DRAW);
-
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);
-                
-                // Update buffer metadata
-                bufferData.updateIndex = pointData.length;
-                bufferData.lastDataLength = pointData.length;
-                bufferData.pointCount = pointData.length;
+        // Get the highlight buffer data directly from our stored references
+        const highlightBufferData = this.highlightBuffers.get(signal);
+        if (highlightBufferData) {
+            // Convert points to separate time and value arrays for WebGL buffers
+            const timeData = new Float32Array(pointData.length);
+            const valueData = new Float32Array(pointData.length);
+            for (let i = 0; i < pointData.length; i++) {
+                timeData[i] = pointData[i][0];
+                valueData[i] = pointData[i][1];
             }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.timeBuffer.buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, timeData, gl.DYNAMIC_DRAW);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.valueBuffer.buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);
+            
+            // Update buffer metadata
+            highlightBufferData.timeBuffer.updateIndex = pointData.length;
+            highlightBufferData.timeBuffer.lastDataLength = pointData.length;
+            highlightBufferData.timeBuffer.pointCount = pointData.length;
+            
+            highlightBufferData.valueBuffer.updateIndex = pointData.length;
+            highlightBufferData.valueBuffer.lastDataLength = pointData.length;
+            highlightBufferData.valueBuffer.pointCount = pointData.length;
         }
     }
 
@@ -390,6 +412,10 @@ class ArrayTimeSequence implements Sequence {
     valueAt(index: number): number {
         return this.data[index]?.[0] ?? 0;
     }
+
+    updateData(newData: ChannelPoint[]): void {
+        this.data = newData;
+    }
 }
 
 class ArrayValueSequence implements Sequence {
@@ -411,5 +437,9 @@ class ArrayValueSequence implements Sequence {
 
     valueAt(index: number): number {
         return this.data[index]?.[1] ?? 0;
+    }
+
+    updateData(newData: ChannelPoint[]): void {
+        this.data = newData;
     }
 }
