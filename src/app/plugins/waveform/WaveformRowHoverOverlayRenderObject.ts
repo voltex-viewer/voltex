@@ -5,7 +5,7 @@ import { WebGLUtils } from '../../WebGLUtils';
 import { type WaveformConfig } from './WaveformConfig';
 import { RenderMode } from '../../Plugin';
 import type { SignalTooltipData, WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
-import type { SequenceBufferData } from './WaveformRendererPlugin';
+import type { BufferData } from './WaveformRendererPlugin';
 import type { WaveformShaders } from './WaveformShaders';
 import { WaveformRenderObject } from './WaveformRenderObject';
 
@@ -43,19 +43,17 @@ class HighlightSignal implements Signal {
 
 export class WaveformRowHoverOverlayRenderObject extends RenderObject {
     private mouse: { offsetX: number; clientX: number; clientY: number } | null = null;
-    private readonly signals: Signal[];
-    private readonly signalBuffers: Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }>;
     private readonly highlightRenderObjects: Map<Signal, WaveformRenderObject> = new Map();
     private readonly highlightSignals: Map<Signal, HighlightSignal> = new Map();
-    private readonly highlightBuffers: Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }> = new Map();
+    private readonly highlightBuffers: Map<Signal, BufferData> = new Map();
 
     constructor(
         private readonly context: PluginContext,
         private readonly config: WaveformConfig,
         private readonly row: Row,
         private readonly tooltipRenderObject: WaveformTooltipRenderObject,
-        signals: Signal[],
-        signalBuffers: Map<Signal, { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData }>,
+        private readonly signals: Signal[],
+        private readonly signalBuffers: Map<Signal, BufferData>,
         sharedInstanceGeometryBuffer: WebGLBuffer,
         sharedBevelJoinGeometryBuffer: WebGLBuffer,
         instancingExt: ANGLE_instanced_arrays,
@@ -63,8 +61,6 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         zIndex: number = 10
     ) {
         super(zIndex);
-        this.signals = signals;
-        this.signalBuffers = signalBuffers;
 
         // Create highlight render objects for each signal
         for (const signal of signals) {
@@ -89,25 +85,16 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                     throw new Error('Failed to create highlight buffers');
                 }
 
-                const highlightTimeBufferData: SequenceBufferData = {
-                    buffer: highlightTimeBuffer,
-                    lastDataLength: 0,
-                    updateIndex: 0,
-                    pointCount: 0
-                };
-
-                const highlightValueBufferData: SequenceBufferData = {
-                    buffer: highlightValueBuffer,
-                    lastDataLength: 0,
-                    updateIndex: 0,
-                    pointCount: 0
+                const bufferData: BufferData = {
+                    timeBuffer: highlightTimeBuffer,
+                    valueBuffer: highlightValueBuffer,
+                    bufferCapacity: 0,
+                    bufferLength: 0,
+                    signalIndex: 0,
                 };
 
                 // Store the buffer references for direct access
-                this.highlightBuffers.set(signal, {
-                    timeBuffer: highlightTimeBufferData,
-                    valueBuffer: highlightValueBufferData
-                });
+                this.highlightBuffers.set(signal, bufferData);
 
                 const baseColor = this.context.signalMetadata.getColor(signal);
                 const highlightColor = this.createHighlightColor(baseColor);
@@ -128,8 +115,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
 
                 const highlightRenderObject = new WaveformRenderObject(
                     highlightConfig,
-                    highlightTimeBufferData,
-                    highlightValueBufferData,
+                    bufferData,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     instancingExt,
@@ -177,8 +163,8 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         
         // Clean up highlight buffers
         for (const bufferData of this.highlightBuffers.values()) {
-            this.context.webgl.gl.deleteBuffer(bufferData.timeBuffer.buffer);
-            this.context.webgl.gl.deleteBuffer(bufferData.valueBuffer.buffer);
+            this.context.webgl.gl.deleteBuffer(bufferData.timeBuffer);
+            this.context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
         }
         
         this.highlightRenderObjects.clear();
@@ -272,13 +258,13 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
     private updateHighlightSignal(
         signal: Signal,
         dataIndex: number,
-        originalBufferData: { timeBuffer: SequenceBufferData, valueBuffer: SequenceBufferData },
+        originalBufferData: BufferData,
         highlightSignal: HighlightSignal,
         context: RenderContext
     ): void {
         const { gl } = context.render;
         
-        const maxUpdateIndex = Math.min(originalBufferData.timeBuffer.updateIndex, originalBufferData.valueBuffer.updateIndex);
+        const maxUpdateIndex = originalBufferData.signalIndex;
         if (dataIndex >= maxUpdateIndex) return;
 
         let pointData: ChannelPoint[];
@@ -313,20 +299,16 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                 valueData[i] = pointData[i][1];
             }
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.timeBuffer.buffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.timeBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, timeData, gl.DYNAMIC_DRAW);
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.valueBuffer.buffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.valueBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);
             
             // Update buffer metadata
-            highlightBufferData.timeBuffer.updateIndex = pointData.length;
-            highlightBufferData.timeBuffer.lastDataLength = pointData.length;
-            highlightBufferData.timeBuffer.pointCount = pointData.length;
-            
-            highlightBufferData.valueBuffer.updateIndex = pointData.length;
-            highlightBufferData.valueBuffer.lastDataLength = pointData.length;
-            highlightBufferData.valueBuffer.pointCount = pointData.length;
+            highlightBufferData.signalIndex = pointData.length;
+            highlightBufferData.bufferLength = pointData.length;
+            highlightBufferData.bufferCapacity = pointData.length;
         }
     }
 
@@ -334,7 +316,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         const bufferData = this.signalBuffers.get(signal);
         if (!bufferData) return null;
         
-        const maxUpdateIndex = Math.min(bufferData.timeBuffer.updateIndex, bufferData.valueBuffer.updateIndex);
+        const maxUpdateIndex = bufferData.signalIndex;
         if (maxUpdateIndex === 0) return null;
 
         // Use binary search to find the closest data point

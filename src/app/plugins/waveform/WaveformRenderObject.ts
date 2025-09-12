@@ -1,6 +1,6 @@
 import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
 import { WebGLUtils } from '../../WebGLUtils';
-import type { SequenceBufferData } from './WaveformRendererPlugin';
+import type { BufferData } from './WaveformRendererPlugin';
 import { WaveformConfig } from './WaveformConfig';
 import { RenderMode } from '../../Plugin';
 import { WaveformShaders } from './WaveformShaders';
@@ -10,8 +10,7 @@ import { Row } from 'src/app/Plugin';
 export class WaveformRenderObject extends RenderObject {
     constructor(
         private config: WaveformConfig,
-        private timeBufferData: SequenceBufferData,
-        private valueBufferData: SequenceBufferData,
+        private bufferData: BufferData,
         private sharedInstanceGeometryBuffer: WebGLBuffer,
         private sharedBevelJoinGeometryBuffer: WebGLBuffer,
         private instancingExt: ANGLE_instanced_arrays,
@@ -137,7 +136,7 @@ export class WaveformRenderObject extends RenderObject {
         const y = (bounds.height - baselineMetrics.renderHeight) / 2;
 
         // Binary search to find the indices of visible segments
-        const maxUpdateIndex = Math.min(this.timeBufferData.updateIndex, this.valueBufferData.updateIndex);
+        const maxUpdateIndex = this.bufferData.bufferLength;
         const startIndex = this.binarySearchTimeIndex(startTime, 0, maxUpdateIndex - 1, true);
         const endIndex = this.binarySearchTimeIndex(endTime, startIndex, maxUpdateIndex - 1, false);
 
@@ -241,7 +240,7 @@ export class WaveformRenderObject extends RenderObject {
         }
 
         let result = findStart ? right + 1 : left - 1;
-        const maxUpdateIndex = Math.min(this.timeBufferData.updateIndex, this.valueBufferData.updateIndex);
+        const maxUpdateIndex = this.bufferData.signalIndex;
 
         while (left <= right) {
             const mid = Math.floor((left + right) / 2);
@@ -290,19 +289,18 @@ export class WaveformRenderObject extends RenderObject {
         bindUniforms(program);
         
         // Bind time buffer to first attribute
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.timeBufferData.buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
         const timeLocation = gl.getAttribLocation(program, 'timePos');
         gl.enableVertexAttribArray(timeLocation);
         gl.vertexAttribPointer(timeLocation, 1, gl.FLOAT, false, 0, 0);
         
         // Bind value buffer to second attribute  
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.valueBufferData.buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const valueLocation = gl.getAttribLocation(program, 'valuePos');
         gl.enableVertexAttribArray(valueLocation);
         gl.vertexAttribPointer(valueLocation, 1, gl.FLOAT, false, 0, 0);
 
-        const pointCount = Math.min(this.timeBufferData.updateIndex, this.valueBufferData.updateIndex);
-        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.drawArrays(gl.POINTS, 0, this.bufferData.bufferLength);
         
         // Clean up
         gl.disableVertexAttribArray(timeLocation);
@@ -325,7 +323,7 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
         
         // Bind time buffer for pointA times (instanced data)
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.timeBufferData.buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
         const pointATimeLocation = gl.getAttribLocation(program, 'pointATime');
         gl.enableVertexAttribArray(pointATimeLocation);
         gl.vertexAttribPointer(pointATimeLocation, 1, gl.FLOAT, false, 4, 0); // stride: 1 float, offset: 0
@@ -337,7 +335,7 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(pointBTimeLocation, 1);
         
         // Bind value buffer for pointA/pointB values (instanced data)
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.valueBufferData.buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const pointAValueLocation = gl.getAttribLocation(program, 'pointAValue');
         gl.enableVertexAttribArray(pointAValueLocation);
         gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0); // stride: 1 float, offset: 0
@@ -349,7 +347,7 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(pointBValueLocation, 1);
         
         // Draw instanced
-        const instanceCount = Math.min(this.timeBufferData.updateIndex, this.valueBufferData.updateIndex) - 1;
+        const instanceCount = this.bufferData.bufferLength - 1;
         if (instanceCount > 0) {
             this.instancingExt.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, instanceCount);
         }
@@ -385,7 +383,7 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
         
         // Bind time buffer for three consecutive point times (A, B, C)
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.timeBufferData.buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
         const pointATimeLocation = gl.getAttribLocation(program, 'pointATime');
         gl.enableVertexAttribArray(pointATimeLocation);
         gl.vertexAttribPointer(pointATimeLocation, 1, gl.FLOAT, false, 4, 0); // offset: 0
@@ -402,7 +400,7 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(pointCTimeLocation, 1);
         
         // Bind value buffer for three consecutive point values (A, B, C)
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.valueBufferData.buffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const pointAValueLocation = gl.getAttribLocation(program, 'pointAValue');
         gl.enableVertexAttribArray(pointAValueLocation);
         gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0); // offset: 0
@@ -419,7 +417,7 @@ export class WaveformRenderObject extends RenderObject {
         this.instancingExt.vertexAttribDivisorANGLE(pointCValueLocation, 1);
         
         // Draw instanced bevel joins - need 3 consecutive points
-        const instanceCount = Math.min(this.timeBufferData.updateIndex, this.valueBufferData.updateIndex) - 2;
+        const instanceCount = this.bufferData.bufferLength - 2;
         if (instanceCount > 0) {
             this.instancingExt.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 3, instanceCount);
         }
