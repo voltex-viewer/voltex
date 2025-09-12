@@ -1,5 +1,4 @@
 import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
-import { WebGLUtils } from '../../WebGLUtils';
 import { getGridSpacing } from './TimeAxisUtils';
 
 const TIME_UNITS = [
@@ -34,13 +33,17 @@ export class TimeAxisRenderObject extends RenderObject {
         const { render, state } = context;
         const { gl, utils } = render;
 
-        const gridSpacing = getGridSpacing(state.pxPerSecond);
-        const pxPerGrid = gridSpacing * state.pxPerSecond;
-        const startPx = state.offset;
-
+        const { pxPerSecond, offset: startPx } = state;
+        const gridSpacing = getGridSpacing(pxPerSecond);
+        const pxPerGrid = gridSpacing * pxPerSecond;
         const unitInfo = this.getTimeUnitAndScale(gridSpacing);
+        const leftGridPx = Math.floor(startPx / (pxPerSecond * gridSpacing)) * gridSpacing * pxPerSecond;
 
-        const leftGridPx = Math.floor(startPx / state.pxPerSecond / gridSpacing) * gridSpacing * state.pxPerSecond;
+        // Calculate sticky label
+        const currentGridX = leftGridPx - startPx;
+        const stickyLabelInfo = (currentGridX < 0 && leftGridPx + pxPerGrid - startPx > 150)
+            ? { shouldShow: true, label: this.formatSplitTimeLabel(leftGridPx / pxPerSecond, unitInfo.scale), timePx: leftGridPx }
+            : { shouldShow: false, label: '', timePx: 0 };
 
         // Draw major grid lines, labels, and subdivisions
         const subdivisions = 10;
@@ -50,8 +53,8 @@ export class TimeAxisRenderObject extends RenderObject {
         // Collect all line vertices
         const lineVertices: number[] = [];
         
-        for (let px = leftGridPx; px < startPx + bounds.width + pxPerGrid; px += pxPerGrid) {
-            const x = Math.round(((px - startPx) / bounds.width) * bounds.width);
+        for (let px = leftGridPx, end = startPx + bounds.width + pxPerGrid; px < end; px += pxPerGrid) {
+            const x = Math.round(px - startPx);
             
             // Draw major grid line and label if in bounds
             if (x <= bounds.width) {
@@ -61,18 +64,23 @@ export class TimeAxisRenderObject extends RenderObject {
                     x, bounds.height
                 );
                 
-                // Draw time label
-                const t = px / state.pxPerSecond;
-                utils.drawText(this.formatSplitTimeLabel(t, unitInfo.scale), x, 2, bounds, {
-                    font: 'bold 14px "Open Sans"',
-                    fillStyle: '#ffffff'
-                });
+                // Draw time label (but not if it's the sticky label to avoid overlap)
+                const t = px / pxPerSecond;
+                const isCurrentStickyLabel = stickyLabelInfo.shouldShow && 
+                    Math.abs(px - stickyLabelInfo.timePx) < 1; // Use small tolerance for floating point comparison
+                
+                if (!isCurrentStickyLabel) { // Only show normal label if it's not the sticky one
+                    utils.drawText(this.formatSplitTimeLabel(t, unitInfo.scale), x, 2, bounds, {
+                        font: 'bold 14px "Open Sans"',
+                        fillStyle: '#ffffff'
+                    });
+                }
             }
             
             // Add subdivision line vertices
             for (let j = 1; j < subdivisions; j++) {
-                const subPx = px + (pxPerGrid * j / subdivisions);
-                const subX = Math.round(((subPx - startPx) / bounds.width) * bounds.width);
+                const subPx = px + pxPerGrid * j / subdivisions;
+                const subX = Math.round(subPx - startPx);
                 
                 if (subX <= bounds.width) {
                     // Add subdivision line vertices
@@ -82,10 +90,8 @@ export class TimeAxisRenderObject extends RenderObject {
                     );
                     
                     // Draw subdivision label
-                    const offsetValue = (gridSpacing * j / subdivisions) / unitInfo.scale;
-                    const label = Math.abs(offsetValue) < 1 
-                        ? `+${offsetValue.toFixed(1)}${unitInfo.unit}`
-                        : `+${Math.round(offsetValue)}${unitInfo.unit}`;
+                    const offsetValue = gridSpacing * j / (subdivisions * unitInfo.scale);
+                    const label = Math.abs(offsetValue) < 1 ? `+${offsetValue.toFixed(1)}${unitInfo.unit}` : `+${Math.round(offsetValue)}${unitInfo.unit}`;
                     
                     utils.drawText(label, subX - 3.5, rowHeight + gap + 1, bounds, {
                         font: 'bold 12px "Open Sans"',
@@ -93,6 +99,14 @@ export class TimeAxisRenderObject extends RenderObject {
                     });
                 }
             }
+        }
+        
+        // Draw sticky label if it should be shown
+        if (stickyLabelInfo.shouldShow) {
+            utils.drawText(stickyLabelInfo.label, 0, 2, bounds, {
+                font: 'bold 14px "Open Sans"',
+                fillStyle: '#ffffff'
+            });
         }
         
         // Draw all lines in a single draw call
