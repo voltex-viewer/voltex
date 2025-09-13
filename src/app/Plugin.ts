@@ -6,7 +6,7 @@ import * as t from 'io-ts';
 
 export enum RenderMode {
     Lines = 'lines',
-    LinesDots = 'lines-dots',
+    Discrete = 'discrete',
     Dots = 'dots',
     Enum = 'enum',
 }
@@ -39,14 +39,13 @@ export interface Row {
     readonly yOffset: number;
     readonly addLabelRenderObject: (renderObject: RenderObject) => void;
     readonly selected: boolean;
-    readonly renderMode: RenderMode;
     setHeight(height: number): void;
 }
 
 export interface SignalSource {
     name: string[];
     signal(): Signal;
-    discrete: boolean;
+    renderHint: RenderMode;
 }
 
 export interface RowsChangedEvent {

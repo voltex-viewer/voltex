@@ -1,5 +1,5 @@
 import { InMemorySequence, SequenceSignal, Signal } from '../../Signal';
-import { PluginContext, SignalSource } from '../../Plugin';
+import { PluginContext, RenderMode, SignalSource } from '../../Plugin';
 import {
     Link, newLink, getLink, readBlock,
     deserializeId,
@@ -148,10 +148,7 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
 }
 
 class Mf4Source implements SignalSource {
-    discrete: boolean;
-
-    constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock) {
-        this.discrete = false;
+    constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock, public readonly renderHint: RenderMode) {
     }
 
     signal(): Signal {
@@ -168,7 +165,7 @@ class DataGroupLoader {
         this.groups = groups.map(({group, channels}) => ({
             group,
             channels: channels.map(({channel, name, conversion}) => ({
-                source: new Mf4Source([file.name, name], this, channel),
+                source: new Mf4Source([file.name, name], this, channel, RenderMode.Lines),
                 channel,
                 conversion,
                 name

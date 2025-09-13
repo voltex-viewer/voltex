@@ -6,6 +6,7 @@ export interface Sequence {
     min: number;
     max: number;
     length: number;
+    null?: number;
     valueAt(index: number): number;
     convertedValueAt?(index: number): number | string;
 }
@@ -14,7 +15,6 @@ export interface Signal {
     source: SignalSource;
     time: Sequence;
     values: Sequence;
-    valueTable: ReadonlyMap<number, string>;
 }
 
 export class InMemorySequence implements Sequence {
@@ -107,17 +107,12 @@ export class SequenceSignal implements Signal {
     get length(): number {
         return Math.min(this.time.length, this.values.length);
     }
-
-    get valueTable(): ReadonlyMap<number, string> {
-        return new Map();
-    }
 }
 
 export class InMemorySignal implements Signal {
     source: SignalSource;
     public readonly time: InMemorySequence;
     public readonly values: InMemorySequence;
-    public readonly valueTable: ReadonlyMap<number, string>;
     
     constructor(source: SignalSource, data: ChannelPoint[]) {
         this.source = source;
@@ -126,8 +121,6 @@ export class InMemorySignal implements Signal {
         
         this.time.push(...data.map(([t]) => t));
         this.values.push(...data.map(([, v]) => v));
-        
-        this.valueTable = new Map<number, string>();
     }
 }
 
@@ -182,13 +175,11 @@ export class FunctionSignal implements Signal {
     private _generator: (time: number) => number;
     public readonly time: FunctionTimeSequence;
     public readonly values: FunctionValueSequence;
-    public readonly valueTable: ReadonlyMap<number, string>;
     
     constructor(source: SignalSource, time: FunctionTimeSequence, generator: (time: number) => number, minValue: number, maxValue: number) {
         this.source = source;
         this._generator = generator;
         this.time = time;
         this.values = new FunctionValueSequence(this._generator, this.time, minValue, maxValue);
-        this.valueTable = new Map<number, string>();
     }
 }

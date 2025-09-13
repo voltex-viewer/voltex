@@ -398,9 +398,6 @@ export class PluginManager {
             get selected() {
                 return row.selected;
             },
-            get renderMode() {
-                return row.renderMode;
-            }
         };
         
         // Cache the proxy row and maintain reverse mapping

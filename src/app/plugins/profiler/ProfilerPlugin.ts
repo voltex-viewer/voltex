@@ -1,4 +1,4 @@
-import { MeasureInfo, PluginContext } from '../../Plugin';
+import { MeasureInfo, PluginContext, RenderMode } from '../../Plugin';
 import { Sequence } from '../../Signal';
 
 export default (context: PluginContext): void => {
@@ -16,16 +16,12 @@ export default (context: PluginContext): void => {
     // Create signal source for frame time data
     const signalSource = {
         name: ['Profiler', 'Frame Time (ms)'],
-        discrete: false,
-        signal: () => {
-            const valueTable = new Map<number, string>();
-            return {
-                source: signalSource,
-                time: new ProfilerTimeSequence(frameData),
-                values: new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
-                valueTable
-            };
-        }
+        renderHint: RenderMode.Lines,
+        signal: () => ({
+            source: signalSource,
+            time: new ProfilerTimeSequence(frameData),
+            values: new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
+        }),
     };
     
     // Function to create or update flame graph sources based on current depth
@@ -37,7 +33,7 @@ export default (context: PluginContext): void => {
             if (!flameGraphSources[depth]) {
                 const depthSource = {
                     name: ['Profiler', `Depth ${depth}`],
-                    discrete: true,
+                    renderHint: RenderMode.Enum,
                     signal: () => {
                         // Use the start time of the first measure entry (root of the stack)
                         let firstMeasurementTime = 0;
@@ -77,8 +73,7 @@ export default (context: PluginContext): void => {
                         return {
                             source: depthSource,
                             time: new FlameGraphTimeSequence(timelineData),
-                            values: new FlameGraphValueSequence(timelineData, nextId),
-                            valueTable: idToNameMap
+                            values: new FlameGraphValueSequence(timelineData, nextId, idToNameMap)
                         };
                     }
                 };
@@ -319,7 +314,7 @@ class ProfilerValueSequence implements Sequence {
     constructor(
         private frameData: Array<{ timestamp: number; frameTime: number }>,
         private minFrameTime: number,
-        private maxFrameTime: number
+        private maxFrameTime: number,
     ) {}
 
     get min(): number {
@@ -362,7 +357,11 @@ class FlameGraphTimeSequence implements Sequence {
 }
 
 class FlameGraphValueSequence implements Sequence {
-    constructor(private timelineData: Array<{ timestamp: number; active: number }>, private maxId: number) {}
+    constructor(
+        private timelineData: Array<{ timestamp: number; active: number }>,
+        private maxId: number,
+        private valueTable: Map<number, string>,
+    ) {}
 
     get min(): number {
         return 0;
@@ -376,8 +375,20 @@ class FlameGraphValueSequence implements Sequence {
         return this.timelineData.length;
     }
 
+    get null(): number | undefined {
+        return -1;
+    }
+
     valueAt(index: number): number {
         if (index < 0 || index >= this.timelineData.length) return 0;
         return this.timelineData[index].active;
+    }
+
+    convertedValueAt(index: number): number | string {
+        return this.conversion(this.valueAt(index));
+    }
+    
+    conversion(value: number): string | number {
+        return this.valueTable.get(value) || value;
     }
 }

@@ -29,7 +29,7 @@ export default (context: PluginContext): void => {
             dotSize: 6.0,
             lineWidth: 1.5,
             targetFps: 120,
-            formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : (valueTable.get(value) ?? value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2))))))",
+            formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2)))))",
             hoverEnabled: true,
         });
 
@@ -202,6 +202,7 @@ export default (context: PluginContext): void => {
                     waveformPrograms,
                     channel,
                     row,
+                    channel.source.renderHint,
                 ));
             }
 

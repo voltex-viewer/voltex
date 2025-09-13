@@ -18,6 +18,7 @@ export class WaveformRenderObject extends RenderObject {
         private waveformPrograms: WaveformShaders,
         private signal: Signal,
         private row: Row,
+        private renderMode: RenderMode,
         zIndex: number = 0
     ) {
         super(zIndex);
@@ -45,7 +46,7 @@ export class WaveformRenderObject extends RenderObject {
             gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetLow'), timeOffsetLow);
             gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), state.pxPerSecond);
             
-            gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.source.discrete ? 1 : 0);
+            gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.source.renderHint == RenderMode.Discrete ? 1 : 0);
 
             // Apply row-specific y-scale and y-offset
             gl.uniform1f(gl.getUniformLocation(program, 'u_yScale'), this.row.yScale);
@@ -68,34 +69,25 @@ export class WaveformRenderObject extends RenderObject {
             const [r, g, b, a] = WebGLUtils.hexToRgba(color);
             gl.uniform4f(gl.getUniformLocation(program, 'u_color'), r, g, b, a);
 
-            // Find the numeric value that corresponds to "null" in the valueTable, if any
-            let nullValue: number | null = null;
-            for (const [numericValue, stringValue] of this.signal.valueTable.entries()) {
-                if (stringValue === "null") {
-                    nullValue = numericValue;
-                    break;
-                }
+            if ("null" in this.signal.values) {
+                gl.uniform1f(gl.getUniformLocation(program, 'u_nullValue'), this.signal.values.null);
+                gl.uniform1i(gl.getUniformLocation(program, 'u_hasNullValue'), 1);
+            } else {
+                gl.uniform1f(gl.getUniformLocation(program, 'u_nullValue'), this.signal.values.max + 1.0);
+                gl.uniform1i(gl.getUniformLocation(program, 'u_hasNullValue'), 0);
             }
-            gl.uniform1f(gl.getUniformLocation(program, 'u_nullValue'), nullValue !== null ? nullValue : (this.signal.values.max + 1.0));
-            gl.uniform1i(gl.getUniformLocation(program, 'u_hasNullValue'), nullValue !== null ? 1 : 0);
         };
 
         let linesBindUniforms = bindUniforms(this.config.lineWidth);
         let dotsBindUniforms = bindUniforms(this.config.dotSize);
         
-        const renderMode = this.row.renderMode;
+        const renderMode = this.renderMode;
         if (renderMode === RenderMode.Lines) {
             this.renderInstancedLines(gl, this.waveformPrograms.instancedLine, linesBindUniforms);
-            if (!this.signal.source.discrete) {
-                this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);
-            }
-        } else if (renderMode === RenderMode.Dots) {
-            this.renderSignal(gl, this.waveformPrograms.dot, dotsBindUniforms);
-        } else if (renderMode === RenderMode.LinesDots) {
+            this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);
+        } else if (renderMode === RenderMode.Discrete) {
             this.renderInstancedLines(gl, this.waveformPrograms.instancedLine, linesBindUniforms);
-            if (!this.signal.source.discrete) {
-                this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);
-            }
+        } else if (renderMode === RenderMode.Dots) {
             this.renderSignal(gl, this.waveformPrograms.dot, dotsBindUniforms);
         } else if (renderMode === RenderMode.Enum) {
             this.renderEnumSignal(gl, this.waveformPrograms.enumLine, enumLinesBindUniforms, context, bounds);
@@ -112,13 +104,12 @@ export class WaveformRenderObject extends RenderObject {
     ): void {
         // Use custom instanced line rendering for enum signals to handle pairs correctly
         this.renderInstancedLines(gl, program, bindUniforms);
-        this.renderEnumText(context, bounds, this.signal.valueTable);
+        this.renderEnumText(context, bounds);
     }
 
     private renderEnumText(
         context: RenderContext,
         bounds: RenderBounds,
-        valueTable: ReadonlyMap<number, string>
     ): void {
         const { render, state } = context;
         const { utils } = render;
@@ -148,7 +139,7 @@ export class WaveformRenderObject extends RenderObject {
             // Get the end time of this segment (the second point of this pair)
             const segmentEndTime = this.signal.time.valueAt(i + 1);
             
-            let enumText = valueTable.get(value) || value.toString();
+            let enumText = "convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt(i).toString() : value.toString();
 
             if (enumText == "null") continue;
             

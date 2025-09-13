@@ -47,12 +47,11 @@ export class WaveformTooltipRenderObject extends RenderObject {
         try {
             const { signal, value, time, color, dataIndex, display } = signalData;
             const name = signal.source.name;
-            const valueTable = signal.valueTable;
             
             const formatFunction = new Function(
-                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'valueTable', 'display',
+                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'display',
                 `return ${this.config.formatTooltip}`);
-            return String(formatFunction(value, time, name, color, dataIndex, yScale, valueTable, display));
+            return String(formatFunction(value, time, name, color, dataIndex, yScale, display));
         } catch (error) {
             console.warn('Error in custom tooltip formatter:', error);
             return "Error";

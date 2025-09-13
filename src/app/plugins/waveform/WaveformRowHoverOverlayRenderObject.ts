@@ -9,35 +9,17 @@ import type { BufferData } from './WaveformRendererPlugin';
 import type { WaveformShaders } from './WaveformShaders';
 import { WaveformRenderObject } from './WaveformRenderObject';
 
-/**
- * A lightweight signal wrapper that contains just the highlighted data points
- * while preserving the original signal's valueTable for enum rendering
- */
 class HighlightSignal implements Signal {
-    private _data: ChannelPoint[];
-    
     constructor(
         public readonly source: Signal['source'],
-        data: ChannelPoint[],
-        public readonly valueTable: ReadonlyMap<number, string>,
-        public readonly time: ArrayTimeSequence,
-        public readonly values: ArrayValueSequence
+        public readonly time: ArraySequence,
+        public readonly values: ArraySequence
     ) {
-        this._data = data;
-    }
-    
-    data(index: number): ChannelPoint {
-        return this._data[index] || [0, 0];
-    }
-    
-    get length(): number {
-        return this._data.length;
     }
 
-    updateData(newData: ChannelPoint[]): void {
-        this._data = newData;
-        this.time.updateData(newData);
-        this.values.updateData(newData);
+    updateData(time: number[], values: number[], converted?: (number | string)[]): void {
+        this.time.updateData(time);
+        this.values.updateData(values, converted);
     }
 }
 
@@ -67,15 +49,11 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
             const bufferData = signalBuffers.get(signal);
             if (bufferData) {
                 // Create a highlight signal that will hold just the highlighted data
-                const emptyData: ChannelPoint[] = [];
                 const highlightSignal = new HighlightSignal(
                     signal.source,
-                    emptyData, // Start with empty data
-                    signal.valueTable, // Preserve the original valueTable
-                    new ArrayTimeSequence(emptyData),
-                    new ArrayValueSequence(emptyData)
+                    new ArraySequence(),
+                    new ArraySequence()
                 );
-                
                 this.highlightSignals.set(signal, highlightSignal);
 
                 // Create dedicated highlight buffers for this signal
@@ -103,15 +81,6 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                     dotSize: config.dotSize * 1.5, // Make highlight dots larger
                     lineWidth: config.lineWidth * 1.5 // Make highlight lines thicker for enum mode
                 };
-                // Proxy the row, overriding the render mode
-                const proxyRow = new Proxy(row, {
-                    get(target, prop, receiver) {
-                        if (prop === 'renderMode') {
-                            return target.renderMode === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots;
-                        }
-                        return Reflect.get(target, prop, receiver);
-                    }
-                });
 
                 const highlightRenderObject = new WaveformRenderObject(
                     highlightConfig,
@@ -122,7 +91,8 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                     highlightColor,
                     waveformPrograms,
                     highlightSignal, // Use the highlight signal instead of the original
-                    proxyRow,
+                    row,
+                    signal.source.renderHint === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots,
                     zIndex + 1
                 );
                 
@@ -206,7 +176,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         // Find data for all signals at this time and render highlight dots
         for (const signal of this.signals) {
             const dataPoint = this.getSignalValueAtTime(signal, mouseTimeDouble);
-            if (dataPoint !== null && signal.valueTable.get(dataPoint.value) !== "null") {
+            if (dataPoint !== null && dataPoint.display !== "null") {
                 const color = this.context.signalMetadata.getColor(signal);
                 signalData.push({
                     ...dataPoint,
@@ -267,37 +237,27 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         const maxUpdateIndex = originalBufferData.signalIndex;
         if (dataIndex >= maxUpdateIndex) return;
 
-        let pointData: ChannelPoint[];
-
-        if (this.row.renderMode === RenderMode.Enum) {
-            // For enum, render the segment (paired points)
+        let indices = [];
+        if (signal.source.renderHint === RenderMode.Enum) {
             if (dataIndex >= maxUpdateIndex - 1) return;
             
-            const time1 = signal.time.valueAt(dataIndex);
-            const value1 = signal.values.valueAt(dataIndex);
-            const time2 = signal.time.valueAt(dataIndex + 1);
-            const value2 = signal.values.valueAt(dataIndex + 1);
-            pointData = [[time1, value1], [time2, value2]];
+            indices.push(dataIndex, dataIndex + 1);
         } else {
-            // For all other modes (Lines, Dots, LinesDots), just show the single point as a dot
-            const time = signal.time.valueAt(dataIndex);
-            const value = signal.values.valueAt(dataIndex);
-            pointData = [[time, value]];
+            indices.push(dataIndex);
         }
 
+        let timeSourceData = indices.map(i => signal.time.valueAt(i));
+        let valueSourceData = indices.map(i => signal.values.valueAt(i));
+        let convertedSourceData = signal.values.convertedValueAt ? indices.map(i => signal.values.convertedValueAt(i)) : undefined;
         // Update the highlight signal's data
-        highlightSignal.updateData(pointData);
+        highlightSignal.updateData(timeSourceData, valueSourceData, convertedSourceData);
 
         // Get the highlight buffer data directly from our stored references
         const highlightBufferData = this.highlightBuffers.get(signal);
         if (highlightBufferData) {
             // Convert points to separate time and value arrays for WebGL buffers
-            const timeData = new Float32Array(pointData.length);
-            const valueData = new Float32Array(pointData.length);
-            for (let i = 0; i < pointData.length; i++) {
-                timeData[i] = pointData[i][0];
-                valueData[i] = pointData[i][1];
-            }
+            const timeData = new Float32Array(timeSourceData);
+            const valueData = new Float32Array(valueSourceData);
 
             gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.timeBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, timeData, gl.DYNAMIC_DRAW);
@@ -306,9 +266,9 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
             gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);
             
             // Update buffer metadata
-            highlightBufferData.signalIndex = pointData.length;
-            highlightBufferData.bufferLength = pointData.length;
-            highlightBufferData.bufferCapacity = pointData.length;
+            highlightBufferData.signalIndex = indices.length;
+            highlightBufferData.bufferLength = indices.length;
+            highlightBufferData.bufferCapacity = indices.length;
         }
     }
 
@@ -336,7 +296,7 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         
         let closestIndex = left;
         
-        if (this.row.renderMode === RenderMode.Enum) {
+        if (signal.source.renderHint === RenderMode.Enum) {
             // For enum signals, always look leftwards (backwards in time)
             // Find the last data point that is <= the mouse time
             if (left < maxUpdateIndex) {
@@ -374,17 +334,22 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
     }
 }
 
-class ArrayTimeSequence implements Sequence {
-    constructor(private data: ChannelPoint[]) {}
+class ArraySequence implements Sequence {
+    private data: number[];
+    convertedValueAt?(index: number): number | string | undefined;
+
+    constructor() {
+        this.data = [];
+    }
 
     get min(): number {
         if (this.data.length === 0) return 0;
-        return Math.min(...this.data.map(([t]) => t));
+        return Math.min(...this.data);
     }
 
     get max(): number {
         if (this.data.length === 0) return 0;
-        return Math.max(...this.data.map(([t]) => t));
+        return Math.max(...this.data);
     }
 
     get length(): number {
@@ -392,36 +357,15 @@ class ArrayTimeSequence implements Sequence {
     }
 
     valueAt(index: number): number {
-        return this.data[index]?.[0] ?? 0;
+        return this.data[index];
     }
 
-    updateData(newData: ChannelPoint[]): void {
+    updateData(newData: number[], convertedData?: (number | string)[]): void {
         this.data = newData;
-    }
-}
-
-class ArrayValueSequence implements Sequence {
-    constructor(private data: ChannelPoint[]) {}
-
-    get min(): number {
-        if (this.data.length === 0) return 0;
-        return Math.min(...this.data.map(([, v]) => v));
-    }
-
-    get max(): number {
-        if (this.data.length === 0) return 0;
-        return Math.max(...this.data.map(([, v]) => v));
-    }
-
-    get length(): number {
-        return this.data.length;
-    }
-
-    valueAt(index: number): number {
-        return this.data[index]?.[1] ?? 0;
-    }
-
-    updateData(newData: ChannelPoint[]): void {
-        this.data = newData;
+        if (typeof convertedData !== 'undefined') {
+            this.convertedValueAt = (index: number) => convertedData[index];
+        } else {
+            this.convertedValueAt = undefined;
+        }
     }
 }
