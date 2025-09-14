@@ -1,5 +1,6 @@
-import { Link, newLink, getLink, readBlock, GenericBlock, MaybeLinked } from './common';
-import { TextBlock, MetadataBlock } from './textBlock';
+import { Link, readBlock, GenericBlock, MaybeLinked } from './common';
+import { SerializeContext } from './serializer';
+import { TextBlock, MetadataBlock, resolveTextBlockOffset } from './textBlock';
 
 export enum ConversionType {
     OneToOne = 0,
@@ -54,13 +55,13 @@ export interface ValueRangeToValueTable {
 export interface ValueToTextOrScale<TMode extends 'linked' | 'instanced' = 'linked'> {
     type: ConversionType.ValueToTextOrScale,
     values: number[];
-    refs: MaybeLinked<ChannelConversionBlock | TextBlock, TMode>[];
+    refs: MaybeLinked<ChannelConversionBlock<TMode> | TextBlock, TMode>[];
 }
 
 export interface ValueRangeToTextOrScale<TMode extends 'linked' | 'instanced' = 'linked'> {
     type: ConversionType.ValueRangeToTextOrScale,
     values: number[];
-    refs: MaybeLinked<ChannelConversionBlock | TextBlock, TMode>[];
+    refs: MaybeLinked<ChannelConversionBlock<TMode> | TextBlock, TMode>[];
 }
 
 export interface TextToValue<TMode extends 'linked' | 'instanced' = 'linked'> {
@@ -79,7 +80,7 @@ export interface ChannelConversionBlockBase<TMode extends 'linked' | 'instanced'
     txName: MaybeLinked<TextBlock, TMode>;
     mdUnit: MaybeLinked<TextBlock | MetadataBlock, TMode>; // TextBlock or MetadataBlock
     mdComment: MaybeLinked<unknown, TMode>; // TextBlock or MetadataBlock
-    inverse: MaybeLinked<ChannelConversionBlock, TMode>;
+    inverse: MaybeLinked<ChannelConversionBlock<TMode>, TMode>;
     precision: number;
     flags: number;
     physicalRangeMinimum: number;
@@ -114,33 +115,52 @@ export function deserializeConversionBlock(block: GenericBlock): ChannelConversi
     };
 }
 
-export function serializeConversionBlock(buffer: ArrayBuffer, conversion: ChannelConversionBlock): ArrayBuffer {
-    const view = new DataView(buffer);
+export function serializeConversionBlock(view: DataView, context: SerializeContext, block: ChannelConversionBlock<'instanced'>) {
+    view.setBigUint64(0, context.get(block.txName), true);
+    view.setBigUint64(8, context.get(block.mdUnit), true);
+    view.setBigUint64(16, context.get(block.mdComment), true);
+    view.setBigUint64(24, context.get(block.inverse), true);
 
-    view.setBigUint64(0, getLink(conversion.txName), true);
-    view.setBigUint64(8, getLink(conversion.mdUnit), true);
-    view.setBigUint64(16, getLink(conversion.mdComment), true);
-    view.setBigUint64(24, getLink(conversion.inverse), true);
-    
-    for (let i = 0; i < conversion.refs.length; i++) {
-        view.setBigUint64(32 + i * 8, getLink(conversion.refs[i]), true);
+    for (let i = 0; i < block.refs.length; i++) {
+        view.setBigUint64(32 + i * 8, context.get(block.refs[i]), true);
     }
 
-    const dataOffset = (4 + conversion.refs.length) * 8;
-    
-    view.setUint8(dataOffset, conversion.type);
-    view.setUint8(dataOffset + 1, conversion.precision);
-    view.setUint16(dataOffset + 2, conversion.flags, true);
-    view.setUint16(dataOffset + 4, conversion.refs.length, true);
-    view.setUint16(dataOffset + 6, conversion.values.length, true);
-    view.setFloat64(dataOffset + 8, conversion.physicalRangeMinimum, true);
-    view.setFloat64(dataOffset + 16, conversion.physicalRangeMaximum, true);
-    
-    for (let i = 0; i < conversion.values.length; i++) {
-        view.setFloat64(dataOffset + 24 + i * 8, conversion.values[i], true);
-    }
+    const dataOffset = (4 + block.refs.length) * 8;
 
-    return buffer;
+    view.setUint8(dataOffset, block.type);
+    view.setUint8(dataOffset + 1, block.precision);
+    view.setUint16(dataOffset + 2, block.flags, true);
+    view.setUint16(dataOffset + 4, block.refs.length, true);
+    view.setUint16(dataOffset + 6, block.values.length, true);
+    view.setFloat64(dataOffset + 8, block.physicalRangeMinimum, true);
+    view.setFloat64(dataOffset + 16, block.physicalRangeMaximum, true);
+
+    for (let i = 0; i < block.values.length; i++) {
+        view.setFloat64(dataOffset + 24 + i * 8, block.values[i], true);
+    }
+}
+
+export function resolveChannelConversionOffset(context: SerializeContext, block: ChannelConversionBlock<'instanced'>) {
+    return context.resolve(
+        block, 
+        {
+            type: "##CC",
+            length: block === null ? 0n : BigInt(56 + block.refs.length * 8 + block.values.length * 8),
+            linkCount: 4n + (block === null ? 0n : BigInt(block.refs.length)),
+        },
+        serializeConversionBlock,
+        block => {
+            resolveTextBlockOffset(context, block.txName);
+            resolveChannelConversionOffset(context, block.inverse);
+            for (const ref of block.refs) {
+                if (ref === null) continue;
+                if ('data' in ref) {
+                    resolveTextBlockOffset(context, ref);
+                } else {
+                    resolveChannelConversionOffset(context, ref);
+                }
+            }
+        });
 }
 
 export async function readConversionBlock(link: Link<ChannelConversionBlock>, file: File): Promise<ChannelConversionBlock<'linked'>> {

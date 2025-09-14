@@ -1,15 +1,13 @@
-import { Link, newLink, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
-import { DataTableBlock, deserializeDataTableBlock, readDataTableBlock } from './dataTableBlock';
-import { DataListBlock, iterateDataListBlocks } from './dataListBlock';
+import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { DataTableBlock, deserializeDataTableBlock, readDataTableBlock, resolveDataTableOffset } from './dataTableBlock';
+import { DataListBlock, iterateDataListBlocks, resolveDataListOffset } from './dataListBlock';
 import { ChannelGroupBlock, resolveChannelGroupOffset } from './channelGroupBlock';
 import { SerializeContext } from './serializer';
-
-const DATA_GROUP_BLOCK_SIZE = 64;
 
 export interface DataGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     dataGroupNext: MaybeLinked<DataGroupBlock<TMode>, TMode>;
     channelGroupFirst: MaybeLinked<ChannelGroupBlock<TMode>, TMode>;
-    data: MaybeLinked<DataTableBlock | DataListBlock, TMode>;
+    data: MaybeLinked<DataTableBlock | DataListBlock<TMode>, TMode>;
     comment: MaybeLinked<unknown, TMode>;
     recordIdSize: number;
 }
@@ -38,12 +36,20 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
         block, 
         {
             type: "##DG",
-            length: BigInt(DATA_GROUP_BLOCK_SIZE),
+            length: BigInt(40n),
             linkCount: 4n,
         },
         serializeDataGroupBlock,
         block => {
             resolveChannelGroupOffset(context, block.channelGroupFirst);
+            resolveDataGroupOffset(context, block.dataGroupNext);
+            if (block.data !== null) {
+                if ('flags' in block.data) {
+                    resolveDataListOffset(context, block.data);
+                } else {
+                    resolveDataTableOffset(context, block.data);
+                }
+            }
         });
 }
 

@@ -42,8 +42,7 @@ export async function readMetadataBlock(link: Link<MetadataBlock>, file: File): 
 }
 
 function getEncodedLength(data: string): number {
-    const dataLength = new TextEncoder().encode(data).byteLength + 1 + 24;
-    return Math.ceil(dataLength / 8) * 8;
+    return new TextEncoder().encode(data).byteLength + 1;
 }
 
 export function resolveTextBlockOffset(context: SerializeContext, block: TextBlock) {

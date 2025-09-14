@@ -474,19 +474,85 @@ export default (context: PluginContext): void => {
         description: 'MDF/MF4 Measurement Files',
         mimeType: '*/*',
         handler: async (file: FileSystemWritableFileStream) => {
-            const header: Header<'instanced'> = {
-                firstDataGroup: {
-                    dataGroupNext: null,
-                    channelGroupFirst: {
-                        channelGroupNext: null,
-                        channelFirst: {
+            const now = BigInt(Date.now()) * 1000000n;
+            const conversions: {name: string, conversion: ChannelConversionBlock<'instanced'>}[] = [
+                {
+                    name: "None",
+                    conversion: null,
+                },
+                {
+                    name: "Linear",
+                    conversion: {
+                        type: ConversionType.Linear,
+                        txName: null,
+                        mdUnit: null,
+                        mdComment: null,
+                        inverse: null,
+                        refs: [],
+                        values: [1, 2],
+                        precision: 0,
+                        flags: 0,
+                        physicalRangeMinimum: 0,
+                        physicalRangeMaximum: 0,
+                    }
+                },
+                {
+                    name: "Value to text",
+                    conversion: {
+                        type: ConversionType.ValueToTextOrScale,
+                        txName: null,
+                        mdUnit: null,
+                        mdComment: null,
+                        inverse: null,
+                        refs: [
+                            {
+                                data: "Booting",
+                            },
+                            {
+                                data: "Idle",
+                            },
+                            {
+                                data: "Active",
+                            },
+                            {
+                                type: ConversionType.Linear,
+                                txName: null,
+                                mdUnit: null,
+                                mdComment: null,
+                                inverse: null,
+                                refs: [],
+                                values: [1, 2],
+                                precision: 0,
+                                flags: 0,
+                                physicalRangeMinimum: 0,
+                                physicalRangeMaximum: 0,
+                            },
+                        ],
+                        values: [
+                            0,
+                            1,
+                            2
+                        ],
+                        precision: 0,
+                        flags: 0,
+                        physicalRangeMinimum: 0,
+                        physicalRangeMaximum: 0,
+                    }
+                }
+            ];
+            const dataGroups = conversions.map(conversion => ({
+                dataGroupNext: null,
+                channelGroupFirst: {
+                    channelGroupNext: null,
+                    channelFirst: {
+                        channelNext: {
                             channelNext: null,
                             component: null,
                             txName: {
-                                data: "Channel1",
+                                data: conversion.name,
                             },
                             siSource: null,
-                            conversion: null,
+                            conversion: conversion.conversion,
                             data: null,
                             unit: null,
                             comment: null,
@@ -494,7 +560,7 @@ export default (context: PluginContext): void => {
                             syncType: 0,
                             dataType: DataType.UintLe,
                             bitOffset: 0,
-                            byteOffset: 0,
+                            byteOffset: 1,
                             bitCount: 8,
                             flags: 0,
                             invalidationBitPosition: 0,
@@ -507,29 +573,63 @@ export default (context: PluginContext): void => {
                             limitExtendedMinimum: 0,
                             limitExtendedMaximum: 0,
                         },
-                        acquisitionName: {
-                            data: "Test",
+                        component: null,
+                        txName: {
+                            data: "Time",
                         },
-                        acquisitionSource: null,
-                        sampleReductionFirst: null,
+                        siSource: null,
+                        conversion: null,
+                        data: null,
+                        unit: null,
                         comment: null,
-                        recordId: 0n,
-                        cycleCount: 0n,
+                        channelType: 2,
+                        syncType: 1,
+                        dataType: DataType.UintLe,
+                        bitOffset: 0,
+                        byteOffset: 0,
+                        bitCount: 8,
                         flags: 0,
-                        pathSeparator: 0,
-                        dataBytes: 1,
-                        invalidationBytes: 0,
+                        invalidationBitPosition: 0,
+                        precision: 0,
+                        attachmentCount: 0,
+                        valueRangeMinimum: 0,
+                        valueRangeMaximum: 0,
+                        limitMinimum: 0,
+                        limitMaximum: 0,
+                        limitExtendedMinimum: 0,
+                        limitExtendedMaximum: 0,
                     },
-                    data: null,
+                    acquisitionName: {
+                        data: "Test",
+                    },
+                    acquisitionSource: null,
+                    sampleReductionFirst: null,
                     comment: null,
-                    recordIdSize: 0,
+                    recordId: 0n,
+                    cycleCount: 6n,
+                    flags: 0,
+                    pathSeparator: 0,
+                    dataBytes: 2,
+                    invalidationBytes: 0,
                 },
+                data: {
+                    data: new DataView(new Uint8Array([0, 0, 1, 1, 2, 2, 3, 3, 4, 1, 5, 2]).buffer),
+                },
+                comment: null,
+                recordIdSize: 0,
+            } as DataGroupBlock<'instanced'>));
+            const dataGroup = dataGroups[0];
+            for (let i = 1; i < dataGroups.length; i++) {
+                dataGroups[i - 1].dataGroupNext = dataGroups[i];
+            }
+            const header: Header<'instanced'> = {
+                firstDataGroup: dataGroup,
                 fileHistory: {
                     fileHistoryNext: null,
                     comment: {
                         data: `<FHcomment xmlns='http://www.asam.net/mdf/v4'><TX>File was created.</TX><tool_id>Voltex</tool_id><tool_vendor>Voltex</tool_vendor><tool_version>1.0</tool_version><user_name>User</user_name></FHcomment>`,
                     },
-                    time: 0n,
+                    time: now,
                     timeZone: 0,
                     dstOffset: 0,
                     timeFlags: 0,
@@ -538,7 +638,7 @@ export default (context: PluginContext): void => {
                 attachment: null,
                 event: null,
                 comment: null,
-                startTime: 0n,
+                startTime: now,
                 timeZone: 0,
                 dstOffset: 0,
                 timeFlags: 0,
@@ -550,8 +650,11 @@ export default (context: PluginContext): void => {
             const context = new SerializeContext();
             resolveHeaderOffset(context, header);
             const writer = file.getWriter();
-            await context.serialize(writer);
-            writer.close();
+            try {
+                await context.serialize(writer);
+            } finally {
+                await writer.close();
+            }
         }
     });
 }

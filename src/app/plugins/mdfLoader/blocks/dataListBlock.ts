@@ -1,5 +1,6 @@
 import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
-import { DataTableBlock } from './dataTableBlock';
+import { DataTableBlock, resolveDataTableOffset } from './dataTableBlock';
+import { SerializeContext } from './serializer';
 
 export interface DataListBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     dataListNext: MaybeLinked<DataListBlock<TMode>, TMode>;
@@ -11,23 +12,37 @@ export type LinkedDataListBlock = DataListBlock<'linked'>;
 export type InstancedDataListBlock = DataListBlock<'instanced'>;
 
 export function deserializeDataListBlock(block: GenericBlock): LinkedDataListBlock {
+    const dataCount = block.buffer.getUint32(4, true);
     return {
         dataListNext: block.links[0] as Link<DataListBlock>,
-        data: block.links.slice(1) as Link<DataTableBlock>[],
+        data: block.links.slice(1, 1 + dataCount) as Link<DataTableBlock>[],
         flags: block.buffer.getUint8(0),
     };
 }
 
-export function serializeDataListBlock(buffer: ArrayBuffer, dataList: LinkedDataListBlock): ArrayBuffer {
-    const view = new DataView(buffer);
-
-    view.setBigUint64(0, getLink(dataList.dataListNext), true);
-    for (let i = 0; i < dataList.data.length; i++) {
-        view.setBigUint64((i + 1) * 8, getLink(dataList.data[i]), true);
+export function serializeDataListBlock(view: DataView, context: SerializeContext, block: DataListBlock<'instanced'>): void {
+    view.setBigUint64(0, context.get(block.dataListNext), true);
+    for (let i = 0; i < block.data.length; i++) {
+        view.setBigUint64((i + 1) * 8, context.get(block.data[i]), true);
     }
-    view.setUint8((dataList.data.length + 1) * 8, dataList.flags);
+    view.setUint8((block.data.length + 1) * 8, block.flags);
+    view.setUint32((block.data.length + 1) * 8 + 4, block.data.length, true);
+}
 
-    return buffer;
+export function resolveDataListOffset(context: SerializeContext, block: DataListBlock<'instanced'>) {
+    return context.resolve(
+        block, 
+        {
+            type: "##DL",
+            length: 24n + BigInt(block.data.length) * 8n,
+            linkCount: 1n + BigInt(block.data.length),
+        },
+        serializeDataListBlock,
+        block => {
+            for (const dataTable of block.data) {
+                resolveDataTableOffset(context, dataTable);
+            }
+        });
 }
 
 export async function readDataListBlock(link: Link<DataListBlock>, file: File): Promise<LinkedDataListBlock> {

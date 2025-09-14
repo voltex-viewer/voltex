@@ -1,4 +1,5 @@
 import { Link, readBlock, GenericBlock } from './common';
+import { SerializeContext } from './serializer';
 
 export interface DataTableBlock {
     data: DataView<ArrayBuffer>;
@@ -10,12 +11,21 @@ export function deserializeDataTableBlock(block: GenericBlock): DataTableBlock {
     };
 }
 
-export function serializeDataTableBlock(buffer: ArrayBuffer, dataTable: DataTableBlock): ArrayBuffer {
-    const view = new DataView(buffer);
-    for (let i = 0; i < dataTable.data.byteLength; i++) {
-        view.setUint8(i, dataTable.data.getUint8(i));
+export function serializeDataTableBlock(view: DataView, context: SerializeContext, block: DataTableBlock): void {
+    for (let i = 0; i < block.data.byteLength; i++) {
+        view.setUint8(i, block.data.getUint8(i));
     }
-    return buffer;
+}
+
+export function resolveDataTableOffset(context: SerializeContext, block: DataTableBlock) {
+    return context.resolve(
+        block, 
+        {
+            type: "##DT",
+            length: BigInt(block.data.byteLength),
+            linkCount: 0n,
+        },
+        serializeDataTableBlock);
 }
 
 export async function readDataTableBlock(link: Link<DataTableBlock>, file: File): Promise<DataTableBlock> {

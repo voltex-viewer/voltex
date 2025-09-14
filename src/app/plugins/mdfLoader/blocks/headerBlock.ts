@@ -1,9 +1,7 @@
-import { Link, newLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
 import { DataGroupBlock, resolveDataGroupOffset, serializeDataGroupBlock } from './dataGroupBlock';
 import { FileHistoryBlock, resolveFileHistoryOffset } from './fileHistoryBlock';
 import { SerializeContext } from './serializer';
-
-const HEADER_BLOCK_LENGTH = 104;
 
 export interface Header<TMode extends 'linked' | 'instanced' = 'linked'> {
     firstDataGroup: MaybeLinked<DataGroupBlock<TMode>, TMode>;
@@ -65,7 +63,7 @@ export function resolveHeaderOffset(context: SerializeContext, header: Header<'i
         header,
         {
             type: "##HD",
-            length: BigInt(HEADER_BLOCK_LENGTH),
+            length: 80n,
             linkCount: 6n,
         },
         serializeHeader,

@@ -1,9 +1,7 @@
-import { Link, newLink, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
-import { ChannelConversionBlock } from './channelConversionBlock';
+import { ChannelConversionBlock, resolveChannelConversionOffset } from './channelConversionBlock';
 import { SerializeContext } from './serializer';
-
-const CHANNEL_BLOCK_SIZE = 136 + 24;
 
 export enum DataType {
     UintLe = 0,
@@ -37,7 +35,7 @@ export interface ChannelBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     component: MaybeLinked<unknown, TMode>;
     txName: MaybeLinked<TextBlock, TMode>;
     siSource: MaybeLinked<unknown, TMode>;
-    conversion: MaybeLinked<ChannelConversionBlock, TMode>;
+    conversion: MaybeLinked<ChannelConversionBlock<TMode>, TMode>;
     data: MaybeLinked<unknown, TMode>;
     unit: MaybeLinked<TextBlock, TMode>;
     comment: MaybeLinked<TextBlock, TMode>;
@@ -123,13 +121,14 @@ export function resolveChannelOffset(context: SerializeContext, block: ChannelBl
         block, 
         {
             type: "##CN",
-            length: BigInt(CHANNEL_BLOCK_SIZE),
+            length: 136n,
             linkCount: 8n,
         },
         serializeChannelBlock,
         block => {
             resolveChannelOffset(context, block.channelNext);
             resolveTextBlockOffset(context, block.txName);
+            resolveChannelConversionOffset(context, block.conversion);
             resolveTextBlockOffset(context, block.unit);
             resolveTextBlockOffset(context, block.comment);
         });

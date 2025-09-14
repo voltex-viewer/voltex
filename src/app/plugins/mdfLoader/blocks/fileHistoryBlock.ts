@@ -1,8 +1,6 @@
-import { Link, newLink, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
 import { MetadataBlock, resolveMetadataOffset } from './textBlock';
-
-const FILE_HISTORY_BLOCK_SIZE = 56;
 
 export interface FileHistoryBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     fileHistoryNext: MaybeLinked<FileHistoryBlock<TMode>, TMode>;
@@ -41,7 +39,7 @@ export function resolveFileHistoryOffset(context: SerializeContext, block: FileH
         block, 
         {
             type: "##FH",
-            length: BigInt(FILE_HISTORY_BLOCK_SIZE),
+            length: BigInt(32n),
             linkCount: 2n,
         },
         serializeFileHistoryBlock,

@@ -95,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const handled = await renderer.pluginManager.handleFileSave(fileHandle.name, writable);
                                 
                                 if (!handled) {
+                                    await writable.close();
                                     throw Error(`No plugin found to handle file`);
                                 }
                             } catch (error) {

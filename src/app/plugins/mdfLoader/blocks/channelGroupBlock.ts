@@ -1,9 +1,7 @@
-import { Link, newLink, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelBlock, resolveChannelOffset } from './channelBlock';
 import { SerializeContext } from './serializer';
-
-const CHANNEL_GROUP_BLOCK_SIZE = 80 + 24;
 
 export interface ChannelGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     channelGroupNext: MaybeLinked<ChannelGroupBlock<TMode>, TMode>;
@@ -59,7 +57,7 @@ export function resolveChannelGroupOffset(context: SerializeContext, block: Chan
         block, 
         {
             type: "##CG",
-            length: BigInt(CHANNEL_GROUP_BLOCK_SIZE),
+            length: 80n,
             linkCount: 6n,
         },
         serializeChannelGroupBlock,
