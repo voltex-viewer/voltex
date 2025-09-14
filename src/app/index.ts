@@ -4,7 +4,9 @@ import { Renderer } from './Renderer';
 import { VerticalSidebar } from './VerticalSidebar';
 import { createMenuBar } from './MenuBar';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await document.fonts.load('16px "Open Sans"');
+
     const root = document.getElementById('root');
     if (!root) return;
     root.classList.add('waveform-root');
