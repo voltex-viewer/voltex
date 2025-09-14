@@ -20,8 +20,8 @@ export function calculateGridLinePositions(
     let maxValue = -Infinity;
     
     for (const signal of row.signals) {
-        minValue = Math.min(minValue, signal.minValue);
-        maxValue = Math.max(maxValue, signal.maxValue);
+        minValue = Math.min(minValue, signal.values.min);
+        maxValue = Math.max(maxValue, signal.values.max);
     }
     
     if (minValue === Infinity || maxValue === -Infinity || minValue === maxValue) {
