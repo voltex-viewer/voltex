@@ -4,6 +4,9 @@
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build:web": "vite build --config vite.web.config.ts",
     "dev:web": "vite dev --config vite.web.config.ts",
@@ -41,6 +44,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@voltex/plugin-api": "workspace:*",
     "electron-squirrel-startup": "^1.0.1",
     "fp-ts": "^2.16.10",
     "io-ts": "^2.2.22"

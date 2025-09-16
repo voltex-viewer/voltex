@@ -5,7 +5,7 @@ import lineFragmentShader from './shaders/lineFragment.glsl?raw';
 import enumFragmentShader from './shaders/enumFragment.glsl?raw';
 import dotVertexShader from './shaders/dotVertex.glsl?raw';
 import dotFragmentShader from './shaders/dotFragment.glsl?raw';
-import { WebGLUtils } from '../../Plugin';
+import { WebGLUtils } from '@voltex/plugin-api';
 
 export class WaveformShaders {
     instancedLine: WebGLProgram;

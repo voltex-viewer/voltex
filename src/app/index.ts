@@ -1,5 +1,5 @@
 import './index.css';
-import { WaveformState } from "./Plugin";
+import { WaveformState } from "@voltex/plugin-api";
 import { Renderer } from './Renderer';
 import { VerticalSidebar } from './VerticalSidebar';
 import { createMenuBar } from './MenuBar';

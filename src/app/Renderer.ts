@@ -1,8 +1,6 @@
-import type { PositionValue, RenderObject, WaveformState } from "./Plugin";
+import type { PositionValue, RenderObject, WaveformState, RenderBounds, RenderContext, PluginModule, Signal } from "@voltex/plugin-api";
+import { calculateBounds, px } from "@voltex/plugin-api";
 import { RenderObjectImpl, MouseEvent, MouseEventHandlers } from './RenderObject';
-import { calculateBounds, RenderBounds } from "./Plugin";
-import { px } from "./Plugin";
-import { RenderContext } from "./Plugin";
 import { SignalMetadataManagerImpl } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
 import { WebGLUtilsImpl } from './WebGLUtils';
@@ -11,9 +9,7 @@ import { setPluginManager } from './plugins/manager/PluginManagerPlugin';
 import { RenderProfiler } from './RenderProfiler';
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
 import PluginManagerMetadata from './plugins/manager/plugin.json';
-import { PluginModule } from './Plugin';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
-import { Signal } from './Plugin';
 
 interface InternalMouseEvent extends MouseEvent {
     readonly stopPropagationCalled: boolean;

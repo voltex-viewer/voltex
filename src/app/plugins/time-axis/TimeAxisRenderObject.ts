@@ -1,6 +1,4 @@
-import { RenderObjectImpl } from '../../RenderObject';
-import { RenderObject, type RenderBounds } from "src/app/Plugin";
-import { type RenderContext } from "../../Plugin";
+import { RenderObject, type RenderBounds, type RenderContext } from "@voltex/plugin-api";
 import { getGridSpacing } from './TimeAxisUtils';
 
 const TIME_UNITS = [

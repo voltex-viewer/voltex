@@ -1,4 +1,4 @@
-import { RenderObject, type RenderBounds, type RenderContext } from "../../Plugin";
+import { RenderObject, type RenderBounds, type RenderContext } from "@voltex/plugin-api";
 import { GridLinePosition } from './HorizontalGridPlugin';
 
 export class HorizontalGridLabelRenderObject {

@@ -1,4 +1,4 @@
-import type { PluginContext, Row } from '../../Plugin';
+import type { PluginContext, Row } from '@voltex/plugin-api';
 import { fpsRenderObject } from './FpsRenderObject';
 
 export default (context: PluginContext): void => {

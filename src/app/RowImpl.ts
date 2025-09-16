@@ -1,9 +1,5 @@
-import { Row, RenderMode } from './Plugin';
+import { Row, RenderMode, type RenderBounds, type RenderContext, px, type RenderObject, type Signal } from '@voltex/plugin-api';
 import { RenderObjectImpl } from './RenderObject';
-import { type RenderBounds } from "./Plugin";
-import { type RenderContext } from "./Plugin";
-import { px } from "./Plugin";
-import type { RenderObject, Signal } from './Plugin';
 import { ViewportRenderObject } from './ViewportRenderObject';
 
 export class RowImpl implements Row {

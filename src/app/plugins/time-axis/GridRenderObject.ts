@@ -1,4 +1,4 @@
-import { type RenderContext, RenderObject, type RenderBounds } from "../../Plugin";
+import { type RenderContext, RenderObject, type RenderBounds } from "@voltex/plugin-api";
 import { getGridSpacing } from './TimeAxisUtils';
 
 export class GridRenderObject {

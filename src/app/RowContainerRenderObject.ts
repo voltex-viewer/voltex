@@ -1,11 +1,8 @@
 import { RowImpl } from './RowImpl';
-import type { RenderObject, WaveformState } from "./Plugin";
+import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters } from "@voltex/plugin-api";
+import { getAbsoluteBounds, px } from "@voltex/plugin-api";
 import { type MouseEvent, type WheelEvent } from './RenderObject';
-import { getAbsoluteBounds, RenderBounds } from "./Plugin";
-import { px } from "./Plugin";
-import { RenderContext } from "./Plugin";
 import { RowChangedCallback } from './RowManager';
-import { RowInsert, RowParameters } from './Plugin';
 
 type ResizeState = 
     | { type: 'none' }

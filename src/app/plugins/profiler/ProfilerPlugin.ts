@@ -1,4 +1,4 @@
-import { Sequence, MeasureInfo, PluginContext, RenderMode } from '../../Plugin';
+import { Sequence, MeasureInfo, PluginContext, RenderMode } from '@voltex/plugin-api';
 
 export default (context: PluginContext): void => {
     const profiler = context.renderProfiler;

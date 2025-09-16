@@ -1,7 +1,6 @@
-import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, RenderObjectArgs } from './Plugin';
+import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, RenderObjectArgs } from '@voltex/plugin-api';
 import { RenderObjectImpl } from './RenderObject';
-import type { WebGlContext } from "./Plugin";
-import type { WaveformState } from "./Plugin";
+import type { WebGlContext, WaveformState } from "@voltex/plugin-api";
 import { RowChangedEvent } from './RowManager';
 import { PluginConfigManager } from './PluginConfigManager';
 import type { RenderProfiler } from './RenderProfiler';
