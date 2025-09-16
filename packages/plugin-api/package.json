@@ -4,6 +4,13 @@
   "description": "Plugin API for Voltex waveform viewer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
+  },
   "files": [
     "dist/**/*"
   ],
