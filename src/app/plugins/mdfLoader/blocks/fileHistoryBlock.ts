@@ -32,6 +32,9 @@ export function serializeFileHistoryBlock(view: DataView<ArrayBuffer>, context: 
     view.setUint16(24, fileHistory.timeZone, true);
     view.setUint16(26, fileHistory.dstOffset, true);
     view.setUint8(28, fileHistory.timeFlags);
+    view.setUint8(29, 0);
+    view.setUint8(30, 0);
+    view.setUint8(31, 0);
 }
 
 export function resolveFileHistoryOffset(context: SerializeContext, block: FileHistoryBlock<'instanced'>) {

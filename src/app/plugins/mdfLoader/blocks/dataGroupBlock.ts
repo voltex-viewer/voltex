@@ -44,7 +44,7 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
             resolveChannelGroupOffset(context, block.channelGroupFirst);
             resolveDataGroupOffset(context, block.dataGroupNext);
             if (block.data !== null) {
-                if ('flags' in block.data) {
+                if ('dataListNext' in block.data) {
                     resolveDataListOffset(context, block.data);
                 } else {
                     resolveDataTableOffset(context, block.data);

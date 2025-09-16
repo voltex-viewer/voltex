@@ -1,4 +1,4 @@
-import { InMemorySequence, SequenceSignal } from '@voltex/plugin-api';
+import { InMemorySequence, Sequence, SequenceSignal } from '@voltex/plugin-api';
 import { PluginContext, RenderMode, SignalSource, Signal } from '@voltex/plugin-api';
 import {
     Link, newLink, getLink, readBlock,
@@ -9,7 +9,9 @@ import {
     ChannelBlock, iterateChannelBlocks, DataType,
     TextBlock, deserializeTextBlock, deserializeMetadataBlock, readTextBlock,
     ChannelConversionBlock, readConversionBlock, ConversionType,
-    resolveHeaderOffset
+    resolveHeaderOffset,
+    DataTableBlock,
+    DataListBlock
 } from './blocks';
 import { SerializeContext } from './blocks/serializer';
 
@@ -220,8 +222,11 @@ class DataGroupLoader {
     }
 }
 
-function conversionToFunction(conversionMap: Map<Link<ChannelConversionBlock>, ChannelConversionBlock>, strings: Map<Link<TextBlock>, string>, link: Link<ChannelConversionBlock>): (value: number) => number | string {
+function conversionToFunction(conversionMap: Map<Link<ChannelConversionBlock>, ChannelConversionBlock>, strings: Map<Link<TextBlock>, string>, link: Link<ChannelConversionBlock>): undefined | ((value: number) => number | string) {
     function convert(link: Link<ChannelConversionBlock>): (value: number) => number | string {
+        if (getLink(link) === 0n) {
+            return undefined;
+        }
         const conversion = conversionMap.get(link);
         if (!conversion) {
             throw new Error(`Unknown conversion: ${link}`);
@@ -411,9 +416,9 @@ export default (context: PluginContext): void => {
                 // Defer figuring out the conversions so that the results can be cached and limit async scope
                 const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock>();
                 const strings = new Map<Link<TextBlock>, string>();
-                async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>) {
-                    if (conversionMap.has(link)) {
-                        return conversionMap.get(link);
+                async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<void> {
+                    if (getLink(link) === 0n || conversionMap.has(link)) {
+                        return;
                     }
                     const block = await readConversionBlock(link, file);
                     conversionMap.set(link, block);
@@ -441,8 +446,6 @@ export default (context: PluginContext): void => {
                             throw new Error(`Invalid block type in channel conversion block: "${unit.type}"`);
                         }
                     }
-
-                    return block;
                 }
                 for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, file)) {
                     const channels = [];
@@ -475,72 +478,116 @@ export default (context: PluginContext): void => {
         mimeType: '*/*',
         handler: async (file: FileSystemWritableFileStream) => {
             const now = BigInt(Date.now()) * 1000000n;
-            const conversions: {name: string, conversion: ChannelConversionBlock<'instanced'>}[] = [
-                {
-                    name: "None",
-                    conversion: null,
-                },
-                {
-                    name: "Linear",
-                    conversion: {
-                        type: ConversionType.Linear,
-                        txName: null,
-                        mdUnit: null,
-                        mdComment: null,
-                        inverse: null,
-                        refs: [],
-                        values: [1, 2],
-                        precision: 0,
-                        flags: 0,
-                        physicalRangeMinimum: 0,
-                        physicalRangeMaximum: 0,
-                    }
-                },
-                {
-                    name: "Value to text",
-                    conversion: {
-                        type: ConversionType.ValueToTextOrScale,
-                        txName: null,
-                        mdUnit: null,
-                        mdComment: null,
-                        inverse: null,
-                        refs: [
-                            {
-                                data: "Booting",
-                            },
-                            {
-                                data: "Idle",
-                            },
-                            {
-                                data: "Active",
-                            },
-                            {
-                                type: ConversionType.Linear,
-                                txName: null,
-                                mdUnit: null,
-                                mdComment: null,
-                                inverse: null,
-                                refs: [],
-                                values: [1, 2],
-                                precision: 0,
-                                flags: 0,
-                                physicalRangeMinimum: 0,
-                                physicalRangeMaximum: 0,
-                            },
-                        ],
-                        values: [
-                            0,
-                            1,
-                            2
-                        ],
-                        precision: 0,
-                        flags: 0,
-                        physicalRangeMinimum: 0,
-                        physicalRangeMaximum: 0,
-                    }
+            const signals = context.getRows().flatMap(row => row.signals);
+            // Group signals by time sequence
+            const groupedSignals = new Map<Sequence, Map<number, Signal[]>>();
+            for (const signal of signals) {
+                const timeSequence = signal.time;
+                const length = Math.min(signal.time.length, signal.values.length);
+                
+                if (!groupedSignals.has(timeSequence)) {
+                    groupedSignals.set(timeSequence, new Map());
                 }
-            ];
-            const dataGroups = conversions.map(conversion => ({
+                
+                const lengthMap = groupedSignals.get(timeSequence)!;
+                if (!lengthMap.has(length)) {
+                    lengthMap.set(length, []);
+                }
+                lengthMap.get(length)!.push(signal);
+            }
+            const channelGroups = Array.from(groupedSignals.entries().flatMap(([time, lengthMap]) => lengthMap.entries().map(([length, signals]) => ({time, length, signals}))));
+            const dataGroups = channelGroups.map(({time, length, signals}) => {
+                let commonPrefix = signals[0].source.name.slice(0, signals[0].source.name.length - 1);
+                for (let i = 1; i < signals.length && commonPrefix; i++) {
+                    const name = signals[i].source.name;
+                    let j = 0;
+                    while (j < commonPrefix.length && j < name.length && commonPrefix[j] === name[j]) {
+                        j++;
+                    }
+                    commonPrefix = commonPrefix.slice(0, j);
+                }
+                const channelInfo: [string[], Sequence][] = [[[...commonPrefix, "time"], time], ...signals.map(s => [s.source.name, s.values] as [string[], Sequence])];
+                const channels = channelInfo.map(([name], index) => ({
+                    channelNext: null,
+                    component: null,
+                    txName: {
+                        data: name.slice(commonPrefix.length).join('.'),
+                    },
+                    siSource: null,
+                    conversion: null,
+                    data: null,
+                    unit: null,
+                    comment: null,
+                    channelType: index == 0 ? 2 : 0,
+                    syncType: index == 0 ? 1 : 0,
+                    dataType: DataType.FloatLe,
+                    bitOffset: 0,
+                    byteOffset: index * 4,
+                    bitCount: 32,
+                    flags: 0,
+                    invalidationBitPosition: 0,
+                    precision: 0,
+                    attachmentCount: 0,
+                    valueRangeMinimum: 0,
+                    valueRangeMaximum: 0,
+                    limitMinimum: 0,
+                    limitMaximum: 0,
+                    limitExtendedMinimum: 0,
+                    limitExtendedMaximum: 0,
+                } as ChannelBlock<'instanced'>));
+                
+                for (let i = 0; i < channels.length - 1; i++) {
+                    channels[i].channelNext = channels[i + 1];
+                }
+                const maxBytesPerArray = 65536 - 24; // 64 KB block size minus header
+                const bytesPerSample = channels.length * Float32Array.BYTES_PER_ELEMENT;
+                const samplesPerArray = Math.floor(maxBytesPerArray / bytesPerSample);
+                const numArrays = Math.ceil(length / samplesPerArray);
+                const arrays: DataTableBlock[] = [];
+
+                for (let arrayIndex = 0; arrayIndex < numArrays; arrayIndex++) {
+                    const startSample = arrayIndex * samplesPerArray;
+                    const endSample = Math.min(startSample + samplesPerArray, length);
+                    const samplesInThisArray = endSample - startSample;
+                    
+                    const arr = new Float32Array(samplesInThisArray * channels.length);
+                    for (let i = 0; i < samplesInThisArray; i++) {
+                        for (let j = 0; j < channelInfo.length; j++) {
+                            arr[i * channels.length + j] = channelInfo[j][1].valueAt(startSample + i);
+                        }
+                    }
+                    arrays.push({
+                        data: new DataView(arr.buffer),
+                    });
+                }
+                return {
+                    dataGroupNext: null,
+                    channelGroupFirst: {
+                        channelGroupNext: null,
+                        channelFirst: channels[0],
+                        acquisitionName: {
+                            data: commonPrefix.join('.'),
+                        },
+                        acquisitionSource: null,
+                        sampleReductionFirst: null,
+                        comment: null,
+                        recordId: 0n,
+                        cycleCount: BigInt(length),
+                        flags: 0,
+                        pathSeparator: 0,
+                        dataBytes: channelInfo.length * 4,
+                        invalidationBytes: 0,
+                    },
+                    data: arrays.length == 1 ? arrays[0] : {
+                        dataListNext: null,
+                        data: arrays,
+                        flags: 0,
+                    } as DataListBlock<'instanced'>,
+                    comment: null,
+                    recordIdSize: 0,
+                } as DataGroupBlock<'instanced'>
+            });
+            /*const dataGroups = conversions.map(conversion => ({
                 dataGroupNext: null,
                 channelGroupFirst: {
                     channelGroupNext: null,
@@ -617,7 +664,7 @@ export default (context: PluginContext): void => {
                 },
                 comment: null,
                 recordIdSize: 0,
-            } as DataGroupBlock<'instanced'>));
+            } as DataGroupBlock<'instanced'>));*/
             const dataGroup = dataGroups[0];
             for (let i = 1; i < dataGroups.length; i++) {
                 dataGroups[i - 1].dataGroupNext = dataGroups[i];
@@ -647,11 +694,11 @@ export default (context: PluginContext): void => {
                 startAngle: 0n,
                 startDistance: 0n,
             };
-            const context = new SerializeContext();
-            resolveHeaderOffset(context, header);
+            const serializeContext = new SerializeContext();
+            resolveHeaderOffset(serializeContext, header);
             const writer = file.getWriter();
             try {
-                await context.serialize(writer);
+                await serializeContext.serialize(writer);
             } finally {
                 await writer.close();
             }
