@@ -1,11 +1,15 @@
-import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
+import { RenderObject, type RenderBounds, type RenderContext } from "../../Plugin";
 import { GridLinePosition } from './HorizontalGridPlugin';
 
-export class HorizontalGridLabelRenderObject extends RenderObject {
+export class HorizontalGridLabelRenderObject {
     constructor(
+        parent: RenderObject,
         private calculateGridPositions: (bounds: { height: number }) => GridLinePosition[]
     ) {
-        super(100); // High z-index to render on top of other elements
+        parent.addChild({
+            zIndex: 100,
+            render: this.render.bind(this),
+        });
     }
     
     private determineFormatting(values: number[]): { unit: string; scale: number; decimalPlaces: number } {

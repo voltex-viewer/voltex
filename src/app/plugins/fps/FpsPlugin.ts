@@ -1,5 +1,5 @@
 import type { PluginContext, Row } from '../../Plugin';
-import { FpsRenderObject } from './FpsRenderObject';
+import { fpsRenderObject } from './FpsRenderObject';
 
 export default (context: PluginContext): void => {
     let fpsRow: Row | null = null;
@@ -9,7 +9,7 @@ export default (context: PluginContext): void => {
         }
         if (!fpsRow && event.added.length > 0) {
             fpsRow = event.added[0];
-            fpsRow.addLabelRenderObject(new FpsRenderObject());
+            fpsRow.labelArea.addChild(fpsRenderObject());
         }
     });
 }

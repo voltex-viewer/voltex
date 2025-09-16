@@ -1,16 +1,15 @@
-import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
-import type { Signal } from '../../Signal';
-import { WebGLUtils } from '../../WebGLUtils';
-import type { SignalMetadataManager } from '../../SignalMetadataManager';
-import type { Row } from '../../Plugin';
+import { hexToRgba, RenderObject, type RenderBounds, type Row, type Signal, type SignalMetadataManager, type RenderContext } from '../../Plugin';
 
-export class LabelRenderObject extends RenderObject {
+export class LabelRenderObject {
     private channels: Signal[];
     private signalMetadata: SignalMetadataManager;
     private row: Row;
 
-    constructor(channels: Signal[] | undefined, signalMetadata: SignalMetadataManager, row: Row, zIndex: number = 0) {
-        super(zIndex);
+    constructor(parent: RenderObject, channels: Signal[] | undefined, signalMetadata: SignalMetadataManager, row: Row, zIndex: number = 0) {
+        parent.addChild({
+            zIndex,
+            render: this.render.bind(this),
+        });
         this.channels = channels || [];
         this.signalMetadata = signalMetadata;
         this.row = row;
@@ -74,7 +73,7 @@ export class LabelRenderObject extends RenderObject {
                 ]);
                 
                 gl.bufferData(gl.ARRAY_BUFFER, borderVertices, gl.STATIC_DRAW);
-                const rgba = WebGLUtils.hexToRgba(channelColor);
+                const rgba = hexToRgba(channelColor);
                 gl.uniform4f(colorLocation, rgba[0], rgba[1], rgba[2], rgba[3]);
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             });

@@ -1,5 +1,4 @@
-import { MeasureInfo, PluginContext, RenderMode } from '../../Plugin';
-import { Sequence } from '../../Signal';
+import { Sequence, MeasureInfo, PluginContext, RenderMode } from '../../Plugin';
 
 export default (context: PluginContext): void => {
     const profiler = context.renderProfiler;

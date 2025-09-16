@@ -1,21 +1,6 @@
-import type { SignalSource } from './Plugin';
+import type { Sequence, Signal, SignalSource } from './Plugin';
 
 export type ChannelPoint = [t: number, v: number];
-
-export interface Sequence {
-    min: number;
-    max: number;
-    length: number;
-    null?: number;
-    valueAt(index: number): number;
-    convertedValueAt?(index: number): number | string;
-}
-
-export interface Signal {
-    source: SignalSource;
-    time: Sequence;
-    values: Sequence;
-}
 
 export class InMemorySequence implements Sequence {
     private _min: number;

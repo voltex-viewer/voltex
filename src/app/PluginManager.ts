@@ -1,13 +1,12 @@
-import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileHandler, FileSaveHandler } from './Plugin';
-import type { RenderObject, WebGlContext } from './RenderObject';
-import type { WaveformState } from './WaveformState';
-import type { SignalMetadataManager } from './SignalMetadataManager';
+import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, RenderObjectArgs } from './Plugin';
+import { RenderObjectImpl } from './RenderObject';
+import type { WebGlContext } from "./Plugin";
+import type { WaveformState } from "./Plugin";
 import { RowChangedEvent } from './RowManager';
 import { PluginConfigManager } from './PluginConfigManager';
 import type { RenderProfiler } from './RenderProfiler';
 import * as t from 'io-ts';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
-import { ContainerRenderObject } from './ContainerRenderObject';
 import { RowImpl } from './RowImpl';
 
 interface ActivePlugin {
@@ -27,12 +26,11 @@ interface PluginData {
     afterRenderCallbacks: (() => boolean)[];
     sidebarEntries: SidebarEntry[];
     sidebarEntryInstances: import('./VerticalSidebar').SidebarEntry[];
-    renderObjects: RenderObject[];
-    rootRenderObjects: RenderObject[];
+    renderObjects: RenderObjectImpl[];
     signalSources: SignalSource[];
     rowProxyCache: Map<RowImpl, Row>; // Cache proxy rows to maintain identity
     proxyToActualRowMap: Map<Row, RowImpl>; // Map proxy rows back to actual rows
-    fileExtensionHandlers: FileHandler[];
+    fileExtensionHandlers: FileOpenHandler[];
     fileSaveHandlers: FileSaveHandler[];
 }
 
@@ -49,7 +47,7 @@ export class PluginManager {
         private signalMetadata: SignalMetadataManager,
         private signalSources: SignalSourceManager,
         private rowManager: RowContainerRenderObject,
-        private rootRenderObject: ContainerRenderObject,
+        private rootRenderObject: RenderObjectImpl,
         private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
         private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
         private requestRender: () => void,
@@ -90,6 +88,7 @@ export class PluginManager {
             signalMetadata: this.signalMetadata,
             signalSources: this.createPluginSignalSourceManager(plugin),
             renderProfiler: this.createReadOnlyRenderProfiler(),
+            rootRenderObject: this.rootRenderObject,
             onRowsChanged: (callback: RowsChangedCallback) => {
                 const data = this.pluginData.get(plugin)!;
                 data.rowsChangedCallbacks.push(callback);
@@ -104,12 +103,6 @@ export class PluginManager {
             },
             addSidebarEntry: (entry: SidebarEntry) => {
                 this.addSidebarEntry(plugin, entry);
-            },
-            addRootRenderObject: (renderObject: RenderObject) => {
-                this.addRootRenderObject(plugin, renderObject);
-            },
-            removeRootRenderObject: (renderObject: RenderObject) => {
-                this.removeRootRenderObject(plugin, renderObject);
             },
             requestRender: () => {
                 if (this.requestRender) {
@@ -157,14 +150,14 @@ export class PluginManager {
 
                 return 'browser';
             },
-            registerFileOpenHandler: (handler: FileHandler) => {
+            registerFileOpenHandler: (handler: FileOpenHandler) => {
                 const data = this.pluginData.get(plugin)!;
                 data.fileExtensionHandlers.push(handler);
             },
             registerFileSaveHandler: (handler: FileSaveHandler) => {
                 const data = this.pluginData.get(plugin)!;
                 data.fileSaveHandlers.push(handler);
-            }
+            },
         };
 
         plugin.context = context;
@@ -177,7 +170,6 @@ export class PluginManager {
             sidebarEntries: [],
             sidebarEntryInstances: [],
             renderObjects: [],
-            rootRenderObjects: [],
             signalSources: [],
             rowProxyCache: new Map(),
             proxyToActualRowMap: new Map(),
@@ -185,7 +177,11 @@ export class PluginManager {
             fileSaveHandlers: [],
         });
         
-        pluginModule.plugin(context);
+        try {
+            pluginModule.plugin(context);
+        } catch (error) {
+            console.error(`Error occurred while initializing plugin ${plugin.metadata.name}:`, error);
+        }
         
         // Notify plugin about existing rows
         const existingRows = this.rowManager.getAllRows();
@@ -193,7 +189,11 @@ export class PluginManager {
             const proxyRows = existingRows.map(row => this.createProxyRow(plugin, row));
             const data = this.pluginData.get(plugin)!;
             for (const callback of data.rowsChangedCallbacks) {
-                callback({ added: proxyRows, removed: [] });
+                try {
+                    callback({ added: proxyRows, removed: [] });
+                } catch (error) {
+                    console.error(`Error in rowsChanged callback of plugin ${plugin.metadata.name}:`, error);
+                }
             }
         }
         
@@ -214,22 +214,10 @@ export class PluginManager {
         
         // Remove render objects from all rows before disposing
         for (const renderObject of data.renderObjects) {
-            renderObject.getParent().removeChild(renderObject);
-        }
-        
-        // Remove root render objects
-        for (const renderObject of data.rootRenderObjects) {
-            this.rootRenderObject.removeChild(renderObject);
-        }
-        
-        // Dispose render objects
-        for (const renderObject of data.renderObjects) {
-            renderObject.dispose();
-        }
-        
-        // Dispose root render objects
-        for (const renderObject of data.rootRenderObjects) {
-            renderObject.dispose();
+            if (renderObject.dispose) {
+                renderObject.dispose();
+            }
+            (renderObject.parent as RenderObjectImpl)?.removeChild(renderObject);
         }
         
         for (const instance of data.sidebarEntryInstances) {
@@ -251,7 +239,11 @@ export class PluginManager {
                     removed: event.removed.map(row => this.createProxyRow(plugin, row))
                 };
                 for (const callback of data.rowsChangedCallbacks) {
-                    callback(proxyEvent);
+                    try {
+                        callback(proxyEvent);
+                    } catch (error) {
+                        console.error(`Error in rowsChanged callback of plugin ${plugin.metadata.name}:`, error);
+                    }
                 }
             }
         }
@@ -275,25 +267,6 @@ export class PluginManager {
                 if (instance) {
                     data.sidebarEntryInstances.push(instance);
                 }
-            }
-        }
-    }
-
-    private addRootRenderObject(plugin: ActivePlugin, renderObject: RenderObject): void {
-        const data = this.pluginData.get(plugin);
-        if (data) {
-            data.rootRenderObjects.push(renderObject);
-            this.rootRenderObject.addChild(renderObject);
-        }
-    }
-
-    private removeRootRenderObject(plugin: ActivePlugin, renderObject: RenderObject): void {
-        const data = this.pluginData.get(plugin);
-        if (data) {
-            const index = data.rootRenderObjects.indexOf(renderObject);
-            if (index !== -1) {
-                data.rootRenderObjects.splice(index, 1);
-                this.rootRenderObject.removeChild(renderObject);
             }
         }
     }
@@ -369,6 +342,7 @@ export class PluginManager {
         if (data.rowProxyCache.has(row)) {
             return data.rowProxyCache.get(row)!;
         }
+        // TODO: Push to data.renderObjects when render objects are added to the row
 
         const proxyRow = {
             get height() {
@@ -383,13 +357,11 @@ export class PluginManager {
             get yOffset() {
                 return row.yOffset;
             },
-            addRenderObject: (renderObject: RenderObject) => {
-                data.renderObjects.push(renderObject);
-                row.addRenderObject(renderObject);
+            get mainArea() {
+                return row.mainArea;
             },
-            addLabelRenderObject: (renderObject: RenderObject) => {
-                data.renderObjects.push(renderObject);
-                row.addLabelRenderObject(renderObject);
+            get labelArea() {
+                return row.labelArea;
             },
             setHeight: (height: number) => {
                 row.setHeight(height);

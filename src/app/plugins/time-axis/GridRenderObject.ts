@@ -1,9 +1,12 @@
-import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
+import { type RenderContext, RenderObject, type RenderBounds } from "../../Plugin";
 import { getGridSpacing } from './TimeAxisUtils';
 
-export class GridRenderObject extends RenderObject {
-    constructor() {
-        super(-50);
+export class GridRenderObject {
+    constructor(parent: RenderObject) {
+        parent.addChild({
+            zIndex: -50,
+            render: this.render.bind(this),
+        });
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {

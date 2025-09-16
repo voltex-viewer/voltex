@@ -13,9 +13,8 @@ export default (context: PluginContext): void => {
         
         // Add render objects for new rows
         for (const row of event.added) {
-            const labelRenderObject = new LabelRenderObject(row.signals, signalMetadata, row);
+            const labelRenderObject = new LabelRenderObject(row.labelArea, row.signals, signalMetadata, row);
             labelRenderObjects.set(row, labelRenderObject);
-            row.addLabelRenderObject(labelRenderObject);
         }
     });
 };

@@ -1,14 +1,11 @@
-import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
-import { WebGLUtils } from '../../WebGLUtils';
+import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal } from "../../Plugin";
 import type { BufferData } from './WaveformRendererPlugin';
 import { WaveformConfig } from './WaveformConfig';
-import { RenderMode } from '../../Plugin';
 import { WaveformShaders } from './WaveformShaders';
-import type { Signal } from '../../Signal';
-import { Row } from 'src/app/Plugin';
 
-export class WaveformRenderObject extends RenderObject {
+export class WaveformRenderObject {
     constructor(
+        parent: RenderObject,
         private config: WaveformConfig,
         private bufferData: BufferData,
         private sharedInstanceGeometryBuffer: WebGLBuffer,
@@ -21,7 +18,10 @@ export class WaveformRenderObject extends RenderObject {
         private renderMode: RenderMode,
         zIndex: number = 0
     ) {
-        super(zIndex);
+        parent.addChild({
+            zIndex: zIndex,
+            render: this.render.bind(this),
+        });
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {
@@ -52,7 +52,7 @@ export class WaveformRenderObject extends RenderObject {
             gl.uniform1f(gl.getUniformLocation(program, 'u_yScale'), this.row.yScale);
             gl.uniform1f(gl.getUniformLocation(program, 'u_yOffset'), this.row.yOffset);
 
-            const [r, g, b, a] = WebGLUtils.hexToRgba(color);
+            const [r, g, b, a] = hexToRgba(color);
             gl.uniform4f(gl.getUniformLocation(program, 'u_color'), r, g, b, a);
         };
 
@@ -66,7 +66,7 @@ export class WaveformRenderObject extends RenderObject {
             // Pass max value for color generation
             gl.uniform1f(gl.getUniformLocation(program, 'u_maxValue'), this.signal.values.max);
 
-            const [r, g, b, a] = WebGLUtils.hexToRgba(color);
+            const [r, g, b, a] = hexToRgba(color);
             gl.uniform4f(gl.getUniformLocation(program, 'u_color'), r, g, b, a);
 
             if ("null" in this.signal.values) {

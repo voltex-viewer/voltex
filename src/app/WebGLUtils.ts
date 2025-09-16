@@ -1,4 +1,4 @@
-export class WebGLUtils {
+export class WebGLUtilsImpl {
     line: WebGLProgram;
     grid: WebGLProgram;
     private text: WebGLProgram;
@@ -134,13 +134,6 @@ export class WebGLUtils {
         }
         
         return program;
-    }
-    
-    static hexToRgba(hex: string, alpha: number = 1.0): [number, number, number, number] {
-        const r = parseInt(hex.slice(1, 3), 16) / 255;
-        const g = parseInt(hex.slice(3, 5), 16) / 255;
-        const b = parseInt(hex.slice(5, 7), 16) / 255;
-        return [r, g, b, alpha];
     }
 
     measureText(text: string, font: string = '12px sans-serif', padding: number = 0, strokeWidth: number = 0): {metrics: TextMetrics, renderWidth: number, renderHeight: number} {

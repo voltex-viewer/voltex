@@ -1,4 +1,4 @@
-import { RowParameters, type PluginContext, type SignalSource } from '../../Plugin'
+import { type PluginContext, type SignalSource } from '../../Plugin'
 
 let context: PluginContext | undefined;
 let sidebarContainer: HTMLElement | undefined;

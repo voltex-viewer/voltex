@@ -101,11 +101,11 @@ export default (context: PluginContext): void => {
                 // Create a closed-over function that knows about this specific row
                 const calculateGridPositionsForRow = (bounds: { height: number }) => 
                     calculateGridLinePositions(row, bounds);
-                
+                                                                                                                                                
                 // Add grid lines with lower z-index
-                row.addRenderObject(new HorizontalGridRenderObject(calculateGridPositionsForRow));
+                new HorizontalGridRenderObject(row.mainArea, calculateGridPositionsForRow);
                 // Add labels with higher z-index to render on top
-                row.addRenderObject(new HorizontalGridLabelRenderObject(calculateGridPositionsForRow));
+                new HorizontalGridLabelRenderObject(row.mainArea, calculateGridPositionsForRow);
             }
         }
     });

@@ -1,5 +1,4 @@
-import type { PluginContext, Row } from '../../Plugin';
-import type { Signal, Sequence } from '../../Signal';
+import type { PluginContext, Row, Signal } from '../../Plugin';
 import { WaveformConfigSchema } from './WaveformConfig';
 import { WaveformRenderObject } from './WaveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';
@@ -35,8 +34,8 @@ export default (context: PluginContext): void => {
 
 
     // Create a single global tooltip render object
-    const tooltipRenderObject = new WaveformTooltipRenderObject(config);
-    context.addRootRenderObject(tooltipRenderObject);
+    const waveformOverlays: Map<Row, WaveformRowHoverOverlayRenderObject> = new Map();
+    const tooltipRenderObject = new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays);
 
     const buffers = new Map<Signal, BufferData>();
     
@@ -192,7 +191,8 @@ export default (context: PluginContext): void => {
                 
                 rowSignals.push(channel);
                 
-                row.addRenderObject(new WaveformRenderObject(
+                new WaveformRenderObject(
+                    row.mainArea,
                     config,
                     buffers.get(channel)!,
                     sharedInstanceGeometryBuffer,
@@ -203,24 +203,34 @@ export default (context: PluginContext): void => {
                     channel,
                     row,
                     channel.source.renderHint,
-                ));
+                );
             }
 
             // Add a single hover overlay for the entire row
             if (rowSignals.length > 0) {
-                row.addRenderObject(new WaveformRowHoverOverlayRenderObject(
-                    context,
-                    config,
+                waveformOverlays.set(
                     row,
-                    tooltipRenderObject,
-                    rowSignals,
-                    buffers,
-                    sharedInstanceGeometryBuffer,
-                    sharedBevelJoinGeometryBuffer,
-                    instancingExt,
-                    waveformPrograms,
-                    99
-                ));
+                    new WaveformRowHoverOverlayRenderObject(
+                        row.mainArea,
+                        context,
+                        config,
+                        row,
+                        rowSignals,
+                        buffers,
+                        sharedInstanceGeometryBuffer,
+                        sharedBevelJoinGeometryBuffer,
+                        instancingExt,
+                        waveformPrograms,
+                        99
+                    ));
+            }
+
+            for (const row of event.removed) {
+                const overlay = waveformOverlays.get(row);
+                if (overlay) {
+                    overlay.dispose();
+                    waveformOverlays.delete(row);
+                }
             }
         }
 

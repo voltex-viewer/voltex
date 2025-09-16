@@ -1,11 +1,15 @@
-import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
+import { RenderObject, type RenderBounds, type RenderContext } from "../../Plugin";
 import { GridLinePosition } from './HorizontalGridPlugin';
 
-export class HorizontalGridRenderObject extends RenderObject {
+export class HorizontalGridRenderObject {
     constructor(
+        parent: RenderObject,
         private calculateGridPositions: (bounds: { height: number }) => GridLinePosition[]
     ) {
-        super(-40); // Render behind waveforms but in front of horizontal grid
+        parent.addChild({
+            zIndex: -40,
+            render: this.render.bind(this),
+        });
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {

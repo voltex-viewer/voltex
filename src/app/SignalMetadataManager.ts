@@ -1,6 +1,6 @@
-import type { Signal } from './Signal';
+import type { Signal } from './Plugin';
 
-export class SignalMetadataManager {
+export class SignalMetadataManagerImpl {
     private colorMap = new Map<string, string>();
     private readonly defaultColors = [
         '#00eaff', '#ff6b6b', '#51cf66', '#ffd43b', 

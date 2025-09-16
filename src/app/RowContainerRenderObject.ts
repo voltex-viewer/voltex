@@ -1,7 +1,9 @@
-import { ContainerRenderObject } from './ContainerRenderObject';
 import { RowImpl } from './RowImpl';
-import type { WaveformState } from './WaveformState';
-import { px, RenderBounds, RenderContext, RenderObject, type MouseEvent, type WheelEvent } from './RenderObject';
+import type { RenderObject, WaveformState } from "./Plugin";
+import { type MouseEvent, type WheelEvent } from './RenderObject';
+import { getAbsoluteBounds, RenderBounds } from "./Plugin";
+import { px } from "./Plugin";
+import { RenderContext } from "./Plugin";
 import { RowChangedCallback } from './RowManager';
 import { RowInsert, RowParameters } from './Plugin';
 
@@ -13,7 +15,7 @@ type ResizeState =
     | { type: 'dragging-rows'; draggedRows: RowImpl[]; startY: number; offsetY: number; offsetX: number; insertIndex: number }
     | { type: 'potential-row-drag'; row: RowImpl; startX: number; startY: number; event: MouseEvent };
 
-export class RowContainerRenderObject extends RenderObject {
+export class RowContainerRenderObject {
     private rows: RowImpl[] = [];
     private changeCallbacks: RowChangedCallback[] = [];
     
@@ -43,135 +45,139 @@ export class RowContainerRenderObject extends RenderObject {
     private readonly maxPxPerSecond = 1e12;
     private readonly dragThreshold = 5; // pixels to move before starting drag
 
+    private readonly renderObject: RenderObject;
+
     constructor(
+        parent: RenderObject,
         private state: WaveformState,
         private requestRender: () => void,
         private canvas: HTMLCanvasElement,
     ) {
-        super();
+        this.renderObject = parent.addChild({
+            render: (context: RenderContext, bounds: RenderBounds): boolean => {
+                this.rows.forEach(row => row.calculateOptimalScaleAndOffset());
+                return false;
+            }
+        });
 
         // Create a high z-order overlay to intercept resize events
-        const resizeOverlay = new ContainerRenderObject(1000);
-        
-        // Set up mouse event handlers on the overlay
-        resizeOverlay.onMouseDown((event: MouseEvent) => {
-            const mousePosition = this.getMousePosition(event);
-            
-            if (mousePosition.type !== 'none') {
-                if (mousePosition.type === 'horizontal') {
-                    this.resizeState = { 
-                        type: 'horizontal', 
-                        startX: event.clientX - this.labelWidth 
+        this.renderObject.addChild({
+            zIndex: 2000,
+            onMouseDown: ((event: MouseEvent) => {
+                const mousePosition = this.getMousePosition(event);
+                
+                if (mousePosition.type !== 'none') {
+                    if (mousePosition.type === 'horizontal') {
+                        this.resizeState = { 
+                            type: 'horizontal', 
+                            startX: event.clientX - this.labelWidth 
+                        };
+                        
+                        document.body.style.cursor = 'ew-resize';
+                    } else if (mousePosition.type === 'vertical') {
+                        this.resizeState = { 
+                            type: 'vertical', 
+                            startY: event.clientY - mousePosition.row.height,
+                            row: mousePosition.row
+                        };
+
+                        document.body.style.cursor = 'ns-resize';
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.requestRender();
+                } else {
+                    // Don't start panning if clicking in the label area
+                    if (event.clientX < this.labelWidth) return;
+                    
+                    // Start drag-to-scroll
+                    const mouseXInViewport = event.clientX - this.labelWidth;
+                    const timeAtCursor = (this.state.offset + mouseXInViewport) / this.state.pxPerSecond;
+                    
+                    this.resizeState = {
+                        type: 'time-offset',
+                        startX: event.clientX,
+                        startTimeAtCursor: timeAtCursor,
+                        lastX: event.clientX,
+                        lastTime: performance.now(),
+                        velocity: 0
                     };
                     
-                    document.body.style.cursor = 'ew-resize';
-                } else if (mousePosition.type === 'vertical') {
-                    this.resizeState = { 
-                        type: 'vertical', 
-                        startY: event.clientY - mousePosition.row.height,
-                        row: mousePosition.row
-                    };
-
-                    document.body.style.cursor = 'ns-resize';
+                    if (this.animationFrame !== null) {
+                        cancelAnimationFrame(this.animationFrame);
+                        this.animationFrame = null;
+                    }
+                    event.preventDefault();
+                    
+                    // Set up global mouse move and up handlers
+                    this.setupGlobalDragHandlers();
                 }
-                event.preventDefault();
-                event.stopPropagation();
-                this.requestRender();
-            } else {
-                // Don't start panning if clicking in the label area
-                if (event.clientX < this.labelWidth) return;
-                
-                // Start drag-to-scroll
-                const mouseXInViewport = event.clientX - this.labelWidth;
-                const timeAtCursor = (this.state.offset + mouseXInViewport) / this.state.pxPerSecond;
-                
-                this.resizeState = {
-                    type: 'time-offset',
-                    startX: event.clientX,
-                    startTimeAtCursor: timeAtCursor,
-                    lastX: event.clientX,
-                    lastTime: performance.now(),
-                    velocity: 0
-                };
-                
-                if (this.animationFrame !== null) {
-                    cancelAnimationFrame(this.animationFrame);
-                    this.animationFrame = null;
+            }),
+            onMouseMove: ((event: MouseEvent) => {
+                // Handle ongoing resize operations
+                if (this.resizeState.type === 'horizontal') {
+                    const newWidth = Math.max(
+                        this.minLabelWidth, 
+                        Math.min(this.maxLabelWidth, event.clientX - this.resizeState.startX)
+                    );
+                    
+                    if (newWidth !== this.labelWidth) {
+                        this.labelWidth = newWidth;
+                        this.updateViewportWidths();
+                        this.requestRender();
+                    }
+                } else if (this.resizeState.type === 'vertical') {
+                    const height = event.clientY - this.resizeState.startY;
+                    const newHeight = Math.max(
+                        this.minRowHeight,
+                        Math.min(this.maxRowHeight, height)
+                    );
+                    
+                    if (newHeight !== this.resizeState.row.height) {
+                        this.resizeState.row.setHeight(newHeight);
+                        this.updateRowPositions();
+                        this.requestRender();
+                    }
+                } else if (this.resizeState.type !== 'dragging-rows') {
+                    // No ongoing operation, show the available operations (but not during row drag)
+                    const mousePosition = this.getMousePosition(event);
+                    document.body.style.cursor = 
+                        mousePosition.type === 'horizontal' ? 'ew-resize' :
+                        mousePosition.type === 'vertical' ? 'ns-resize' : '';
                 }
-                event.preventDefault();
-                
-                // Set up global mouse move and up handlers
-                this.setupGlobalDragHandlers();
-            }
-        });
-        
-        resizeOverlay.onMouseMove((event: MouseEvent) => {
-            // Handle ongoing resize operations
-            if (this.resizeState.type === 'horizontal') {
-                const newWidth = Math.max(
-                    this.minLabelWidth, 
-                    Math.min(this.maxLabelWidth, event.clientX - this.resizeState.startX)
-                );
-                
-                if (newWidth !== this.labelWidth) {
-                    this.labelWidth = newWidth;
-                    this.updateViewportWidths();
+            }),
+            onMouseUp: ((_event: MouseEvent) => {
+                if (this.resizeState.type === 'horizontal') {
                     this.requestRender();
+                    this.resizeState = { type: 'none' };
                 }
-            } else if (this.resizeState.type === 'vertical') {
-                const height = event.clientY - this.resizeState.startY;
-                const newHeight = Math.max(
-                    this.minRowHeight,
-                    Math.min(this.maxRowHeight, height)
-                );
-                
-                if (newHeight !== this.resizeState.row.height) {
-                    this.resizeState.row.setHeight(newHeight);
-                    this.updateRowPositions();
+                else if (this.resizeState.type === 'vertical') {
                     this.requestRender();
+                    this.resizeState = { type: 'none' };
                 }
-            } else if (this.resizeState.type !== 'dragging-rows') {
-                // No ongoing operation, show the available operations (but not during row drag)
-                const mousePosition = this.getMousePosition(event);
-                document.body.style.cursor = 
-                    mousePosition.type === 'horizontal' ? 'ew-resize' :
-                    mousePosition.type === 'vertical' ? 'ns-resize' : '';
-            }
-        });
-        
-        resizeOverlay.onMouseUp((_event: MouseEvent) => {
-            if (this.resizeState.type === 'horizontal') {
-                this.requestRender();
-                this.resizeState = { type: 'none' };
-            }
-            else if (this.resizeState.type === 'vertical') {
-                this.requestRender();
-                this.resizeState = { type: 'none' };
-            }
-        });
-        resizeOverlay.onMouseLeave(() => {
-            document.body.style.cursor = '';
-        });
+            }),
+            onMouseLeave: (() => {
+                document.body.style.cursor = '';
+            }),
 
-        resizeOverlay.onWheel((event: WheelEvent) => {
-            event.preventDefault();
-            const zoomFactor = 1.25;
-            const oldPxPerSecond = this.state.pxPerSecond;
-            
-            if (event.deltaY < 0) {
-                this.state.pxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * zoomFactor);
-            } else {
-                this.state.pxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / zoomFactor);
-            }
-            
-            const mouseX = event.clientX - this.labelWidth;
-            const mouseTime = (this.state.offset + mouseX) / oldPxPerSecond;
-            this.state.offset = mouseTime * this.state.pxPerSecond - mouseX;
-            
-            this.requestRender();
+            onWheel: ((event: WheelEvent) => {
+                event.preventDefault();
+                const zoomFactor = 1.25;
+                const oldPxPerSecond = this.state.pxPerSecond;
+                
+                if (event.deltaY < 0) {
+                    this.state.pxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * zoomFactor);
+                } else {
+                    this.state.pxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / zoomFactor);
+                }
+                
+                const mouseX = event.clientX - this.labelWidth;
+                const mouseTime = (this.state.offset + mouseX) / oldPxPerSecond;
+                this.state.offset = mouseTime * this.state.pxPerSecond - mouseX;
+                
+                this.requestRender();
+            }),
         });
-
-        this.addChild(resizeOverlay);
             
         // Set up global event listeners for keyboard shortcuts
         document.addEventListener('keydown', (e) => {
@@ -423,7 +429,7 @@ export class RowContainerRenderObject extends RenderObject {
             offsetToClickedRow += rowsToDrag[i].height;
         }
         
-        const clickedRowBounds = clickedRow.rowRenderObject.getAbsoluteBounds();
+        const clickedRowBounds = getAbsoluteBounds(clickedRow.rowRenderObject);
         
         this.resizeState = {
             type: 'dragging-rows',
@@ -589,24 +595,24 @@ export class RowContainerRenderObject extends RenderObject {
             row.rowRenderObject.x = px(0); // Reset x position
             row.rowRenderObject.y = px(currentY);
             row.rowRenderObject.height = px(row.height);
-            row.labelViewport.y = px(this.rowVerticalBorder);
-            row.labelViewport.height = px(row.height - this.rowVerticalBorder * 2);
-            row.mainViewport.y = px(this.rowVerticalBorder);
-            row.mainViewport.height = px(row.height - this.rowVerticalBorder * 2);
+            row.labelArea.y = px(this.rowVerticalBorder);
+            row.labelArea.height = px(row.height - this.rowVerticalBorder * 2);
+            row.mainArea.y = px(this.rowVerticalBorder);
+            row.mainArea.height = px(row.height - this.rowVerticalBorder * 2);
 
             currentY += row.height;
         }
     }
 
     updateViewportWidths(): void {
-        const containerBounds = this.getAbsoluteBounds();
+        const containerBounds = getAbsoluteBounds(this.renderObject);
         const labelWidth = this.labelWidth;
         const mainWidth = Math.max(0, containerBounds.width - labelWidth);
 
         for (const row of this.rows) {
-            row.labelViewport.width = px(labelWidth);
-            row.mainViewport.x = px(labelWidth);
-            row.mainViewport.width = px(mainWidth);
+            row.labelArea.width = px(labelWidth);
+            row.mainArea.x = px(labelWidth);
+            row.mainArea.width = px(mainWidth);
         }
     }
 
@@ -655,21 +661,26 @@ export class RowContainerRenderObject extends RenderObject {
             this.selectedRows.delete(row);
             this.rows.splice(this.rows.indexOf(row), 1);
             removedRows.push(row);
-            row.rowRenderObject.dispose();
+            const parent = row.rowRenderObject.parent;
+            if (parent) {
+                parent.removeChild(row.rowRenderObject);
+            }
         }
         
         // Add new rows at specified indices (sort by index descending to avoid index shifting)
         for (const insert of [...rowsToAdd].reverse().sort((a, b) => b.index - a.index)) {
-            const row = new RowImpl(insert.row.channels, insert.row.height);
-            this.rows.splice(Math.max(0, Math.min(insert.index, this.rows.length)), 0, row);
-            this.addChild(row.rowRenderObject);
-            if (row.signals.length > 0) {
-                row.labelViewport.onMouseDown((event: MouseEvent) => {
+            const channels = insert.row.channels ?? [];
+            const row = new RowImpl(
+                this.renderObject,
+                channels,
+                insert.row.height ?? 50,
+                channels.length > 0 ? (event) => {
                     this.handleRowMouseDown(row, event);
                     event.preventDefault();
                     event.stopPropagation();
-                });
-            }
+                } : undefined
+            );
+            this.rows.splice(Math.max(0, Math.min(insert.index, this.rows.length)), 0, row);
             addedRows.push(row);
         }
         
@@ -682,10 +693,5 @@ export class RowContainerRenderObject extends RenderObject {
             callback({ added: addedRows, removed: removedRows });
         }
         return addedRows;
-    }
-
-    render(context: RenderContext, bounds: RenderBounds): boolean {
-        this.rows.forEach(row => row.calculateOptimalScaleAndOffset());
-        return false;
     }
 }

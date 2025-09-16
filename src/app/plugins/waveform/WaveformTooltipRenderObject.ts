@@ -1,7 +1,6 @@
-import { RenderObject, type RenderContext, type RenderBounds, WebGlContext } from '../../RenderObject';
-import { WebGLUtils } from '../../WebGLUtils';
+import { hexToRgba, type RenderBounds, type Signal, type WebGLUtils, type RenderContext, type RenderObject, type Row } from "../../Plugin";
 import { WaveformConfig } from './WaveformConfig';
-import type { Signal } from '../../Signal';
+import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';
 
 export interface SignalTooltipData {
     signal: Signal;
@@ -12,7 +11,7 @@ export interface SignalTooltipData {
     color: string;
 }
 
-interface TooltipData {
+export interface TooltipData {
     visible: boolean;
     x: number;
     y: number;
@@ -20,27 +19,16 @@ interface TooltipData {
     yScale: number;
 }
 
-export class WaveformTooltipRenderObject extends RenderObject {
-    private tooltipData: TooltipData = {
-        visible: false,
-        x: 0,
-        y: 0,
-        signals: [],
-        yScale: 1.0
-    };
-
+export class WaveformTooltipRenderObject {
     constructor(
+        parent: RenderObject,
         private config: WaveformConfig,
+        private waveformOverlays: Map<Row, WaveformRowHoverOverlayRenderObject>,
         zIndex: number = 10000) { // Very high z-index to appear on top
-        super(zIndex);
-    }
-
-    updateTooltip(data: TooltipData | null): void {
-        if (data === null) {
-            this.tooltipData.visible = false;
-        } else {
-            this.tooltipData = { ...data };
-        }
+        parent.addChild({
+            zIndex: zIndex,
+            render: this.render.bind(this),
+        })
     }
 
     private formatValue(signalData: SignalTooltipData, yScale: number): string {
@@ -59,9 +47,11 @@ export class WaveformTooltipRenderObject extends RenderObject {
     }
 
     render(context: RenderContext, bounds: RenderBounds): boolean {
-        if (!this.tooltipData.visible || this.tooltipData.signals.length === 0) {
+        const tooltipDatas = Array.from(this.waveformOverlays.values().map(overlay => overlay.tooltipData).filter(data => data !== null));
+        if (tooltipDatas.length === 0) {
             return false;
         }
+        const tooltipData = tooltipDatas[0];
 
         const { render } = context;
         const { utils, gl } = render;
@@ -75,9 +65,9 @@ export class WaveformTooltipRenderObject extends RenderObject {
         // Build lines of text with color information
         const lines: Array<{ text: string; color: string }> = [];
         
-        for (const signal of this.tooltipData.signals) {
+        for (const signal of tooltipData.signals) {
             lines.push({
-                text: this.formatValue(signal, this.tooltipData.yScale),
+                text: this.formatValue(signal, tooltipData.yScale),
                 color: signal.color
             });
         }
@@ -88,8 +78,8 @@ export class WaveformTooltipRenderObject extends RenderObject {
         const tooltipHeight = lines.length * lineHeight + padding * 2;
 
         // Calculate tooltip position (offset from cursor to avoid blocking view)
-        const tooltipX = Math.min(this.tooltipData.x + 15, bounds.width - tooltipWidth);
-        const tooltipY = Math.max(this.tooltipData.y - 10, 20);
+        const tooltipX = Math.min(tooltipData.x + 15, bounds.width - tooltipWidth);
+        const tooltipY = Math.max(tooltipData.y - 10, 20);
 
         // Draw background rectangle
         this.drawTooltipBackground(gl,
@@ -148,7 +138,7 @@ export class WaveformTooltipRenderObject extends RenderObject {
 
         gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_bounds'), bounds.width, bounds.height);
         
-        const rgba = WebGLUtils.hexToRgba(color);
+        const rgba = hexToRgba(color);
         gl.uniform4f(gl.getUniformLocation(utils.grid, 'u_color'), rgba[0], rgba[1], rgba[2], rgba[3]);
         gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_dashed'), 0);
         gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_horizontal'), 0);

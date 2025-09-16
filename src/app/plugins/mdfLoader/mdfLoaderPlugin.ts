@@ -1,5 +1,5 @@
-import { InMemorySequence, SequenceSignal, Signal } from '../../Signal';
-import { PluginContext, RenderMode, SignalSource } from '../../Plugin';
+import { InMemorySequence, SequenceSignal } from '../../Signal';
+import { PluginContext, RenderMode, SignalSource, Signal } from '../../Plugin';
 import {
     Link, newLink, getLink, readBlock,
     deserializeId,

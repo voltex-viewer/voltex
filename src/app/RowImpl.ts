@@ -1,36 +1,14 @@
 import { Row, RenderMode } from './Plugin';
-import { RenderObject, type RenderContext, type RenderBounds } from './RenderObject';
-import { px } from './RenderObject';
-import type { Signal } from './Signal';
+import { RenderObjectImpl } from './RenderObject';
+import { type RenderBounds } from "./Plugin";
+import { type RenderContext } from "./Plugin";
+import { px } from "./Plugin";
+import type { RenderObject, Signal } from './Plugin';
 import { ViewportRenderObject } from './ViewportRenderObject';
-
-class RowRenderObject extends RenderObject {
-    render(context: RenderContext, bounds: RenderBounds): boolean {
-        const { gl } = context.render;
-        const { dpr } = context;
-        
-        // Convert UI coordinates to WebGL coordinates
-        // WebGL has (0,0) at bottom-left, UI has (0,0) at top-left
-        const canvasHeight = context.canvas.height;
-        const scissorX = Math.round(bounds.x * dpr);
-        const scissorY = Math.round(canvasHeight - (bounds.y + bounds.height) * dpr);
-        const scissorWidth = Math.round(bounds.width * dpr);
-        const scissorHeight = Math.round(bounds.height * dpr);
-        
-        // Clear background
-        gl.enable(gl.SCISSOR_TEST);
-        gl.scissor(scissorX, scissorY, scissorWidth, scissorHeight);
-        gl.clearColor(0.2, 0.2, 0.2, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.disable(gl.SCISSOR_TEST);
-        
-        return false;
-    }
-}
 
 export class RowImpl implements Row {
     public readonly signals: Signal[] = [];
-    public readonly rowRenderObject: RowRenderObject;
+    public readonly rowRenderObject: RenderObject;
     public yScale: number = 1.0;
     public yOffset: number = 0.0;
     private _height: number;
@@ -39,24 +17,52 @@ export class RowImpl implements Row {
     public readonly mainViewport: ViewportRenderObject;
     
     constructor(
-        signals?: Signal[],
-        height: number = 50
+        parent: RenderObject,
+        signals: Signal[],
+        height: number,
+        onMouseDown?: (event: MouseEvent) => void,
     ) {
         this._height = height;
-        this.rowRenderObject = new RowRenderObject();
-        this.labelViewport = new ViewportRenderObject(-1);
-        this.mainViewport = new ViewportRenderObject(-1);
-        
+        this.rowRenderObject = parent.addChild({
+            render: (context: RenderContext, bounds: RenderBounds): boolean => {
+                const { gl } = context.render;
+                const { dpr } = context;
+                
+                // Convert UI coordinates to WebGL coordinates
+                // WebGL has (0,0) at bottom-left, UI has (0,0) at top-left
+                const canvasHeight = context.canvas.height;
+                const scissorX = Math.round(bounds.x * dpr);
+                const scissorY = Math.round(canvasHeight - (bounds.y + bounds.height) * dpr);
+                const scissorWidth = Math.round(bounds.width * dpr);
+                const scissorHeight = Math.round(bounds.height * dpr);
+                
+                // Clear background
+                gl.enable(gl.SCISSOR_TEST);
+                gl.scissor(scissorX, scissorY, scissorWidth, scissorHeight);
+                gl.clearColor(0.2, 0.2, 0.2, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                gl.disable(gl.SCISSOR_TEST);
+                
+                return false;
+            },
+        });
+        this.labelViewport = new ViewportRenderObject(this.rowRenderObject, -1, onMouseDown);
+        this.mainViewport = new ViewportRenderObject(this.rowRenderObject, -1);
+
         // Set black background for main viewport
         this.mainViewport.backgroundColor = [0.0, 0.0, 0.0, 1.0];
-        
-        this.rowRenderObject.addChild(this.labelViewport);
-        this.rowRenderObject.addChild(this.mainViewport);
 
         if (signals) {
             this.signals = [...signals];
             this.calculateOptimalScaleAndOffset();
         }
+    }
+    get mainArea(): RenderObject {
+        return this.mainViewport.renderObject;
+    }
+
+    get labelArea(): RenderObject {
+        return this.labelViewport.renderObject;
     }
 
     get height(): number {
@@ -66,14 +72,6 @@ export class RowImpl implements Row {
     setHeight(height: number): void {
         this._height = Math.max(20, height); // Minimum height of 20px
         this.rowRenderObject.height = px(this._height);
-    }
-
-    addRenderObject(renderObject: RenderObject): void {
-        this.mainViewport.addChild(renderObject);
-    }
-    
-    addLabelRenderObject(renderObject: RenderObject): void {
-        this.labelViewport.addChild(renderObject);
     }
     
     calculateOptimalScaleAndOffset(): void {

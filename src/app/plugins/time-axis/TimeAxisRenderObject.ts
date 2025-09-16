@@ -1,4 +1,6 @@
-import { RenderObject, type RenderContext, type RenderBounds } from '../../RenderObject';
+import { RenderObjectImpl } from '../../RenderObject';
+import { RenderObject, type RenderBounds } from "src/app/Plugin";
+import { type RenderContext } from "../../Plugin";
 import { getGridSpacing } from './TimeAxisUtils';
 
 const TIME_UNITS = [
@@ -17,12 +19,15 @@ const TIME_UNITS = [
     { name: 'ys', scale: 1e-24 },
 ];
 
-export class TimeAxisRenderObject extends RenderObject {
+export class TimeAxisRenderObject {
     static readonly ROW_HEIGHT = 14;
     static readonly GAP = 4;
     
-    constructor() {
-        super(-100); // Render behind other objects
+    constructor(parent: RenderObject) {
+        parent.addChild({
+            zIndex: -100, // Render behind other objects
+            render: this.render.bind(this),
+        });
     }
     
     static getAxisHeight(): number {

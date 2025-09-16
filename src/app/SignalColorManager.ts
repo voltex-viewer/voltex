@@ -1,4 +1,4 @@
-import type { Signal } from './Signal';
+import type { Signal } from './Plugin';
 
 export class SignalMetadataManager {
     private colorMap = new Map<string, string>();

@@ -1,17 +1,19 @@
-import type { WaveformState } from './WaveformState';
-import { RenderObject, RenderBounds, px, percent, MouseEvent, MouseEventHandlers, RenderContext } from './RenderObject';
-import { SignalMetadataManager } from './SignalMetadataManager';
+import type { PositionValue, RenderObject, WaveformState } from "./Plugin";
+import { RenderObjectImpl, MouseEvent, MouseEventHandlers } from './RenderObject';
+import { calculateBounds, RenderBounds } from "./Plugin";
+import { px } from "./Plugin";
+import { RenderContext } from "./Plugin";
+import { SignalMetadataManagerImpl } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
-import { WebGLUtils } from './WebGLUtils';
+import { WebGLUtilsImpl } from './WebGLUtils';
 import { PluginManager } from './PluginManager';
 import { setPluginManager } from './plugins/manager/PluginManagerPlugin';
 import { RenderProfiler } from './RenderProfiler';
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
 import PluginManagerMetadata from './plugins/manager/plugin.json';
 import { PluginModule } from './Plugin';
-import { ContainerRenderObject } from './ContainerRenderObject';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
-import { Signal } from './Signal';
+import { Signal } from './Plugin';
 
 interface InternalMouseEvent extends MouseEvent {
     readonly stopPropagationCalled: boolean;
@@ -24,12 +26,12 @@ const PluginManagerPlugin: PluginModule = {
 
 export class Renderer {
     private canvas: HTMLCanvasElement;
-    private webglUtils: WebGLUtils;
+    private webglUtils: WebGLUtilsImpl;
     public readonly pluginManager: PluginManager;
-    private signalMetadata: SignalMetadataManager;
+    private signalMetadata: SignalMetadataManagerImpl;
     private signalSources: SignalSourceManagerImpl;
     private renderProfiler: RenderProfiler;
-    private rootRenderObject: ContainerRenderObject;
+    private rootRenderObject: RenderObjectImpl;
     private rowContainer: RowContainerRenderObject;
     
     constructor(
@@ -43,7 +45,7 @@ export class Renderer {
         this.renderProfiler = new RenderProfiler();
         
         // Create root render object
-        this.rootRenderObject = new ContainerRenderObject();
+        this.rootRenderObject = new RenderObjectImpl(null, { });
         
         // Initialize WebGL context
         const gl = this.canvas.getContext('webgl');
@@ -51,19 +53,18 @@ export class Renderer {
             throw new Error('WebGL not supported');
         }
 
-        const webglUtils = new WebGLUtils(gl);
+        const webglUtils = new WebGLUtilsImpl(gl);
         
         // Profile all WebGLUtils function calls
         const proxiedWebglUtils = this.renderProfiler.createProxy(webglUtils, 'webgl');
         
         this.webglUtils = proxiedWebglUtils;
         
-        this.signalMetadata = new SignalMetadataManager();
+        this.signalMetadata = new SignalMetadataManagerImpl();
         this.signalSources = new SignalSourceManagerImpl();
 
         // Create row container and add it to root
-        this.rowContainer = new RowContainerRenderObject(this.state, this.requestRender, this.canvas);
-        this.rootRenderObject.addChild(this.rowContainer);
+        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, this.canvas);
         
         this.pluginManager = new PluginManager(
             this.state,
@@ -161,51 +162,54 @@ export class Renderer {
 
     private dispatchMouseEvent(eventType: keyof MouseEventHandlers, event: InternalMouseEvent): void {
         const dispatchMouseEventRecursive = (
-            renderObject: RenderObject, 
+            renderObject: RenderObjectImpl, 
             bounds: RenderBounds
         ): void => {
             // Process children first (in reverse z-order)
-            const children = [...renderObject.getChildren()].reverse();
+            const children = [...renderObject.children].reverse();
             for (const child of children) {
-                dispatchMouseEventRecursive(child, child.calculateBounds(bounds));
+                dispatchMouseEventRecursive(child as RenderObjectImpl, calculateBounds(child, bounds));
                 if (event.stopPropagationCalled) {
                     return;
                 }
             }
 
             if (isPointInBounds(event.clientX, event.clientY, bounds)) {
-                renderObject.emitMouseEvent(eventType, {
-                    ...event,
-                    offsetX: event.clientX - bounds.x,
-                    offsetY: event.clientY - bounds.y
-                });
+                const handler = renderObject[eventType];
+                if (handler) {
+                    handler.call(renderObject, {
+                        ...event,
+                        offsetX: event.clientX - bounds.x,
+                        offsetY: event.clientY - bounds.y
+                    });
+                }
             }
         }
         dispatchMouseEventRecursive(this.rootRenderObject, this.getRootBounds());
     }
 
     private updateMouseOverStates(event: InternalMouseEvent): void {
-        const updateMouseOverStatesRecursive = (renderObject: RenderObject, event: InternalMouseEvent, bounds: RenderBounds): void => {
+        const updateMouseOverStatesRecursive = (renderObject: RenderObjectImpl, event: InternalMouseEvent, bounds: RenderBounds): void => {
             renderObject.updateMouseOver(isPointInBounds(event.clientX, event.clientY, bounds), {
                     ...event,
                     offsetX: event.clientX - bounds.x,
                     offsetY: event.clientY - bounds.y
                 });
 
-            for (const child of renderObject.getChildren()) {
-                updateMouseOverStatesRecursive(child, event, child.calculateBounds(bounds));
+            for (const child of renderObject.children) {
+                updateMouseOverStatesRecursive(child as RenderObjectImpl, event, calculateBounds(child, bounds));
             }
         }
         updateMouseOverStatesRecursive(this.rootRenderObject, event, this.getRootBounds());
     }
 
     private clearAllMouseOverStates(event: InternalMouseEvent): void {
-        const clearMouseOverStatesRecursive = (renderObject: RenderObject, event: InternalMouseEvent): void => {
+        const clearMouseOverStatesRecursive = (renderObject: RenderObjectImpl, event: InternalMouseEvent): void => {
             renderObject.updateMouseOver(false, event);
 
             // Clear children
-            for (const child of renderObject.getChildren()) {
-                clearMouseOverStatesRecursive(child, event);
+            for (const child of renderObject.children) {
+                clearMouseOverStatesRecursive(child as RenderObjectImpl, event);
             }
         }
         clearMouseOverStatesRecursive(this.rootRenderObject, event);
@@ -294,12 +298,12 @@ export class Renderer {
         return renderRequested;
     }
 
-    private renderRecursive(renderObject: RenderObject, context: RenderContext, bounds: RenderBounds): boolean {
+    private renderRecursive(renderObject: RenderObjectImpl, context: RenderContext, bounds: RenderBounds): boolean {
         let rerenderRequested = false;
 
         this.renderProfiler.startMeasure("render-" + renderObject.constructor.name);
         let nextContext = context;
-        if (renderObject.viewport) {
+        if ('viewport' in renderObject && renderObject.viewport) {
             nextContext = {
                 ...context,
                 viewport: [
@@ -316,9 +320,11 @@ export class Renderer {
                 nextContext.viewport[3]
             );
         }
-        rerenderRequested = renderObject.render(nextContext, bounds) || rerenderRequested;
-        for (const child of renderObject.getChildren()) {
-            rerenderRequested = this.renderRecursive(child, nextContext, child.calculateBounds(bounds)) || rerenderRequested;
+        if (renderObject.render) {
+            rerenderRequested = renderObject.render(nextContext, bounds) || rerenderRequested;
+        }
+        for (const child of renderObject.children) {
+            rerenderRequested = this.renderRecursive(child as RenderObjectImpl, nextContext, calculateBounds(child, bounds)) || rerenderRequested;
         }
         context.render.gl.viewport(
             context.viewport[0],
@@ -378,8 +384,8 @@ export class Renderer {
     }
 }
 
-    
 function isPointInBounds(x: number, y: number, bounds: RenderBounds): boolean {
     return x >= bounds.x && x < bounds.x + bounds.width &&
             y >= bounds.y && y < bounds.y + bounds.height;
 }
+

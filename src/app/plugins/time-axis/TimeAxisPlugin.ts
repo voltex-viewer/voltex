@@ -4,13 +4,13 @@ import { GridRenderObject } from './GridRenderObject';
 
 export default (context: PluginContext): void => {
     const timeAxisRow = context.spliceRows([], [{ index: 0, row: { height: TimeAxisRenderObject.getAxisHeight() } }])[0];
-    timeAxisRow.addRenderObject(new TimeAxisRenderObject());
+    new TimeAxisRenderObject(timeAxisRow.mainArea);
 
     // Add grid render object to new rows
     context.onRowsChanged((event) => {
         for (const row of event.added) {
             if (row != timeAxisRow) {
-                row.addRenderObject(new GridRenderObject());
+                new GridRenderObject(row.mainArea);
             }
         }
     });

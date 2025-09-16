@@ -1,5 +1,5 @@
 import './index.css';
-import { WaveformState } from './WaveformState';
+import { WaveformState } from "./Plugin";
 import { Renderer } from './Renderer';
 import { VerticalSidebar } from './VerticalSidebar';
 import { createMenuBar } from './MenuBar';
@@ -23,16 +23,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     mainCanvas.className = 'waveform-main-canvas';
     waveformContainer.appendChild(mainCanvas);
 
-    const state = new WaveformState();
+    const state: WaveformState = {
+        offset: 0,
+        pxPerSecond: 200,
+    }
 
     // Animation frame management
     let renderRequested = false;
+    let renderer: Renderer | null = null;
     function requestRender() {
         function doRender() {
-            const rerequest = renderer.render();
-            renderRequested = rerequest;
-            if (rerequest) {
-                requestAnimationFrame(doRender);
+            if (renderer) {
+                const rerequest = renderer.render();
+                renderRequested = rerequest;
+                if (rerequest) {
+                    requestAnimationFrame(doRender);
+                }
             }
         }
         if (!renderRequested) {
@@ -41,7 +47,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    const renderer = new Renderer(state, mainCanvas, verticalSidebar, requestRender);
+    renderer = new Renderer(state, mainCanvas, verticalSidebar, requestRender);
 
     // Initial resize and event wiring
     renderer.resizeCanvases();

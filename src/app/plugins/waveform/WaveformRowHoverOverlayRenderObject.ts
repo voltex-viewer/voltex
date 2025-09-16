@@ -1,10 +1,6 @@
-import type { PluginContext, Row } from '../../Plugin';
-import type { Signal, ChannelPoint, Sequence } from '../../Signal';
-import { RenderObject, type RenderContext, type RenderBounds, type MouseEvent } from '../../RenderObject';
-import { WebGLUtils } from '../../WebGLUtils';
+import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds } from '../../Plugin';
 import { type WaveformConfig } from './WaveformConfig';
-import { RenderMode } from '../../Plugin';
-import type { SignalTooltipData, WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
+import type { SignalTooltipData, TooltipData } from './WaveformTooltipRenderObject';
 import type { BufferData } from './WaveformRendererPlugin';
 import type { WaveformShaders } from './WaveformShaders';
 import { WaveformRenderObject } from './WaveformRenderObject';
@@ -23,17 +19,17 @@ class HighlightSignal implements Signal {
     }
 }
 
-export class WaveformRowHoverOverlayRenderObject extends RenderObject {
+export class WaveformRowHoverOverlayRenderObject {
     private mouse: { offsetX: number; clientX: number; clientY: number } | null = null;
-    private readonly highlightRenderObjects: Map<Signal, WaveformRenderObject> = new Map();
     private readonly highlightSignals: Map<Signal, HighlightSignal> = new Map();
     private readonly highlightBuffers: Map<Signal, BufferData> = new Map();
+    private _tooltipData: TooltipData | null = null;
 
     constructor(
+        parent: RenderObject,
         private readonly context: PluginContext,
-        private readonly config: WaveformConfig,
+        config: WaveformConfig,
         private readonly row: Row,
-        private readonly tooltipRenderObject: WaveformTooltipRenderObject,
         private readonly signals: Signal[],
         private readonly signalBuffers: Map<Signal, BufferData>,
         sharedInstanceGeometryBuffer: WebGLBuffer,
@@ -42,7 +38,30 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
         waveformPrograms: WaveformShaders,
         zIndex: number = 10
     ) {
-        super(zIndex);
+        parent.addChild({
+            zIndex: zIndex,
+            render: this.render.bind(this),
+            onMouseMove: ((event: MouseEvent) => {
+                this.mouse = {
+                    offsetX: event.offsetX,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                }
+                this.context.requestRender();
+            }),
+            onMouseEnter: ((event: MouseEvent) => {
+                this.mouse = {
+                    offsetX: event.offsetX,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                }
+                this.context.requestRender();
+            }),
+            onMouseLeave: (() => {
+                this.mouse = null;
+                this.context.requestRender();
+            }),
+        });
 
         // Create highlight render objects for each signal
         for (const signal of signals) {
@@ -78,11 +97,12 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                 const highlightColor = this.createHighlightColor(baseColor);
                 const highlightConfig = {
                     ...config,
-                    dotSize: config.dotSize * 1.5, // Make highlight dots larger
-                    lineWidth: config.lineWidth * 1.5 // Make highlight lines thicker for enum mode
+                    dotSize: config.dotSize * 1.5,
+                    lineWidth: config.lineWidth * 1.5,
                 };
 
-                const highlightRenderObject = new WaveformRenderObject(
+                new WaveformRenderObject(
+                    parent,
                     highlightConfig,
                     bufferData,
                     sharedInstanceGeometryBuffer,
@@ -95,57 +115,27 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                     signal.source.renderHint === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots,
                     zIndex + 1
                 );
-                
-                this.highlightRenderObjects.set(signal, highlightRenderObject);
             }
         }
+    }
 
-        this.onMouseMove((event: MouseEvent) => {
-            this.mouse = {
-                offsetX: event.offsetX,
-                clientX: event.clientX,
-                clientY: event.clientY,
-            }
-            this.context.requestRender();
-        });
-
-        this.onMouseEnter((event: MouseEvent) => {
-            this.mouse = {
-                offsetX: event.offsetX,
-                clientX: event.clientX,
-                clientY: event.clientY,
-            }
-            this.context.requestRender();
-        });
-
-        this.onMouseLeave(() => {
-            this.mouse = null;
-            this.tooltipRenderObject.updateTooltip(null);
-            this.context.requestRender();
-        });
+    public get tooltipData(): TooltipData | null {
+        return this._tooltipData;
     }
 
     dispose(): void {
-        // Clean up highlight render objects and their buffers
-        for (const renderObject of this.highlightRenderObjects.values()) {
-            renderObject.dispose();
-        }
-        
         // Clean up highlight buffers
         for (const bufferData of this.highlightBuffers.values()) {
             this.context.webgl.gl.deleteBuffer(bufferData.timeBuffer);
             this.context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
         }
         
-        this.highlightRenderObjects.clear();
         this.highlightSignals.clear();
         this.highlightBuffers.clear();
-        
-        super.dispose();
     }
 
     private createHighlightColor(baseColor: string): string {
-        const [r, g, b] = WebGLUtils.hexToRgba(baseColor);
+        const [r, g, b] = hexToRgba(baseColor);
         const brightnessBoost = 0.3;
         const tintedR = Math.min(1.0, r + brightnessBoost);
         const tintedG = Math.min(1.0, g + brightnessBoost);
@@ -157,10 +147,10 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
     }
 
     render(context: RenderContext, bounds: RenderBounds): boolean {
-        if (!this.config.hoverEnabled || !this.isMouseOver || this.mouse === null) {
-            if (!this.config.hoverEnabled)
-            {
-                this.tooltipRenderObject.updateTooltip(null);
+        if (this.mouse === null) {
+            this._tooltipData = null;
+            for (const buffer of this.highlightBuffers.values()) {
+                buffer.bufferLength = 0;
             }
             return false;
         }
@@ -184,57 +174,36 @@ export class WaveformRowHoverOverlayRenderObject extends RenderObject {
                     color: color
                 });
                 
-                // Render highlight for this signal using the existing WaveformRenderObject
-                this.renderHighlightedSignal(context, bounds, signal, dataPoint.dataIndex);
+                this.updateHighlightSignal(signal, dataPoint.dataIndex, context);
             }
         }
 
         // Update tooltip with aggregated data or hide if no valid data
         if (signalData.length > 0) {
-            this.tooltipRenderObject.updateTooltip({
+            this._tooltipData = {
                 visible: true,
                 x: this.mouse.clientX,
                 y: this.mouse.clientY,
                 signals: signalData,
                 yScale: this.row.yScale
-            });
+            };
         } else {
-            this.tooltipRenderObject.updateTooltip(null);
+            this._tooltipData = null;
         }
 
         return false;
     }
 
-    private renderHighlightedSignal(
-        context: RenderContext,
-        bounds: RenderBounds,
-        signal: Signal,
-        dataIndex: number
-    ): void {
-        const highlightRenderObject = this.highlightRenderObjects.get(signal);
-        const highlightSignal = this.highlightSignals.get(signal);
-        if (!highlightRenderObject || !highlightSignal) return;
-
-        const bufferData = this.signalBuffers.get(signal);
-        if (!bufferData) return;
-
-        // Update the highlight signal with the specific data point(s) we want to highlight
-        this.updateHighlightSignal(signal, dataIndex, bufferData, highlightSignal, context);
-
-        // Render using the existing WaveformRenderObject logic
-        highlightRenderObject.render(context, bounds);
-    }
-
     private updateHighlightSignal(
         signal: Signal,
         dataIndex: number,
-        originalBufferData: BufferData,
-        highlightSignal: HighlightSignal,
         context: RenderContext
     ): void {
+        const highlightSignal = this.highlightSignals.get(signal);
+        const bufferData = this.signalBuffers.get(signal);
         const { gl } = context.render;
         
-        const maxUpdateIndex = originalBufferData.signalIndex;
+        const maxUpdateIndex = bufferData.signalIndex;
         if (dataIndex >= maxUpdateIndex) return;
 
         let indices = [];
