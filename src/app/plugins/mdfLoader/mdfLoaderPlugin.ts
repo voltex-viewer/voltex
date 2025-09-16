@@ -150,7 +150,7 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
 }
 
 class Mf4Source implements SignalSource {
-    constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock, public readonly renderHint: RenderMode) {
+    constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock<'instanced'>, public readonly renderHint: RenderMode) {
     }
 
     signal(): Signal {
@@ -159,18 +159,17 @@ class Mf4Source implements SignalSource {
 }
 
 class DataGroupLoader {
-    private signals: Map<ChannelBlock, SequenceSignal> = new Map();
+    private signals: Map<ChannelBlock<'instanced'>, SequenceSignal> = new Map();
     private loaded: boolean = false;
-    private groups: {group: ChannelGroupBlock, channels: {source: SignalSource, channel: ChannelBlock, name: string, conversion: (value: number) => number | string}[]}[];
+    private groups: {group: ChannelGroupBlock, channels: {source: SignalSource, channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string}[]}[];
 
-    constructor(private dataGroup: DataGroupBlock, groups: {group: ChannelGroupBlock, channels: {channel: ChannelBlock, name: string, conversion: (value: number) => number | string}[]}[], private file: File) {
+    constructor(private dataGroup: DataGroupBlock, groups: {group: ChannelGroupBlock, channels: {channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string}[]}[], private file: File) {
         this.groups = groups.map(({group, channels}) => ({
             group,
-            channels: channels.map(({channel, name, conversion}) => ({
-                source: new Mf4Source([file.name, name], this, channel, RenderMode.Lines),
+            channels: channels.map(({channel, conversion}) => ({
+                source: new Mf4Source([file.name, channel.txName.data], this, channel, RenderMode.Lines),
                 channel,
-                conversion,
-                name
+                conversion
             }))
         }));
     }
@@ -201,8 +200,8 @@ class DataGroupLoader {
             }
             const sequences = [];
             for (let i = 0; i < channels.length; i++) {
-                const {channel, source, conversion, name} = channels[i];
-                const sequence = new InMemorySequence(conversion);
+                const {channel, source, conversion} = channels[i];
+                const sequence = new InMemorySequence(conversion == null ? undefined : conversion);
                 sequences.push({
                     sequence,
                     loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
@@ -222,14 +221,10 @@ class DataGroupLoader {
     }
 }
 
-function conversionToFunction(conversionMap: Map<Link<ChannelConversionBlock>, ChannelConversionBlock>, strings: Map<Link<TextBlock>, string>, link: Link<ChannelConversionBlock>): undefined | ((value: number) => number | string) {
-    function convert(link: Link<ChannelConversionBlock>): (value: number) => number | string {
-        if (getLink(link) === 0n) {
-            return undefined;
-        }
-        const conversion = conversionMap.get(link);
-        if (!conversion) {
-            throw new Error(`Unknown conversion: ${link}`);
+function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | null): null | ((value: number) => number | string) {
+    function convert(conversion: ChannelConversionBlock<'instanced'>): null | ((value: number) => number | string) {
+        if (conversion === null) {
+            return null;
         }
         switch (conversion.type) {
             case ConversionType.OneToOne:
@@ -346,16 +341,15 @@ function conversionToFunction(conversionMap: Map<Link<ChannelConversionBlock>, C
                 }
                 const conversionMap = new Map<number, string | ((value: number) => number | string)>();
                 for (let i = 0; i < conversion.values.length; i++) {
-                    const str = strings.get(conversion.refs[i]);
-                    conversionMap.set(conversion.values[i], typeof(str) !== 'undefined' ? str : convert(conversion.refs[i]));
+                    const ref = conversion.refs[i];
+                    conversionMap.set(conversion.values[i], 'type' in ref ? convert(ref) : ref.data);
                 }
                 const defaultRef = conversion.refs[conversion.refs.length - 1];
                 let defaultValue: string | ((value: number) => number | string) | undefined;
-                if (getLink(defaultRef) === 0n) {
+                if (defaultRef === null) {
                     defaultValue = undefined;
                 } else {
-                    const str = strings.get(defaultRef);
-                    defaultValue = typeof(str) !== 'undefined' ? str : convert(defaultRef);
+                    defaultValue = 'type' in defaultRef ? convert(defaultRef) : defaultRef.data;
                 }
                 if (typeof(defaultValue) === "function") {
                     return value => {
@@ -383,13 +377,50 @@ function conversionToFunction(conversionMap: Map<Link<ChannelConversionBlock>, C
                     };
                 }
             }
+
+            case ConversionType.ValueRangeToTextOrScale: {
+                const count = conversion.values.length / 2;
+                if (count + 1 !== conversion.refs.length || conversion.values.length % 2 !== 0) {
+                    throw new Error(`Mismatched lengths for ValueRangeToTextOrScale`);
+                }
+                const conversionMap: { lower: number; upper: number; result: string | ((value: number) => number | string) }[] = [];
+                for (let i = 0; i < count; i++) {
+                    const ref = conversion.refs[i];
+                    conversionMap.push({
+                        lower: conversion.values[i * 2],
+                        upper: conversion.values[i * 2 + 1],
+                        result: 'type' in ref ? convert(ref) : ref.data
+                    });
+                }
+                // Technically the ranges should already be sorted, but we can be permissive here
+                conversionMap.sort((a, b) => a.lower - b.lower);
+                const defaultRef = conversion.refs[conversion.refs.length - 1];
+                let defaultValue: string | ((value: number) => number | string) | undefined;
+                if (defaultRef === null) {
+                    defaultValue = undefined;
+                } else {
+                    defaultValue = 'type' in defaultRef ? convert(defaultRef) : defaultRef.data;
+                }
+                return value => {
+                    const result = conversionMap.find(entry => entry.lower <= value && entry.upper >= value)?.result;
+                    switch (typeof(result)) {
+                        case "function":
+                            return result(value);
+                        case "undefined":
+                            return typeof(defaultValue) === "function" ? defaultValue(value) : defaultValue;
+                        default:
+                            return result;
+                    }
+                };
+            }
+
             case ConversionType.TextToValue:
             case ConversionType.TextToText:
             default:
                 return value => 0;
         }
     }
-    return convert(link);
+    return convert(conversion);
 }
 
 export default (context: PluginContext): void => {
@@ -412,60 +443,75 @@ export default (context: PluginContext): void => {
             let sources: SignalSource[] = [];
 
             for await (const dataGroup of iterateDataGroupBlocks(header.firstDataGroup, file)) {
-                const groups = [];
-                // Defer figuring out the conversions so that the results can be cached and limit async scope
-                const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock>();
-                const strings = new Map<Link<TextBlock>, string>();
-                async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<void> {
+                const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock<'instanced'>>();
+                async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<ChannelConversionBlock<'instanced'> | null> {
                     if (getLink(link) === 0n || conversionMap.has(link)) {
-                        return;
+                        return null;
                     }
-                    const block = await readConversionBlock(link, file);
+                    const srcBlock = await readConversionBlock(link, file);
+                    const block = {
+                        ...srcBlock,
+                        txName: null,
+                        mdUnit: null,
+                        mdComment: null,
+                        inverse: null,
+                        refs: [],
+                    } as ChannelConversionBlock<'instanced'>;
                     conversionMap.set(link, block);
-                    for (const ref of block.refs.filter(x => getLink(x) !== 0n)) {
-                        const block = await readBlock(ref, file);
-                        
-                        if (block.type === "##CC") {
-                            await readConversionBlockRecurse(ref);
-                        } else if (block.type === "##TX") {
-                            strings.set(ref, deserializeTextBlock(block).data);
+                    for (const ref of srcBlock.refs) {
+                        if (getLink(ref) === 0n) {
+                            (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(null);
                         } else {
-                            throw new Error(`Invalid block type in channel conversion block: "${block.type}"`);
+                            const refBlock = await readBlock(ref, file);
+                            
+                            if (refBlock.type === "##CC") {
+                                (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(await readConversionBlockRecurse(ref));
+                            } else if (refBlock.type === "##TX") {
+                                (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(deserializeTextBlock(refBlock));
+                            } else {
+                                throw new Error(`Invalid block type in channel conversion block: "${block.type}"`);
+                            }
                         }
                     }
                     
-                    if (getLink(block.mdUnit) !== 0n) {
-                        const unit = await readBlock(block.mdUnit, file);
+                    if (getLink(srcBlock.mdUnit) !== 0n) {
+                        const unit = await readBlock(srcBlock.mdUnit, file);
 
                         if (unit.type === "##TX") {
-                            strings.set(block.mdUnit, deserializeTextBlock(unit).data);
+                            block.mdUnit = deserializeTextBlock(unit);
                         } else if (unit.type == "##MD") {
                             // TODO: Should parse this XML properly
-                            strings.set(block.mdUnit, deserializeMetadataBlock(unit).data);
+                            block.mdUnit = deserializeMetadataBlock(unit);
                         } else {
                             throw new Error(`Invalid block type in channel conversion block: "${unit.type}"`);
                         }
                     }
+
+                    return block;
                 }
+                const groups = [];
                 for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, file)) {
                     const channels = [];
                     for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, file)) {
-                        const name = (await readTextBlock(channel.txName, file)).data;
-                        await readConversionBlockRecurse(channel.conversion);
-                        channels.push({channel, name, conversion: channel.conversion});
+                        const conversion = await readConversionBlockRecurse(channel.conversion);
+                        channels.push({
+                            channel: {
+                                ...channel,
+                                channelNext: null,
+                                component: null,
+                                txName: await readTextBlock(channel.txName, file),
+                                siSource: null,
+                                conversion,
+                                data: null,
+                                unit: null,
+                                comment: null,
+                            } as ChannelBlock<'instanced'>,
+                            conversion: conversionToFunction(conversion),
+                        });
                     }
                     groups.push({group: channelGroup, channels});
                 }
-
-                const resolvedGroups = groups.map(g => ({
-                    ...g,
-                    channels: g.channels.map(c => ({
-                        ...c,
-                        conversion: conversionToFunction(conversionMap, strings, c.conversion),
-                    })),
-                }));
-
-                sources.push(...new DataGroupLoader(dataGroup, resolvedGroups, file).sources());
+                sources.push(...new DataGroupLoader(dataGroup, groups, file).sources());
             }
 
             context.signalSources.add(...sources);
