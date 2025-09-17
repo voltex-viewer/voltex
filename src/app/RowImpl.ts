@@ -1,5 +1,4 @@
-import { Row, RenderMode, type RenderBounds, type RenderContext, px, type RenderObject, type Signal } from '@voltex/plugin-api';
-import { RenderObjectImpl } from './RenderObject';
+import { Row, type RenderBounds, type RenderContext, px, type RenderObject, type Signal } from '@voltex/plugin-api';
 import { ViewportRenderObject } from './ViewportRenderObject';
 
 export class RowImpl implements Row {
@@ -7,7 +6,6 @@ export class RowImpl implements Row {
     public readonly rowRenderObject: RenderObject;
     public yScale: number = 1.0;
     public yOffset: number = 0.0;
-    private _height: number;
     public selected: boolean = false;
     public readonly labelViewport: ViewportRenderObject;
     public readonly mainViewport: ViewportRenderObject;
@@ -18,7 +16,6 @@ export class RowImpl implements Row {
         height: number,
         onMouseDown?: (event: MouseEvent) => void,
     ) {
-        this._height = height;
         this.rowRenderObject = parent.addChild({
             render: (context: RenderContext, bounds: RenderBounds): boolean => {
                 const { gl } = context.render;
@@ -41,6 +38,7 @@ export class RowImpl implements Row {
                 
                 return false;
             },
+            height: px(height),
         });
         this.labelViewport = new ViewportRenderObject(this.rowRenderObject, -1, onMouseDown);
         this.mainViewport = new ViewportRenderObject(this.rowRenderObject, -1);
@@ -62,12 +60,14 @@ export class RowImpl implements Row {
     }
 
     get height(): number {
-        return this._height;
+        if (this.rowRenderObject.height.type !== 'pixels') {
+            throw new Error('Row height is not in pixels');
+        }
+        return this.rowRenderObject.height.value;
     }
 
     setHeight(height: number): void {
-        this._height = Math.max(20, height); // Minimum height of 20px
-        this.rowRenderObject.height = px(this._height);
+        this.rowRenderObject.height = px(height);
     }
     
     calculateOptimalScaleAndOffset(): void {

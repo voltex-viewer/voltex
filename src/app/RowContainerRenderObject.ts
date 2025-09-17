@@ -34,7 +34,7 @@ export class RowContainerRenderObject {
     private readonly minLabelWidth = 40;
     private readonly maxLabelWidth = 400;
     private readonly minRowHeight = 20;
-    private readonly maxRowHeight = 200;
+    private readonly maxRowHeight = 1000;
     private readonly rowVerticalBorder = 1;
     private readonly resizeZoneWidth = 5;
     private readonly resizeZoneHeight = 5;

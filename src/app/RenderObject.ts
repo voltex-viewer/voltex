@@ -35,10 +35,10 @@ export class RenderObjectImpl implements RenderObject, MouseEventHandlers {
     protected _children: RenderObjectImpl[] = [];
     protected _parent: RenderObjectImpl | null = null;
     protected isMouseOver: boolean = false;
-    public x: PositionValue = px(0);
-    public y: PositionValue = px(0);
-    public width: PositionValue = percent(100);
-    public height: PositionValue = percent(100);
+    public x: PositionValue;
+    public y: PositionValue;
+    public width: PositionValue;
+    public height: PositionValue;
     public readonly viewport: boolean;
     onClick?: (event: MouseEvent) => void;
     onMouseDown: (event: MouseEvent) => void;
@@ -52,6 +52,10 @@ export class RenderObjectImpl implements RenderObject, MouseEventHandlers {
         this.zIndex = args.zIndex ?? 0;
         this.viewport = args.viewport ?? false;
         this._parent = parent;
+        this.height = args.height ?? percent(100);
+        this.width = args.width ?? percent(100);
+        this.x = args.x ?? px(0);
+        this.y = args.y ?? px(0);
         this.render = args.render;
         this.dispose = args.dispose;
         this.onClick = args.onClick;
