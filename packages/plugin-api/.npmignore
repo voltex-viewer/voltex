@@ -1,2 +1,27 @@
+# Source files
 src/
+*.ts
+!dist/
+
+# Development files
 tsconfig.json
+.eslintrc*
+.prettierrc*
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+**/*.test.*
+**/*.spec.*
+test/
+tests/
+__tests__/
+
+# Development scripts
+scripts/
