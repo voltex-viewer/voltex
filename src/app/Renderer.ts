@@ -1,5 +1,5 @@
-import type { PositionValue, RenderObject, WaveformState, RenderBounds, RenderContext, PluginModule, Signal } from "@voltex/plugin-api";
-import { calculateBounds, px } from "@voltex/plugin-api";
+import type { PositionValue, RenderObject, WaveformState, RenderBounds, RenderContext, PluginModule, Signal } from "@voltex-viewer/plugin-api";
+import { calculateBounds, px } from "@voltex-viewer/plugin-api";
 import { RenderObjectImpl, MouseEvent, MouseEventHandlers } from './RenderObject';
 import { SignalMetadataManagerImpl } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';

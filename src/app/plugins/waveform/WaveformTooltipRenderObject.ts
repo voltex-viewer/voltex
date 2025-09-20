@@ -1,4 +1,4 @@
-import { hexToRgba, type RenderBounds, type Signal, type WebGLUtils, type RenderContext, type RenderObject, type Row } from "@voltex/plugin-api";
+import { hexToRgba, type RenderBounds, type Signal, type WebGLUtils, type RenderContext, type RenderObject, type Row } from "@voltex-viewer/plugin-api";
 import { WaveformConfig } from './WaveformConfig';
 import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';
 

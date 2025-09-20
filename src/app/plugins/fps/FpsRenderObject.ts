@@ -1,4 +1,4 @@
-import { RenderObjectArgs, type RenderBounds, type RenderContext } from "@voltex/plugin-api";
+import { RenderObjectArgs, type RenderBounds, type RenderContext } from "@voltex-viewer/plugin-api";
 
 export function fpsRenderObject(): RenderObjectArgs {
     let frameCount = 0;

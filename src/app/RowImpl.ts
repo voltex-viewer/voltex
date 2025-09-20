@@ -1,4 +1,4 @@
-import { Row, type RenderBounds, type RenderContext, px, type RenderObject, type Signal } from '@voltex/plugin-api';
+import { Row, type RenderBounds, type RenderContext, px, type RenderObject, type Signal } from '@voltex-viewer/plugin-api';
 import { ViewportRenderObject } from './ViewportRenderObject';
 
 export class RowImpl implements Row {

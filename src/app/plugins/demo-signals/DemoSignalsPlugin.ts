@@ -1,5 +1,5 @@
-import { PluginContext, RenderMode, SignalSource } from '@voltex/plugin-api';
-import { FunctionSignal, FunctionTimeSequence } from '@voltex/plugin-api';
+import { PluginContext, RenderMode, SignalSource } from '@voltex-viewer/plugin-api';
+import { FunctionSignal, FunctionTimeSequence } from '@voltex-viewer/plugin-api';
 
 export default (context: PluginContext): void => {
     const freq = 1;

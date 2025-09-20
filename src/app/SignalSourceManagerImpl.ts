@@ -1,4 +1,4 @@
-import type { SignalSource, SignalSourceManager, SignalsAvailableChangedEvent } from '@voltex/plugin-api';
+import type { SignalSource, SignalSourceManager, SignalsAvailableChangedEvent } from '@voltex-viewer/plugin-api';
 
 export class SignalSourceManagerImpl implements SignalSourceManager {
     private _available: SignalSource[] = [];

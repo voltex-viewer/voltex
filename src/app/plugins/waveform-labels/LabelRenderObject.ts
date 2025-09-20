@@ -1,4 +1,4 @@
-import { hexToRgba, RenderObject, type RenderBounds, type Row, type Signal, type SignalMetadataManager, type RenderContext } from '@voltex/plugin-api';
+import { hexToRgba, RenderObject, type RenderBounds, type Row, type Signal, type SignalMetadataManager, type RenderContext } from '@voltex-viewer/plugin-api';
 
 export class LabelRenderObject {
     private channels: Signal[];

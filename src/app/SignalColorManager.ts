@@ -1,4 +1,4 @@
-import type { Signal } from '@voltex/plugin-api';
+import type { Signal } from '@voltex-viewer/plugin-api';
 
 export class SignalMetadataManager {
     private colorMap = new Map<string, string>();

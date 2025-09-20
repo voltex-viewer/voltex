@@ -1,6 +1,6 @@
 import { RowImpl } from './RowImpl';
-import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters } from "@voltex/plugin-api";
-import { getAbsoluteBounds, px } from "@voltex/plugin-api";
+import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters } from "@voltex-viewer/plugin-api";
+import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
 import { type MouseEvent, type WheelEvent } from './RenderObject';
 import { RowChangedCallback } from './RowManager';
 

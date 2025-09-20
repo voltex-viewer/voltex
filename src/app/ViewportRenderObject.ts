@@ -1,4 +1,4 @@
-import { RenderObject, type RenderBounds, type RenderContext } from "@voltex/plugin-api";
+import { RenderObject, type RenderBounds, type RenderContext } from "@voltex-viewer/plugin-api";
 
 export class ViewportRenderObject {
     backgroundColor: [number, number, number, number] | null = null;

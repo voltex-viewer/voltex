@@ -1,4 +1,4 @@
-import { percent, px, RenderBounds, RenderObjectArgs, RenderObject as RenderObject, type PositionValue, type RenderContext } from "@voltex/plugin-api";
+import { percent, px, RenderBounds, RenderObjectArgs, RenderObject as RenderObject, type PositionValue, type RenderContext } from "@voltex-viewer/plugin-api";
 
 export interface MouseEvent {
     clientX: number;

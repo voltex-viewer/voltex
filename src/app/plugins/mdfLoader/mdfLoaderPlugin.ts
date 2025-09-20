@@ -1,5 +1,5 @@
-import { InMemorySequence, Sequence, SequenceSignal } from '@voltex/plugin-api';
-import { PluginContext, RenderMode, SignalSource, Signal } from '@voltex/plugin-api';
+import { InMemorySequence, Sequence, SequenceSignal } from '@voltex-viewer/plugin-api';
+import { PluginContext, RenderMode, SignalSource, Signal } from '@voltex-viewer/plugin-api';
 import {
     Link, newLink, getLink, readBlock,
     deserializeId,

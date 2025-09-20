@@ -1,5 +1,5 @@
 import { getAvailablePlugins } from '..';
-import type { PluginContext, SidebarEntry } from '@voltex/plugin-api';
+import type { PluginContext, SidebarEntry } from '@voltex-viewer/plugin-api';
 import type { PluginManager } from '../../PluginManager';
 import { ConfigUIGenerator } from './ConfigUIGenerator';
 import * as t from 'io-ts';

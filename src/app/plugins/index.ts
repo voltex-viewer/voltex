@@ -1,4 +1,4 @@
-import type { PluginModule } from '@voltex/plugin-api';
+import type { PluginModule } from '@voltex-viewer/plugin-api';
 import FpsPluginFunction from './fps/FpsPlugin';
 import FpsPluginMetadata from './fps/plugin.json';
 import HorizontalGridFunction from './horizontal-grid/HorizontalGridPlugin';

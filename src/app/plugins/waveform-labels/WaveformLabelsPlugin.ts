@@ -1,4 +1,4 @@
-import type { PluginContext, Row } from '@voltex/plugin-api';
+import type { PluginContext, Row } from '@voltex-viewer/plugin-api';
 import { LabelRenderObject } from './LabelRenderObject';
 
 export default (context: PluginContext): void => {

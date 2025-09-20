@@ -9,7 +9,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@voltex/plugin-api': path.resolve(__dirname, 'packages/plugin-api/src/index.ts')
+      '@voltex-viewer/plugin-api': path.resolve(__dirname, 'packages/plugin-api/src/index.ts')
     }
   },
   define: {

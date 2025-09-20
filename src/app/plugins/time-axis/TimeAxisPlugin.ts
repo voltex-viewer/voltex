@@ -1,4 +1,4 @@
-import { type PluginContext } from '@voltex/plugin-api';
+import { type PluginContext } from '@voltex-viewer/plugin-api';
 import { TimeAxisRenderObject } from './TimeAxisRenderObject';
 import { GridRenderObject } from './GridRenderObject';
 

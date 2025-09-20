@@ -1,4 +1,4 @@
-import type { FrameInfo, ReadOnlyRenderProfiler, MeasureInfo } from '@voltex/plugin-api';
+import type { FrameInfo, ReadOnlyRenderProfiler, MeasureInfo } from '@voltex-viewer/plugin-api';
 
 export class RenderProfiler implements ReadOnlyRenderProfiler {
     private filteredFrameRenderTime = 0; // Exponential moving average

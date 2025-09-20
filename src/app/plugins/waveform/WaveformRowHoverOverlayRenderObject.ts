@@ -1,4 +1,4 @@
-import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds } from '@voltex/plugin-api';
+import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds } from '@voltex-viewer/plugin-api';
 import { type WaveformConfig } from './WaveformConfig';
 import type { SignalTooltipData, TooltipData } from './WaveformTooltipRenderObject';
 import type { BufferData } from './WaveformRendererPlugin';

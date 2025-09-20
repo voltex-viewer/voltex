@@ -43,7 +43,7 @@ export class VerticalSidebar {
         this.setupEventHandlers();
     }
 
-    addDynamicEntry(entry: import('@voltex/plugin-api').SidebarEntry): SidebarEntry {
+    addDynamicEntry(entry: import('@voltex-viewer/plugin-api').SidebarEntry): SidebarEntry {
         // Create a new SidebarEntry compatible object
         const dynamicEntry = new class extends SidebarEntry {
             constructor() {

@@ -1,4 +1,4 @@
-import type { PluginContext, Row, Signal } from '@voltex/plugin-api';
+import type { PluginContext, Row, Signal } from '@voltex-viewer/plugin-api';
 import { WaveformConfigSchema } from './WaveformConfig';
 import { WaveformRenderObject } from './WaveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';

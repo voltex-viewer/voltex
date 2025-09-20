@@ -1,4 +1,4 @@
-import { PluginContext, Row } from '@voltex/plugin-api';
+import { PluginContext, Row } from '@voltex-viewer/plugin-api';
 import { HorizontalGridRenderObject } from './HorizontalGridRenderObject';
 import { HorizontalGridLabelRenderObject } from './HorizontalGridLabelRenderObject';
 

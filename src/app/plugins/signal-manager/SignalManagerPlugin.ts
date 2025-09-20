@@ -1,4 +1,4 @@
-import { type PluginContext, type SignalSource } from '@voltex/plugin-api'
+import { type PluginContext, type SignalSource } from '@voltex-viewer/plugin-api'
 
 let context: PluginContext | undefined;
 let sidebarContainer: HTMLElement | undefined;
