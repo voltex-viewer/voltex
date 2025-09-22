@@ -5,6 +5,7 @@ import path from 'path';
 export default defineConfig({
   root: '.', // Use project root instead of src/app
   base: './', // Use relative paths for GitHub Pages compatibility
+  publicDir: 'assets',
   build: {
     outDir: 'dist-web',
     emptyOutDir: true,
