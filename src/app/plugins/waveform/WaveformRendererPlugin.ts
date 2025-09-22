@@ -147,6 +147,17 @@ export default (context: PluginContext): void => {
                     lastTime = time;
                     lastValue = value;
                 }
+                
+                // Ensure the last point is included
+                if (signalIndex === seqLen && bufferOffset < maxPoints) {
+                    const time = sequence.time.valueAt(seqLen - 1);
+                    const value = sequence.values.valueAt(seqLen - 1);
+                    if (timeBuffer[bufferOffset] !== time || valueBuffer[bufferOffset] !== value) {
+                        bufferOffset++;
+                        timeBuffer[bufferOffset] = time;
+                        valueBuffer[bufferOffset] = value;
+                    }
+                }
 
                 // Upload sequence data
                 gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
