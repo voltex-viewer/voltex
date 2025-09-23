@@ -231,8 +231,8 @@ export class RowContainerRenderObject {
                     }
                     requestRender();
                 }
-            } else if (e.key === 'Delete' && this.selectedRows.size > 0) {
-                // Delete key: Remove selected rows
+            } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedRows.size > 0) {
+                // Remove selected rows
                 e.preventDefault();
                 this.spliceRows(this.getSelectedRowsInOrder(), []);
                 this.selectedRows.clear();
