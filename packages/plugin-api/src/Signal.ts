@@ -2,6 +2,19 @@ import type { Sequence, Signal, SignalSource } from './Plugin';
 
 export type ChannelPoint = [t: number, v: number];
 
+function convertToNumber(value: number, conversion?: (value: number) => number | string): number {
+    if (conversion !== undefined) {
+        const result = conversion(value);
+        if (typeof result === 'number') {
+            return result;
+        } else {
+            return value;
+        }
+    } else {
+        return value;
+    }
+}
+
 export class InMemorySequence implements Sequence {
     private _min: number;
     private _max: number;
@@ -17,11 +30,12 @@ export class InMemorySequence implements Sequence {
 
     push(...values: number[]) {
         for (const value of values) {
-            if (value < this._min) {
-                this._min = value;
+            const numberValue = convertToNumber(value, this.conversion);
+            if (numberValue < this._min) {
+                this._min = numberValue;
             }
-            if (value > this._max) {
-                this._max = value;
+            if (numberValue > this._max) {
+                this._max = numberValue;
             }
             if (this._length === this._data.length) {
                 const newData = new Float32Array(Math.max(this._data.length * 2, 1024));
@@ -46,17 +60,7 @@ export class InMemorySequence implements Sequence {
     }
 
     valueAt(index: number): number {
-        const value = this._data[index];
-        if (this.conversion !== undefined) {
-            const result = this.conversion(value);
-            if (typeof result === 'number') {
-                return result;
-            } else {
-                return value;
-            }
-        } else {
-            return value;
-        }
+        return convertToNumber(this._data[index], this.conversion);
     }
 
     convertedValueAt(index: number): number | string {
