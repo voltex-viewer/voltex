@@ -206,7 +206,14 @@ class DataGroupLoader {
                     sequence,
                     loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
                 });
-                this.signals.set(channels[i].channel, new SequenceSignal(source, sequences[0].sequence, sequence));
+            }
+            const masterIndex = channels.findIndex(c => c.channel.channelType === 2);
+            if (masterIndex === -1) {
+                throw new Error(`No master channel found in group with record ID ${recordId}`);
+            }
+            const masterSequence = sequences[masterIndex].sequence;
+            for (let i = 0; i < channels.length; i++) {
+                this.signals.set(channels[i].channel, new SequenceSignal(channels[i].source, masterSequence, sequences[i].sequence));
             }
             records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences});
         }
