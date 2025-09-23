@@ -15,7 +15,10 @@
     "resolveJsonModule": true,
     "declaration": false,
     "removeComments": false,
-    "preserveConstEnums": true
+    "preserveConstEnums": true,
+    "paths": {
+      "@voltex-viewer/plugin-api": ["./packages/plugin-api/src/index.ts"]
+    }
   },
   "include": [
     "src/**/*"
