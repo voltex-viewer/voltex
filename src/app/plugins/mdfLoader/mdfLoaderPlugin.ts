@@ -177,7 +177,7 @@ class DataGroupLoader {
     sources(): SignalSource[] {
         return this.groups
             .filter(group => group.channels.findIndex(channel => channel.channel.channelType === 2) !== -1)
-.flatMap(({channels}) => channels.filter(({channel}) => channel.channelType === 0).map(({source}) => source));
+            .flatMap(({channels}) => channels.filter(({channel}) => channel.channelType === 0).map(({source}) => source));
     }
 
     get(source: Mf4Source): Signal {
@@ -193,6 +193,9 @@ class DataGroupLoader {
         }
         let records = new Map<number, {length: number, sequences: {sequence: InMemorySequence, loader: ((buffer: DataView) => number)}[]}>();
         for (const {group, channels} of this.groups) {
+            if (channels.length == 0) {
+                continue;
+            }
             const recordId = Number(group.recordId);
             if (records.has(recordId)) {
                 throw new Error(`Duplicate record ID found: ${recordId}`);
