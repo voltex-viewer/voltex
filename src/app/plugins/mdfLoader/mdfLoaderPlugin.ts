@@ -195,8 +195,8 @@ class DataGroupLoader {
             if (records.has(recordId)) {
                 throw new Error(`Duplicate record ID found: ${recordId}`);
             }
-            if (recordId >= (1 << this.dataGroup.recordIdSize)) {
-                throw new Error(`Record ID ${recordId} exceeds maximum value for ${this.dataGroup.recordIdSize}-bit unsigned integer`);
+            if (recordId >= (1 << (this.dataGroup.recordIdSize * 8))) {
+                console.warn(`Record ID ${recordId} exceeds maximum value for ${this.dataGroup.recordIdSize * 8}-bit unsigned integer`);
             }
             const sequences = [];
             for (let i = 0; i < channels.length; i++) {
