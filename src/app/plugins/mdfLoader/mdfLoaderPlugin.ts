@@ -175,7 +175,9 @@ class DataGroupLoader {
     }
 
     sources(): SignalSource[] {
-        return this.groups.flatMap(({channels}) => channels.filter(({channel}) => channel.channelType === 0).map(({source}) => source));
+        return this.groups
+            .filter(group => group.channels.findIndex(channel => channel.channel.channelType === 2) !== -1)
+.flatMap(({channels}) => channels.filter(({channel}) => channel.channelType === 0).map(({source}) => source));
     }
 
     get(source: Mf4Source): Signal {
