@@ -56,8 +56,8 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
 export async function getDataBlocks(dataGroup: DataGroupBlock, file: File): Promise<AsyncIterableIterator<DataTableBlock>> {
     return (async function* () {
         const block = await readBlock(dataGroup.data, file, undefined); // Read just the header
-        if (block.type === "##DT") {
-            yield deserializeDataTableBlock(block);
+        if (block.type === "##DT" || block.type === "##DZ") {
+            yield await deserializeDataTableBlock(block);
         } else if (block.type === "##DL") {
             for await (const list of iterateDataListBlocks(dataGroup.data, file)) {
                 for (const item of list.data) {

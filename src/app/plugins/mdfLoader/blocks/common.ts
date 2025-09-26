@@ -23,12 +23,12 @@ export interface GenericBlock extends GenericBlockHeader {
     links: Link<unknown>[];
 }
 
-export async function readBlockHeader(link: Link<any>, file: File, expectedType?: string): Promise<GenericBlockHeader> {
+export async function readBlockHeader(link: Link<any>, file: File, expectedType?: string | string[]): Promise<GenericBlockHeader> {
     let offset = Number(getLink(link));
     
     const buffer = await file.slice(offset, offset + 24).arrayBuffer();
     const type = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
-    if (typeof(expectedType) !== "undefined" && type !== expectedType) {
+    if (typeof expectedType !== "undefined" && ((!Array.isArray(expectedType) && type !== expectedType) || (Array.isArray(expectedType) && !expectedType.includes(type)))) {
         throw new Error(`Invalid block tag: "${type}"`);
     }
     const view = new DataView(buffer);
@@ -40,7 +40,7 @@ export async function readBlockHeader(link: Link<any>, file: File, expectedType?
     };
 }
 
-export async function readBlock(link: Link<any>, file: File, expectedType?: string): Promise<GenericBlock> {
+export async function readBlock(link: Link<any>, file: File, expectedType?: string | string[]): Promise<GenericBlock> {
     let fileOffset = Number(getLink(link));
     const header = await readBlockHeader(link, file, expectedType);
     
