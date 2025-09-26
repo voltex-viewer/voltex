@@ -196,7 +196,7 @@ class DataGroupLoader {
             if (channels.length == 0) {
                 continue;
             }
-            const recordId = Number(group.recordId);
+            const recordId = this.dataGroup.recordIdSize == 0 ? 0 : Number(group.recordId);
             if (records.has(recordId)) {
                 throw new Error(`Duplicate record ID found: ${recordId}`);
             }
