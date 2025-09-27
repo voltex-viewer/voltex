@@ -86,9 +86,12 @@ export class RowImpl implements Row {
             maxValue = Math.max(maxValue, signal.values.max);
         }
         
-        if (minValue === Infinity || maxValue === -Infinity || minValue === maxValue) {
+        if (minValue === Infinity || maxValue === -Infinity) {
             this.yScale = 1.0;
             this.yOffset = 0.0;
+        } else if (minValue === maxValue) {
+            this.yScale = 1.0;
+            this.yOffset = -minValue;
         } else {
             this.yScale = 2.0 / (maxValue - minValue) * padding;
             this.yOffset = -(maxValue + minValue) / 2.0;
