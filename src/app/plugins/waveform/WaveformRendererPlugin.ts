@@ -30,6 +30,7 @@ export default (context: PluginContext): void => {
             targetFps: 120,
             formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2)))))",
             hoverEnabled: true,
+            downsamplingMode: 'normal' as const,
         });
 
 
@@ -38,6 +39,9 @@ export default (context: PluginContext): void => {
     const tooltipRenderObject = new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays);
 
     const buffers = new Map<Signal, BufferData>();
+    
+    // Track current downsampling mode to detect changes
+    let currentDownsamplingMode = config.downsamplingMode;
     
     // Create shared instance geometry for line segments (2 triangles, 6 vertices)
     const segmentInstanceGeometry = new Float32Array([
@@ -84,6 +88,15 @@ export default (context: PluginContext): void => {
     context.onBeforeRender(() => {
         frameStartTime = performance.now();
         
+        // Check if downsampling mode has changed and reset buffers if needed
+        if (currentDownsamplingMode !== config.downsamplingMode) {
+            currentDownsamplingMode = config.downsamplingMode;
+            for (const bufferData of buffers.values()) {
+                bufferData.signalIndex = 0;
+                bufferData.bufferLength = 0;
+            }
+        }
+        
         // Adapt chunk size based on previous frame performance
         const targetFrameTime = 1000 / config.targetFps; // Convert FPS to milliseconds
         const frameRenderTime = context.renderProfiler.getFilteredFrameRenderTime();
@@ -123,42 +136,72 @@ export default (context: PluginContext): void => {
             
             if (bufferData.signalIndex < seqLen) {
                 let bufferOffset = 0;
-                let lastTime = sequence.time.valueAt(bufferData.signalIndex);
-                let lastValue = sequence.values.valueAt(bufferData.signalIndex);
-                timeBuffer[0] = lastTime;
-                valueBuffer[0] = lastValue;
-                let lastGradient = Infinity;
-                let signalIndex;
-                for (signalIndex = bufferData.signalIndex + 1; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
-                    const time = sequence.time.valueAt(signalIndex);
-                    const value = sequence.values.valueAt(signalIndex);
-                    let gradient = (value - lastValue) / (time - lastTime);
-                    if (Math.abs(gradient - lastGradient) > 1) {
-                        // The gradient has changed significantly, add a new point
+                let signalIndex = bufferData.signalIndex;
+
+                if (config.downsamplingMode === 'off') {
+                    // No downsampling: add every point starting from current index
+                    for (; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
+                        const time = sequence.time.valueAt(signalIndex);
+                        const value = sequence.values.valueAt(signalIndex);
+                        timeBuffer[bufferOffset] = time;
+                        valueBuffer[bufferOffset] = value;
                         bufferOffset++;
-                        timeBuffer[bufferOffset] = time;
-                        valueBuffer[bufferOffset] = value;
-                        lastGradient = gradient;
-                    } else {
-                        // If the gradient hasn't changed much, overwrite the last point
-                        timeBuffer[bufferOffset] = time;
-                        valueBuffer[bufferOffset] = value;
                     }
-                    lastTime = time;
-                    lastValue = value;
+                } else {
+                    // Gradient-based downsampling
+                    let lastTime = sequence.time.valueAt(bufferData.signalIndex);
+                    let lastValue = sequence.values.valueAt(bufferData.signalIndex);
+                    timeBuffer[0] = lastTime;
+                    valueBuffer[0] = lastValue;
+                    signalIndex++;
+
+                    let lastGradient = Infinity;
+                    
+                    // Determine gradient threshold based on downsampling mode
+                    let gradientThreshold: number;
+                    switch (config.downsamplingMode) {
+                        case 'aggressive':
+                            gradientThreshold = 1;
+                            break;
+                        case 'normal':
+                            gradientThreshold = 0.1;
+                            break;
+                        case 'lossless':
+                            gradientThreshold = 0;
+                            break;
+                    }
+
+                    for (; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
+                        const time = sequence.time.valueAt(signalIndex);
+                        const value = sequence.values.valueAt(signalIndex);
+                        let gradient = (value - lastValue) / (time - lastTime);
+                        if (Math.abs(gradient - lastGradient) > gradientThreshold) {
+                            // The gradient has changed significantly, add a new point
+                            bufferOffset++;
+                            timeBuffer[bufferOffset] = time;
+                            valueBuffer[bufferOffset] = value;
+                            lastGradient = gradient;
+                        } else {
+                            // If the gradient hasn't changed much, overwrite the last point
+                            timeBuffer[bufferOffset] = time;
+                            valueBuffer[bufferOffset] = value;
+                        }
+                        lastTime = time;
+                        lastValue = value;
+                    }
+                    
+                    // Ensure the last point is included
+                    if (signalIndex === seqLen && bufferOffset < maxPoints) {
+                        const time = sequence.time.valueAt(seqLen - 1);
+                        const value = sequence.values.valueAt(seqLen - 1);
+                        if (timeBuffer[bufferOffset] !== time || valueBuffer[bufferOffset] !== value) {
+                            bufferOffset++;
+                            timeBuffer[bufferOffset] = time;
+                            valueBuffer[bufferOffset] = value;
+                        }
+                    }
                 }
                 
-                // Ensure the last point is included
-                if (signalIndex === seqLen && bufferOffset < maxPoints) {
-                    const time = sequence.time.valueAt(seqLen - 1);
-                    const value = sequence.values.valueAt(seqLen - 1);
-                    if (timeBuffer[bufferOffset] !== time || valueBuffer[bufferOffset] !== value) {
-                        bufferOffset++;
-                        timeBuffer[bufferOffset] = time;
-                        valueBuffer[bufferOffset] = value;
-                    }
-                }
-
                 // Upload sequence data
                 gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
                 gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, timeBuffer.subarray(0, bufferOffset));
