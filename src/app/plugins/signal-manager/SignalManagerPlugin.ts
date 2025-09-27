@@ -4,12 +4,24 @@ let context: PluginContext | undefined;
 let sidebarContainer: HTMLElement | undefined;
 let availableSignalSources: SignalSource[] = [];
 
+// DOM caching system
+interface CachedDOMElement {
+    element: HTMLElement;
+    node: TreeNode;
+    isVisible: boolean;
+    eventListeners: (() => void)[];
+}
+
+const domCache = new Map<string, CachedDOMElement>();
+let isDOMCacheValid = false;
+
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
     
     // Listen for signal source changes
     context.signalSources.changed((event) => {
         availableSignalSources = context.signalSources.available;
+        invalidateDOMCache();
         refreshSignalList();
     });
     
@@ -195,19 +207,160 @@ function buildSignalTree(): TreeNode {
     return root;
 }
 
+// DOM Cache Management Functions
+function invalidateDOMCache(): void {
+    // Clean up event listeners
+    for (const cached of domCache.values()) {
+        cached.eventListeners.forEach(cleanup => cleanup());
+    }
+    domCache.clear();
+    isDOMCacheValid = false;
+}
+
+function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
+    const nodeElement = document.createElement('div');
+    nodeElement.className = 'signal-item';
+    nodeElement.setAttribute('data-signal-path', node.fullPath.join('|').toLowerCase());
+    
+    const isLeaf = node.children.size === 0;
+    const hasChildren = node.children.size > 0;
+    
+    // Create elements programmatically instead of using innerHTML
+    const treeNodeDiv = document.createElement('div');
+    treeNodeDiv.className = `tree-node ${isLeaf ? 'leaf' : 'expandable'}`;
+    treeNodeDiv.style.setProperty('--indent', `${depth * 12}px`);
+    
+    // Create toggle element
+    const toggleSpan = document.createElement('span');
+    toggleSpan.className = 'tree-toggle';
+    
+    if (hasChildren) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
+        svg.setAttribute('viewBox', '0 0 16 16');
+        svg.setAttribute('fill', 'currentColor');
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z');
+        
+        svg.appendChild(path);
+        toggleSpan.appendChild(svg);
+        
+        if (node.isExpanded) {
+            toggleSpan.classList.add('expanded');
+        }
+    }
+    
+    // Create label element
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'tree-label';
+    labelSpan.textContent = node.name;
+    
+    treeNodeDiv.appendChild(toggleSpan);
+    treeNodeDiv.appendChild(labelSpan);
+    nodeElement.appendChild(treeNodeDiv);
+    
+    // Set up event listeners and track cleanup functions
+    const eventListeners: (() => void)[] = [];
+    
+    if (hasChildren) {
+        const toggleFunction = () => {
+            node.isExpanded = !node.isExpanded;
+            toggleSpan.classList.toggle('expanded', node.isExpanded);
+            updateTreeVisibility();
+        };
+        
+        treeNodeDiv.addEventListener('click', toggleFunction);
+        eventListeners.push(() => treeNodeDiv.removeEventListener('click', toggleFunction));
+    } else if (isLeaf && node.signalSource) {
+        const clickFunction = () => {
+            addSignalToWaveform(node.signalSource!);
+        };
+        
+        treeNodeDiv.addEventListener('click', clickFunction);
+        eventListeners.push(() => treeNodeDiv.removeEventListener('click', clickFunction));
+    }
+    
+    return {
+        element: nodeElement,
+        node: node,
+        isVisible: true,
+        eventListeners: eventListeners
+    };
+}
+
+function buildDOMCache(): void {
+    if (isDOMCacheValid) return;
+    
+    invalidateDOMCache();
+    
+    const tree = buildSignalTree();
+    buildDOMCacheRecursive(tree, 0);
+    
+    isDOMCacheValid = true;
+}
+
+function buildDOMCacheRecursive(node: TreeNode, depth: number): void {
+    for (const [_, childNode] of node.children) {
+        const cacheKey = childNode.fullPath.join('|');
+        const cachedElement = createDOMElement(childNode, depth);
+        domCache.set(cacheKey, cachedElement);
+        
+        // Recursively cache children
+        if (childNode.children.size > 0) {
+            buildDOMCacheRecursive(childNode, depth + 1);
+        }
+    }
+}
+
 function renderSignalTree(): void {
     if (!sidebarContainer) return;
 
     const treeContainer = sidebarContainer.querySelector('#signal-tree');
     if (!treeContainer) return;
 
+    // Build DOM cache if needed
+    buildDOMCache();
+    
+    // Clear container and add all cached elements
     treeContainer.innerHTML = '';
     
     const tree = buildSignalTree();
-    renderTreeNode(tree, treeContainer as HTMLElement, 0);
+    addTreeNodesToContainer(tree, treeContainer as HTMLElement, 0, true);
+}
+
+function addTreeNodesToContainer(node: TreeNode, container: HTMLElement, depth: number, showAll: boolean): void {
+    for (const [_, childNode] of node.children) {
+        const cacheKey = childNode.fullPath.join('|');
+        const cachedElement = domCache.get(cacheKey);
+        
+        if (!cachedElement) continue;
+        
+        // Only add if we should show all nodes or if it's marked as visible
+        if (showAll || cachedElement.isVisible) {
+            container.appendChild(cachedElement.element);
+            
+            // If expanded, add children
+            if (childNode.isExpanded && childNode.children.size > 0) {
+                addTreeNodesToContainer(childNode, container, depth + 1, showAll);
+            }
+        }
+    }
+}
+
+function updateTreeVisibility(): void {
+    if (!sidebarContainer) return;
+
+    const treeContainer = sidebarContainer.querySelector('#signal-tree');
+    if (!treeContainer) return;
+
+    // Rebuild the tree structure efficiently
+    renderSignalTree();
 }
 
 function renderTreeNode(node: TreeNode, container: HTMLElement, depth: number): void {
+    const start = performance.now();
     for (const [_, childNode] of node.children) {
         const nodeElement = document.createElement('div');
         nodeElement.className = 'signal-item';
@@ -284,6 +437,7 @@ function renderTreeNode(node: TreeNode, container: HTMLElement, depth: number): 
             }
         }
     }
+    console.log(`Rendered tree node at depth ${depth} in ${(performance.now() - start).toFixed(1)} ms`);
 }
 
 function filterSignals(searchTerm: string): void {
@@ -292,32 +446,113 @@ function filterSignals(searchTerm: string): void {
     const treeContainer = sidebarContainer.querySelector('#signal-tree');
     if (!treeContainer) return;
 
+    // Build DOM cache if needed
+    buildDOMCache();
+
     if (!searchTerm.trim()) {
-        // No search term - show normal tree structure
+        // No search term - clear all highlighting from cached elements and show normal tree structure
+        clearAllHighlighting();
         renderSignalTree();
         return;
     }
 
     // Build the tree but mark nodes for visibility based on search
     const tree = buildSignalTree();
-    markTreeNodesForSearch(tree, searchTerm);
+    const hasMatches = markTreeNodesForSearch(tree, searchTerm);
     
-    // Re-render the tree with search results
+    if (!hasMatches) {
+        treeContainer.innerHTML = '<div style="color: #6b7280; padding: 16px; text-align: center;">No signals found</div>';
+        return;
+    }
+    
+    // Update cached elements with search highlighting and visibility
+    updateCachedElementsForSearch(tree, searchTerm);
+    
+    // Re-render using cached elements
     treeContainer.innerHTML = '';
-    renderSearchTreeNode(tree, treeContainer as HTMLElement, 0);
+    addFilteredTreeNodes(tree, treeContainer as HTMLElement, 0);
+}
+
+function clearAllHighlighting(): void {
+    // Clear highlighting from all cached elements
+    for (const cachedElement of domCache.values()) {
+        const labelElement = cachedElement.element.querySelector('.tree-label');
+        if (labelElement) {
+            labelElement.textContent = cachedElement.node.name;
+        }
+    }
+}
+
+function updateCachedElementsForSearch(node: TreeNode, searchTerm: string): void {
+    for (const [_, childNode] of node.children) {
+        const cacheKey = childNode.fullPath.join('|');
+        const cachedElement = domCache.get(cacheKey);
+        
+        if (cachedElement) {
+            const searchVisible = (childNode as any).searchVisible;
+            const searchMatches = (childNode as any).searchMatches;
+            
+            cachedElement.isVisible = searchVisible;
+            
+            // Update label with highlighting if it matches
+            const labelElement = cachedElement.element.querySelector('.tree-label');
+            if (labelElement) {
+                if (searchMatches) {
+                    labelElement.innerHTML = highlightSearchMatch(childNode.name, searchTerm);
+                } else {
+                    labelElement.textContent = childNode.name;
+                }
+            }
+            
+            // Update toggle state for expanded nodes
+            const toggleElement = cachedElement.element.querySelector('.tree-toggle');
+            if (toggleElement && childNode.children.size > 0) {
+                toggleElement.classList.toggle('expanded', childNode.isExpanded);
+            }
+        }
+        
+        // Recursively update children
+        if (childNode.children.size > 0) {
+            updateCachedElementsForSearch(childNode, searchTerm);
+        }
+    }
+}
+
+function addFilteredTreeNodes(node: TreeNode, container: HTMLElement, depth: number): void {
+    for (const [_, childNode] of node.children) {
+        // Skip nodes that don't match search criteria
+        if (!(childNode as any).searchVisible) {
+            continue;
+        }
+        
+        const cacheKey = childNode.fullPath.join('|');
+        const cachedElement = domCache.get(cacheKey);
+        
+        if (cachedElement && cachedElement.isVisible) {
+            container.appendChild(cachedElement.element);
+            
+            // If expanded and has matching children, add them
+            if (childNode.isExpanded && childNode.children.size > 0) {
+                addFilteredTreeNodes(childNode, container, depth + 1);
+            }
+        }
+    }
 }
 
 function markTreeNodesForSearch(node: TreeNode, searchTerm: string): boolean {
+    let hasAnyMatches = false;
     let shouldShow = false;
     
     // Check if this node matches the search term
     const nodeMatches = matchesSearchTerm(node.fullPath.join(' '), searchTerm);
+    if (nodeMatches) hasAnyMatches = true;
     
     // Check children recursively
     let hasMatchingChildren = false;
     for (const [_, child] of node.children) {
-        const childShouldShow = markTreeNodesForSearch(child, searchTerm);
-        if (childShouldShow) {
+        const childHasMatches = markTreeNodesForSearch(child, searchTerm);
+        if (childHasMatches) {
+            hasAnyMatches = true;
             hasMatchingChildren = true;
         }
     }
@@ -334,7 +569,7 @@ function markTreeNodesForSearch(node: TreeNode, searchTerm: string): boolean {
     (node as any).searchVisible = shouldShow;
     (node as any).searchMatches = nodeMatches;
     
-    return shouldShow;
+    return hasAnyMatches;
 }
 
 function matchesSearchTerm(text: string, searchTerm: string): boolean {
@@ -345,70 +580,6 @@ function matchesSearchTerm(text: string, searchTerm: string): boolean {
     } catch (e) {
         // If regex is invalid, fall back to simple string matching
         return text.toLowerCase().includes(searchTerm.toLowerCase());
-    }
-}
-
-function renderSearchTreeNode(node: TreeNode, container: HTMLElement, depth: number): void {
-    for (const [_, childNode] of node.children) {
-        // Skip nodes that don't match search criteria
-        if (!(childNode as any).searchVisible) {
-            continue;
-        }
-        
-        const nodeElement = document.createElement('div');
-        nodeElement.className = 'signal-item';
-        nodeElement.setAttribute('data-signal-path', childNode.fullPath.join('|').toLowerCase());
-        
-        const isLeaf = childNode.children.size === 0;
-        const hasChildren = childNode.children.size > 0;
-        const nodeMatches = (childNode as any).searchMatches;
-        
-        // Highlight matching text
-        const displayName = nodeMatches ? highlightSearchMatch(childNode.name, getLastSearchTerm()) : childNode.name;
-        
-        nodeElement.innerHTML = `
-            <div class="tree-node ${isLeaf ? 'leaf' : 'expandable'}" style="--indent: ${depth * 12}px">
-                ${hasChildren ? `<span class="tree-toggle ${childNode.isExpanded ? 'expanded' : ''}">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
-                    </svg>
-                </span>` : '<span class="tree-toggle"></span>'}
-                <span class="tree-label">${displayName}</span>
-            </div>
-        `;
-
-        if (hasChildren) {
-            const treeNodeElement = nodeElement.querySelector('.tree-node') as HTMLElement;
-            const toggleElement = nodeElement.querySelector('.tree-toggle') as HTMLElement;
-            
-            const toggleFunction = () => {
-                childNode.isExpanded = !childNode.isExpanded;
-                toggleElement.classList.toggle('expanded', childNode.isExpanded);
-                
-                // Re-render search results to show/hide children
-                const currentSearchTerm = getLastSearchTerm();
-                if (currentSearchTerm) {
-                    filterSignals(currentSearchTerm);
-                } else {
-                    renderSignalTree();
-                }
-            };
-            
-            treeNodeElement.addEventListener('click', toggleFunction);
-        } else if (isLeaf && childNode.signalSource) {
-            // Make the entire leaf node clickable to add the signal
-            const treeNodeElement = nodeElement.querySelector('.tree-node') as HTMLElement;
-            treeNodeElement.addEventListener('click', () => {
-                addSignalToWaveform(childNode.signalSource!);
-            });
-        }
-
-        container.appendChild(nodeElement);
-        
-        // Render children if expanded and they have matching descendants
-        if (childNode.isExpanded && hasChildren) {
-            renderSearchTreeNode(childNode, container, depth + 1);
-        }
     }
 }
 
