@@ -1,5 +1,6 @@
 import { Link, readBlock, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export interface TextBlock {
     data: string;
@@ -33,12 +34,12 @@ export function serializeMetadataBlock(view: DataView<ArrayBuffer>, context: Ser
     return serializeTextBlock(view, context, block);
 }
 
-export async function readTextBlock(link: Link<TextBlock>, file: File): Promise<TextBlock> {
-    return deserializeTextBlock(await readBlock(link, file, "##TX"));
+export async function readTextBlock(link: Link<TextBlock>, reader: BufferedFileReader): Promise<TextBlock> {
+    return deserializeTextBlock(await readBlock(link, reader, "##TX"));
 }
 
-export async function readMetadataBlock(link: Link<MetadataBlock>, file: File): Promise<MetadataBlock> {
-    return deserializeMetadataBlock(await readBlock(link, file, "##MD"));
+export async function readMetadataBlock(link: Link<MetadataBlock>, reader: BufferedFileReader): Promise<MetadataBlock> {
+    return deserializeMetadataBlock(await readBlock(link, reader, "##MD"));
 }
 
 function getEncodedLength(data: string): number {

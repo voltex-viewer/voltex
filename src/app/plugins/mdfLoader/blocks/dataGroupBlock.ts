@@ -3,6 +3,7 @@ import { DataTableBlock, deserializeDataTableBlock, readDataTableBlock, resolveD
 import { DataListBlock, iterateDataListBlocks, resolveDataListOffset } from './dataListBlock';
 import { ChannelGroupBlock, resolveChannelGroupOffset } from './channelGroupBlock';
 import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export interface DataGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     dataGroupNext: MaybeLinked<DataGroupBlock<TMode>, TMode>;
@@ -53,15 +54,15 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
         });
 }
 
-export async function getDataBlocks(dataGroup: DataGroupBlock, file: File): Promise<AsyncIterableIterator<DataTableBlock>> {
+export async function getDataBlocks(dataGroup: DataGroupBlock, reader: BufferedFileReader): Promise<AsyncIterableIterator<DataTableBlock>> {
     return (async function* () {
-        const block = await readBlock(dataGroup.data, file, undefined); // Read just the header
+        const block = await readBlock(dataGroup.data, reader, undefined); // Read just the header
         if (block.type === "##DT" || block.type === "##DZ") {
             yield await deserializeDataTableBlock(block);
         } else if (block.type === "##DL") {
-            for await (const list of iterateDataListBlocks(dataGroup.data, file)) {
+            for await (const list of iterateDataListBlocks(dataGroup.data, reader)) {
                 for (const item of list.data) {
-                    yield await readDataTableBlock(item, file);
+                    yield await readDataTableBlock(item, reader);
                 }
             }
         } else {
@@ -70,15 +71,15 @@ export async function getDataBlocks(dataGroup: DataGroupBlock, file: File): Prom
     })();
 }
 
-export async function readDataGroupBlock(link: Link<DataGroupBlock>, file: File): Promise<DataGroupBlock<'linked'>> {
-    return deserializeDataGroupBlock(await readBlock(link, file, "##DG"));
+export async function readDataGroupBlock(link: Link<DataGroupBlock>, reader: BufferedFileReader): Promise<DataGroupBlock<'linked'>> {
+    return deserializeDataGroupBlock(await readBlock(link, reader, "##DG"));
 }
 
-export async function* iterateDataGroupBlocks(startLink: Link<DataGroupBlock>, file: File): AsyncIterableIterator<DataGroupBlock<'linked'>> {
+export async function* iterateDataGroupBlocks(startLink: Link<DataGroupBlock>, reader: BufferedFileReader): AsyncIterableIterator<DataGroupBlock<'linked'>> {
     let currentLink = startLink;
     
     while (getLink(currentLink) !== 0n) {
-        const dataGroup = await readDataGroupBlock(currentLink, file);
+        const dataGroup = await readDataGroupBlock(currentLink, reader);
         yield dataGroup;
         currentLink = dataGroup.dataGroupNext;
     }

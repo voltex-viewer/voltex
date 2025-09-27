@@ -2,6 +2,7 @@ import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelConversionBlock, resolveChannelConversionOffset } from './channelConversionBlock';
 import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export enum DataType {
     UintLe = 0,
@@ -134,15 +135,15 @@ export function resolveChannelOffset(context: SerializeContext, block: ChannelBl
         });
 }
 
-export async function readChannelBlock(link: Link<ChannelBlock>, file: File): Promise<ChannelBlock<'linked'>> {
-    return deserializeChannelBlock(await readBlock(link, file, "##CN"));
+export async function readChannelBlock(link: Link<ChannelBlock>, reader: BufferedFileReader): Promise<ChannelBlock<'linked'>> {
+    return deserializeChannelBlock(await readBlock(link, reader, "##CN"));
 }
 
-export async function* iterateChannelBlocks(startLink: Link<ChannelBlock>, file: File): AsyncIterableIterator<ChannelBlock<'linked'>> {
+export async function* iterateChannelBlocks(startLink: Link<ChannelBlock>, reader: BufferedFileReader): AsyncIterableIterator<ChannelBlock<'linked'>> {
     let currentLink = startLink;
     
     while (getLink(currentLink) !== 0n) {
-        const channel = await readChannelBlock(currentLink, file);
+        const channel = await readChannelBlock(currentLink, reader);
         yield channel;
         currentLink = channel.channelNext;
     }

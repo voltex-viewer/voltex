@@ -14,8 +14,9 @@ import {
     DataListBlock
 } from './blocks';
 import { SerializeContext } from './blocks/serializer';
+import { BufferedFileReader } from './BufferedFileReader';
 
-async function parseData<T>(dataGroup: DataGroupBlock, file: File, rowHandler: (context: T, chunk: DataView) => void, records: ReadonlyMap<number, T & {length: number}>): Promise<void> {
+async function parseData<T>(dataGroup: DataGroupBlock, reader: BufferedFileReader, rowHandler: (context: T, chunk: DataView) => void, records: ReadonlyMap<number, T & {length: number}>): Promise<void> {
     const recordSize = dataGroup.recordIdSize;
 
     let carry = new Uint8Array(recordSize + Math.max(...records.values().map(x => x.length)));
@@ -40,7 +41,7 @@ async function parseData<T>(dataGroup: DataGroupBlock, file: File, rowHandler: (
         return records.get(recordId);
     }
 
-    for await (const dataBlock of await getDataBlocks(dataGroup, file)) {
+    for await (const dataBlock of await getDataBlocks(dataGroup, reader)) {
         const blockData = new Uint8Array(dataBlock.data.buffer, dataBlock.data.byteOffset, dataBlock.data.byteLength);
         let blockDataOffset = 0;
         // Check if there is any data carried from the last data block
@@ -163,11 +164,11 @@ class DataGroupLoader {
     private loaded: boolean = false;
     private groups: {group: ChannelGroupBlock, channels: {source: SignalSource, channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string}[]}[];
 
-    constructor(private dataGroup: DataGroupBlock, groups: {group: ChannelGroupBlock, channels: {channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string}[]}[], private file: File) {
+    constructor(private dataGroup: DataGroupBlock, groups: {group: ChannelGroupBlock, channels: {channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string}[]}[], private reader: BufferedFileReader) {
         this.groups = groups.map(({group, channels}) => ({
             group,
             channels: channels.map(({channel, conversion}) => ({
-                source: new Mf4Source([file.name, channel.txName.data], this, channel, RenderMode.Lines),
+                source: new Mf4Source([reader.file.name, channel.txName.data], this, channel, RenderMode.Lines),
                 channel,
                 conversion
             }))
@@ -223,7 +224,7 @@ class DataGroupLoader {
             records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences});
         }
         let rowCount = 0;
-        await parseData(this.dataGroup, this.file, (context, view) => {
+        await parseData(this.dataGroup, this.reader, (context, view) => {
             for (const {sequence, loader} of context.sequences) {
                 sequence.push(loader(view));
             }
@@ -441,6 +442,10 @@ export default (context: PluginContext): void => {
         description: 'MDF/MF4 Measurement Files',
         mimeType: '*/*',
         handler: async (file: File) => {
+            const start = performance.now();
+            // Create a buffered reader for better performance
+            const reader = new BufferedFileReader(file);
+            
             const id = deserializeId(await file.slice(0, 64).arrayBuffer());
             
             if (id.header !== "MDF     " && id.header !== "UnFinMF ") {
@@ -449,18 +454,18 @@ export default (context: PluginContext): void => {
             
             // Parse the first block (Header block) at offset 64
             const rootLink = newLink<Header>(64n);
-            const header = await readHeader(rootLink, file);
+            const header = await readHeader(rootLink, reader);
             console.log(header);
             
             let sources: SignalSource[] = [];
 
-            for await (const dataGroup of iterateDataGroupBlocks(header.firstDataGroup, file)) {
+            for await (const dataGroup of iterateDataGroupBlocks(header.firstDataGroup, reader)) {
                 const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock<'instanced'>>();
                 async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<ChannelConversionBlock<'instanced'> | null> {
                     if (getLink(link) === 0n || conversionMap.has(link)) {
                         return null;
                     }
-                    const srcBlock = await readConversionBlock(link, file);
+                    const srcBlock = await readConversionBlock(link, reader);
                     const block = {
                         ...srcBlock,
                         txName: null,
@@ -474,7 +479,7 @@ export default (context: PluginContext): void => {
                         if (getLink(ref) === 0n) {
                             (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(null);
                         } else {
-                            const refBlock = await readBlock(ref, file);
+                            const refBlock = await readBlock(ref, reader);
                             
                             if (refBlock.type === "##CC") {
                                 (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(await readConversionBlockRecurse(ref));
@@ -487,7 +492,7 @@ export default (context: PluginContext): void => {
                     }
                     
                     if (getLink(srcBlock.mdUnit) !== 0n) {
-                        const unit = await readBlock(srcBlock.mdUnit, file);
+                        const unit = await readBlock(srcBlock.mdUnit, reader);
 
                         if (unit.type === "##TX") {
                             block.mdUnit = deserializeTextBlock(unit);
@@ -502,16 +507,16 @@ export default (context: PluginContext): void => {
                     return block;
                 }
                 const groups = [];
-                for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, file)) {
+                for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, reader)) {
                     const channels = [];
-                    for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, file)) {
+                    for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, reader)) {
                         const conversion = await readConversionBlockRecurse(channel.conversion);
                         channels.push({
                             channel: {
                                 ...channel,
                                 channelNext: null,
                                 component: null,
-                                txName: await readTextBlock(channel.txName, file),
+                                txName: await readTextBlock(channel.txName, reader),
                                 siSource: null,
                                 conversion,
                                 data: null,
@@ -523,8 +528,10 @@ export default (context: PluginContext): void => {
                     }
                     groups.push({group: channelGroup, channels});
                 }
-                sources.push(...new DataGroupLoader(dataGroup, groups, file).sources());
+                sources.push(...new DataGroupLoader(dataGroup, groups, reader).sources());
             }
+
+            console.log(`Loaded ${sources.length} signal sources from ${file.name} in ${(performance.now() - start).toFixed(1)} ms`);
 
             context.signalSources.add(...sources);
         }

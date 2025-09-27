@@ -2,6 +2,7 @@ import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelBlock, resolveChannelOffset } from './channelBlock';
 import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export interface ChannelGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     channelGroupNext: MaybeLinked<ChannelGroupBlock<TMode>, TMode>;
@@ -68,15 +69,15 @@ export function resolveChannelGroupOffset(context: SerializeContext, block: Chan
         });
 }
 
-export async function readChannelGroupBlock(link: Link<ChannelGroupBlock>, file: File): Promise<ChannelGroupBlock<'linked'>> {
-    return deserializeChannelGroupBlock(await readBlock(link, file, "##CG"));
+export async function readChannelGroupBlock(link: Link<ChannelGroupBlock>, reader: BufferedFileReader): Promise<ChannelGroupBlock<'linked'>> {
+    return deserializeChannelGroupBlock(await readBlock(link, reader, "##CG"));
 }
 
-export async function* iterateChannelGroupBlocks(startLink: Link<ChannelGroupBlock>, file: File): AsyncIterableIterator<ChannelGroupBlock<'linked'>> {
+export async function* iterateChannelGroupBlocks(startLink: Link<ChannelGroupBlock>, reader: BufferedFileReader): AsyncIterableIterator<ChannelGroupBlock<'linked'>> {
     let currentLink = startLink;
     
     while (getLink(currentLink) !== 0n) {
-        const channelGroup = await readChannelGroupBlock(currentLink, file);
+        const channelGroup = await readChannelGroupBlock(currentLink, reader);
         yield channelGroup;
         currentLink = channelGroup.channelGroupNext;
     }

@@ -1,3 +1,5 @@
+import { BufferedFileReader } from '../BufferedFileReader';
+
 export interface Link<T> {
     __brand: "<T>",
 }
@@ -23,10 +25,10 @@ export interface GenericBlock extends GenericBlockHeader {
     links: Link<unknown>[];
 }
 
-export async function readBlockHeader(link: Link<any>, file: File, expectedType?: string | string[]): Promise<GenericBlockHeader> {
+export async function readBlockHeader(link: Link<any>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlockHeader> {
     let offset = Number(getLink(link));
     
-    const buffer = await file.slice(offset, offset + 24).arrayBuffer();
+    const buffer = await reader.readBytes(offset, 24);
     const type = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
     if (typeof expectedType !== "undefined" && ((!Array.isArray(expectedType) && type !== expectedType) || (Array.isArray(expectedType) && !expectedType.includes(type)))) {
         throw new Error(`Invalid block tag: "${type}"`);
@@ -40,11 +42,11 @@ export async function readBlockHeader(link: Link<any>, file: File, expectedType?
     };
 }
 
-export async function readBlock(link: Link<any>, file: File, expectedType?: string | string[]): Promise<GenericBlock> {
+export async function readBlock(link: Link<any>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlock> {
     let fileOffset = Number(getLink(link));
-    const header = await readBlockHeader(link, file, expectedType);
+    const header = await readBlockHeader(link, reader, expectedType);
     
-    const payload = await file.slice(fileOffset + 24, fileOffset + Number(header.length)).arrayBuffer();
+    const payload = await reader.readBytes(fileOffset + 24, Number(header.length));
 
     const links: Link<unknown>[] = [];
     let offset = 0;

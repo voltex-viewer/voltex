@@ -1,5 +1,6 @@
 import { Link, readBlock, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export interface DataTableBlock {
     data: DataView<ArrayBuffer>;
@@ -96,6 +97,6 @@ export function resolveDataTableOffset(context: SerializeContext, block: DataTab
         serializeDataTableBlock);
 }
 
-export async function readDataTableBlock(link: Link<DataTableBlock>, file: File): Promise<DataTableBlock> {
-    return await deserializeDataTableBlock(await readBlock(link, file, "##DT"));
+export async function readDataTableBlock(link: Link<DataTableBlock>, reader: BufferedFileReader): Promise<DataTableBlock> {
+    return await deserializeDataTableBlock(await readBlock(link, reader, "##DT"));
 }

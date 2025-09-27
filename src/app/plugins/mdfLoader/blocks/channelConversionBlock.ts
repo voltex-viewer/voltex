@@ -1,6 +1,7 @@
 import { Link, readBlock, GenericBlock, MaybeLinked } from './common';
 import { SerializeContext } from './serializer';
 import { TextBlock, MetadataBlock, resolveTextBlockOffset } from './textBlock';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export enum ConversionType {
     OneToOne = 0,
@@ -163,6 +164,6 @@ export function resolveChannelConversionOffset(context: SerializeContext, block:
         });
 }
 
-export async function readConversionBlock(link: Link<ChannelConversionBlock>, file: File): Promise<ChannelConversionBlock<'linked'>> {
-    return deserializeConversionBlock(await readBlock(link, file, "##CC"));
+export async function readConversionBlock(link: Link<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'>> {
+    return deserializeConversionBlock(await readBlock(link, reader, "##CC"));
 }

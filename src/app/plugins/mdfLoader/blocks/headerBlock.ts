@@ -2,6 +2,7 @@ import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
 import { DataGroupBlock, resolveDataGroupOffset, serializeDataGroupBlock } from './dataGroupBlock';
 import { FileHistoryBlock, resolveFileHistoryOffset } from './fileHistoryBlock';
 import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export interface Header<TMode extends 'linked' | 'instanced' = 'linked'> {
     firstDataGroup: MaybeLinked<DataGroupBlock<TMode>, TMode>;
@@ -74,6 +75,6 @@ export function resolveHeaderOffset(context: SerializeContext, header: Header<'i
     );
 }
 
-export async function readHeader(link: Link<Header>, file: File): Promise<Header<'linked'>> {
-    return deserializeHeader(await readBlock(link, file, "##HD"));
+export async function readHeader(link: Link<Header>, reader: BufferedFileReader): Promise<Header<'linked'>> {
+    return deserializeHeader(await readBlock(link, reader, "##HD"));
 }

@@ -1,6 +1,7 @@
 import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
 import { MetadataBlock, resolveMetadataOffset } from './textBlock';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export interface FileHistoryBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     fileHistoryNext: MaybeLinked<FileHistoryBlock<TMode>, TMode>;
@@ -52,15 +53,15 @@ export function resolveFileHistoryOffset(context: SerializeContext, block: FileH
         });
 }
 
-export async function readFileHistoryBlock(link: Link<FileHistoryBlock>, file: File): Promise<FileHistoryBlock<'linked'>> {
-    return deserializeFileHistoryBlock(await readBlock(link, file, "##FH"));
+export async function readFileHistoryBlock(link: Link<FileHistoryBlock>, reader: BufferedFileReader): Promise<FileHistoryBlock<'linked'>> {
+    return deserializeFileHistoryBlock(await readBlock(link, reader, "##FH"));
 }
 
-export async function* iterateFileHistoryBlocks(startLink: Link<FileHistoryBlock>, file: File): AsyncIterableIterator<FileHistoryBlock<'linked'>> {
+export async function* iterateFileHistoryBlocks(startLink: Link<FileHistoryBlock>, reader: BufferedFileReader): AsyncIterableIterator<FileHistoryBlock<'linked'>> {
     let currentLink = startLink;
     
     while (getLink(currentLink) !== 0n) {
-        const fileHistory = await readFileHistoryBlock(currentLink, file);
+        const fileHistory = await readFileHistoryBlock(currentLink, reader);
         yield fileHistory;
         currentLink = fileHistory.fileHistoryNext;
     }

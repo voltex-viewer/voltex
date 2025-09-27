@@ -1,6 +1,7 @@
 import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { DataTableBlock, resolveDataTableOffset } from './dataTableBlock';
 import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../BufferedFileReader';
 
 export interface DataListBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     dataListNext: MaybeLinked<DataListBlock<TMode>, TMode>;
@@ -60,16 +61,16 @@ export function resolveDataListOffset(context: SerializeContext, block: DataList
         });
 }
 
-export async function readDataListBlock(link: Link<DataListBlock>, file: File): Promise<LinkedDataListBlock> {
-    const block = await readBlock(link, file, "##DL");
+export async function readDataListBlock(link: Link<DataListBlock>, reader: BufferedFileReader): Promise<LinkedDataListBlock> {
+    const block = await readBlock(link, reader, "##DL");
     return deserializeDataListBlock(block);
 }
 
-export async function* iterateDataListBlocks(startLink: Link<DataListBlock>, file: File): AsyncIterableIterator<LinkedDataListBlock> {
+export async function* iterateDataListBlocks(startLink: Link<DataListBlock>, reader: BufferedFileReader): AsyncIterableIterator<LinkedDataListBlock> {
     let currentLink = startLink;
     
     while (getLink(currentLink) !== 0n) {
-        const value = await readDataListBlock(currentLink, file);
+        const value = await readDataListBlock(currentLink, reader);
         yield value;
         currentLink = value.dataListNext;
     }
