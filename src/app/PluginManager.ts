@@ -1,8 +1,9 @@
-import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, RenderObjectArgs } from '@voltex-viewer/plugin-api';
+import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, RenderObjectArgs, Command } from '@voltex-viewer/plugin-api';
 import { RenderObjectImpl } from './RenderObject';
 import type { WebGlContext, WaveformState } from "@voltex-viewer/plugin-api";
 import { RowChangedEvent } from './RowManager';
 import { PluginConfigManager } from './PluginConfigManager';
+import { CommandManager } from './CommandManager';
 import type { RenderProfiler } from './RenderProfiler';
 import * as t from 'io-ts';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
@@ -38,7 +39,6 @@ export class PluginManager {
     private availablePlugins: PluginModule[] = [];
     private pluginData: Map<ActivePlugin, PluginData> = new Map();
     private pluginRegisteredCallbacks: (() => void)[] = [];
-    private configManager = new PluginConfigManager();
 
     constructor(
         private state: WaveformState,
@@ -50,7 +50,9 @@ export class PluginManager {
         private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
         private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
         private requestRender: () => void,
-        private renderProfiler: RenderProfiler
+        private renderProfiler: RenderProfiler,
+        private configManager: PluginConfigManager,
+        private commandManager: CommandManager,
     ) {
         rowManager.onChange((event: RowChangedEvent) => {
             this.onRowsChanged(event);
@@ -156,6 +158,9 @@ export class PluginManager {
             registerFileSaveHandler: (handler: FileSaveHandler) => {
                 const data = this.pluginData.get(plugin)!;
                 data.fileSaveHandlers.push(handler);
+            },
+            registerCommand: (command: Command) => {
+                this.commandManager.registerCommand(plugin.metadata.name, command);
             },
         };
 
@@ -458,5 +463,9 @@ export class PluginManager {
                 accept: { [handler.mimeType]: handler.extensions }
             }))
         );
+    }
+
+    executeKeybinding(keybinding: string): boolean {
+        return this.commandManager.executeCommand(keybinding);
     }
 }

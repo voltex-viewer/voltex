@@ -302,6 +302,8 @@ function renderPluginList(): void {
         pluginItem.setAttribute('data-plugin-name', pluginModule.metadata.name.toLowerCase());
         
         const isPluginManager = pluginModule.metadata.name === 'Plugin Manager';
+        const isVoltexCore = pluginModule.metadata.name === 'Voltex';
+        const canBeToggled = !isPluginManager && !isVoltexCore;
         const enabledPlugin = pluginManager!.getPlugins().find(p => p.metadata.name === pluginModule.metadata.name);
         const isEnabled = !!enabledPlugin;
         const hasConfig = pluginManager!.getConfigManager().hasConfig(pluginModule.metadata.name);
@@ -312,34 +314,34 @@ function renderPluginList(): void {
             ${pluginModule.metadata.name}
             </span>
             <div style="display: flex; align-items: center;">
-            ${!isPluginManager && hasConfig ? `
+            ${hasConfig ? `
             <div class="config-button" data-plugin="${pluginModule.metadata.name}" title="Configure plugin">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
             </svg>
             </div>
             ` : ''}
-            ${isPluginManager ? 
-            '' :
-            `<div class="toggle-switch ${isEnabled ? 'enabled' : ''}" data-plugin="${pluginModule.metadata.name}"></div>`
+            ${canBeToggled ? 
+            `<div class="toggle-switch ${isEnabled ? 'enabled' : ''}" data-plugin="${pluginModule.metadata.name}"></div>` :
+            `<div style="width: 40px;"></div>`
             }
             </div>
             </div>
         `;
 
-        if (!isPluginManager) {
-            const toggleSwitch = pluginItem.querySelector('.toggle-switch') as HTMLElement;
+        const toggleSwitch = pluginItem.querySelector('.toggle-switch') as HTMLElement;
+        if (toggleSwitch) {
             toggleSwitch.addEventListener('click', () => {
                 togglePlugin(pluginModule.metadata.name, toggleSwitch);
             });
+        }
 
-            // Add config button event listener
-            const configButton = pluginItem.querySelector('.config-button') as HTMLElement;
-            if (configButton) {
-                configButton.addEventListener('click', () => {
-                    showConfigView(pluginModule.metadata.name);
-                });
-            }
+        // Add config button event listener
+        const configButton = pluginItem.querySelector('.config-button') as HTMLElement;
+        if (configButton) {
+            configButton.addEventListener('click', () => {
+                showConfigView(pluginModule.metadata.name);
+            });
         }
 
         pluginListContainer.appendChild(pluginItem);

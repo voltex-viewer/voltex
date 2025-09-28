@@ -3,6 +3,7 @@ import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInser
 import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
 import { type MouseEvent, type WheelEvent } from './RenderObject';
 import { RowChangedCallback } from './RowManager';
+import { CommandManager } from './CommandManager';
 
 type ResizeState = 
     | { type: 'none' }
@@ -49,6 +50,7 @@ export class RowContainerRenderObject {
         private state: WaveformState,
         private requestRender: () => void,
         private canvas: HTMLCanvasElement,
+        private commandManager: CommandManager,
     ) {
         this.renderObject = parent.addChild({
             render: (context: RenderContext, bounds: RenderBounds): boolean => {
@@ -175,51 +177,56 @@ export class RowContainerRenderObject {
                 this.requestRender();
             }),
         });
-            
-        // Set up global event listeners for keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
-                // Select all rows
-                e.preventDefault();
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.select-all-rows',
+            action: () => {
                 for (const row of this.rows.filter(r => r.signals.length > 0)) {
                     this.selectedRows.add(row);
                     row.selected = true;
                 }
                 this.requestRender();
-            } else if (e.key === 'Escape') {
-                // Clear selection
+            }
+        });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.clear-selection',
+            action: () => {
                 for (const row of this.selectedRows) {
                     row.selected = false;
                 }
                 this.selectedRows.clear();
                 this.requestRender();
             }
-            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g' && !e.shiftKey) {
-                // Ctrl+G or Cmd+G: Group selected channels
-                e.preventDefault();
+        });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.group-selected-rows',
+            action: () => {
                 if (this.selectedRows.size >= 2) {
                     const selectedRowsArray = this.getSelectedRowsInOrder();
                     const firstIndex = Math.min(...selectedRowsArray.map(row => this.rows.indexOf(row)));
                     
-                    // Use spliceRows to remove selected rows and add merged row
                     this.selectedRows = new Set(this.spliceRows(
-                        selectedRowsArray, // rows to remove
-                        [{ index: firstIndex, row: { channels: selectedRowsArray.flatMap(row => row.signals) } }] // rows to add
+                        selectedRowsArray,
+                        [{ index: firstIndex, row: { channels: selectedRowsArray.flatMap(row => row.signals) } }]
                     ));
 
                     for (const row of this.selectedRows) {
                         row.selected = true;
                     }
-                    requestRender();
+                    this.requestRender();
                 }
-            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g' && e.shiftKey) {
-                // Ctrl+Shift+G or Cmd+Shift+G: Ungroup selected channels
-                e.preventDefault();
+            }
+        });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.ungroup-selected-rows',
+            action: () => {
                 if (this.selectedRows.size > 0) {
                     const selectedRowsArray = this.getSelectedRowsInOrder();
                     const firstIndex = Math.min(...selectedRowsArray.map(row => this.rows.indexOf(row)));
 
-                    // Create individual row inserts - each channel gets inserted sequentially
                     this.selectedRows = new Set(this.spliceRows(
                         selectedRowsArray,
                         selectedRowsArray
@@ -229,14 +236,19 @@ export class RowContainerRenderObject {
                     for (const row of this.selectedRows) {
                         row.selected = true;
                     }
-                    requestRender();
+                    this.requestRender();
                 }
-            } else if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedRows.size > 0) {
-                // Remove selected rows
-                e.preventDefault();
-                this.spliceRows(this.getSelectedRowsInOrder(), []);
-                this.selectedRows.clear();
-                requestRender();
+            }
+        });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.delete-selected-rows',
+            action: () => {
+                if (this.selectedRows.size > 0) {
+                    this.spliceRows(this.getSelectedRowsInOrder(), []);
+                    this.selectedRows.clear();
+                    this.requestRender();
+                }
             }
         });
     }

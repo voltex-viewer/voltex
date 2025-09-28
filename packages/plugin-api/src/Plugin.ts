@@ -1,5 +1,13 @@
 import * as t from 'io-ts';
 
+export const KeybindingConfigType = t.record(t.string, t.union([t.string, t.null]));
+export type KeybindingConfig = t.TypeOf<typeof KeybindingConfigType>;
+
+export interface Command {
+    id: string;
+    action: () => void;
+}
+
 export enum RenderMode {
     Lines = 'lines',
     Discrete = 'discrete',
@@ -141,6 +149,7 @@ export interface PluginContext {
     getEnvironment(): 'electron' | 'browser';
     registerFileOpenHandler(handler: FileOpenHandler): void;
     registerFileSaveHandler(handler: FileSaveHandler): void;
+    registerCommand(command: Command): void;
 }
 
 export interface RenderObject {

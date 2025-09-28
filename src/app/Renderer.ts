@@ -10,6 +10,8 @@ import { RenderProfiler } from './RenderProfiler';
 import PluginManagerFunction from './plugins/manager/PluginManagerPlugin';
 import PluginManagerMetadata from './plugins/manager/plugin.json';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
+import { CommandManager } from "./CommandManager";
+import { PluginConfigManager } from "./PluginConfigManager";
 
 interface InternalMouseEvent extends MouseEvent {
     readonly stopPropagationCalled: boolean;
@@ -60,7 +62,9 @@ export class Renderer {
         this.signalSources = new SignalSourceManagerImpl();
 
         // Create row container and add it to root
-        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, this.canvas);
+        const configManager = new PluginConfigManager();
+        const commandManager = new CommandManager(configManager);
+        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, this.canvas, commandManager);
         
         this.pluginManager = new PluginManager(
             this.state,
@@ -72,7 +76,9 @@ export class Renderer {
             (entry) => this.verticalSidebar.addDynamicEntry(entry),
             (entry) => this.verticalSidebar.removeDynamicEntry(entry),
             this.requestRender,
-            this.renderProfiler
+            this.renderProfiler,
+            configManager,
+            commandManager,
         );
         
         this.resizeCanvases(); // Setup the root size
@@ -86,10 +92,12 @@ export class Renderer {
         
         // Set up mouse event handlers on the canvas
         this.setupMouseEventHandlers();
+        this.setupKeyboardEventHandlers();
     }
 
     private setupMouseEventHandlers(): void {
         this.canvas.addEventListener('mousedown', (e): void => {
+            this.canvas.focus();
             this.dispatchMouseEvent('onMouseDown', this.createMouseEvent(e));
         });
         this.canvas.addEventListener('mousemove', (e): void => {
@@ -114,6 +122,29 @@ export class Renderer {
         this.canvas.addEventListener('wheel', (e): void => {
             this.dispatchMouseEvent('onWheel', this.createWheelEvent(e));
         }, { passive: false });
+    }
+
+    private setupKeyboardEventHandlers(): void {
+        this.canvas.tabIndex = 0;
+        this.canvas.style.outline = 'none';
+        
+        this.canvas.addEventListener('keydown', (e) => {
+            const keybinding = this.buildKeybindingString(e);
+            const handled = this.pluginManager.executeKeybinding(keybinding);
+            if (handled) {
+                e.preventDefault();
+            }
+        });
+    }
+
+    private buildKeybindingString(event: KeyboardEvent): string {
+        const parts: string[] = [];
+        if (event.ctrlKey) parts.push('ctrl');
+        if (event.altKey) parts.push('alt');
+        if (event.shiftKey) parts.push('shift');
+        if (event.metaKey) parts.push('meta');
+        parts.push(event.key.toLowerCase());
+        return parts.join('+');
     }
 
     private createMouseEvent(e: globalThis.MouseEvent): InternalMouseEvent {
