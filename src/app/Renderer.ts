@@ -1,6 +1,6 @@
-import type { PositionValue, RenderObject, WaveformState, RenderBounds, RenderContext, PluginModule, Signal } from "@voltex-viewer/plugin-api";
+import type { PositionValue, RenderObject, WaveformState, RenderBounds, RenderContext, PluginModule, Signal, MouseEvent, WheelEvent, MouseEventHandlers } from "@voltex-viewer/plugin-api";
 import { calculateBounds, px } from "@voltex-viewer/plugin-api";
-import { RenderObjectImpl, MouseEvent, MouseEventHandlers } from './RenderObject';
+import { RenderObjectImpl } from './RenderObject';
 import { SignalMetadataManagerImpl } from './SignalMetadataManager';
 import { SignalSourceManagerImpl } from './SignalSourceManagerImpl';
 import { WebGLUtilsImpl } from './WebGLUtils';
@@ -31,6 +31,8 @@ export class Renderer {
     private renderProfiler: RenderProfiler;
     private rootRenderObject: RenderObjectImpl;
     private rowContainer: RowContainerRenderObject;
+    private mouseButtonsPressed: number = 0;
+    private mouseCaptureMap: Map<number, { renderObject: RenderObjectImpl, bounds: RenderBounds }> = new Map();
     
     constructor(
         private state: WaveformState,
@@ -98,15 +100,58 @@ export class Renderer {
     private setupMouseEventHandlers(): void {
         this.canvas.addEventListener('mousedown', (e): void => {
             this.canvas.focus();
+            this.mouseButtonsPressed |= (1 << e.button);
             this.dispatchMouseEvent('onMouseDown', this.createMouseEvent(e));
         });
-        this.canvas.addEventListener('mousemove', (e): void => {
-            const mouseEvent = this.createMouseEvent(e);
-            this.dispatchMouseEvent('onMouseMove', mouseEvent);
-            this.updateMouseOverStates(mouseEvent);
+        window.addEventListener('mousemove', (e): void => {
+            const mouseEvent = this.createGlobalMouseEvent(e);
+            
+            // Check if any button has captured the mouse
+            let eventHandled = false;
+            for (const [button, capture] of this.mouseCaptureMap) {
+                if (this.mouseButtonsPressed & (1 << button)) {
+                    // Send mousemove to captured render object
+                    const handler = capture.renderObject.onMouseMove;
+                    if (handler) {
+                        handler.call(capture.renderObject, {
+                            ...mouseEvent,
+                            offsetX: mouseEvent.clientX - capture.bounds.x,
+                            offsetY: mouseEvent.clientY - capture.bounds.y
+                        });
+                        eventHandled = true;
+                    }
+                }
+            }
+            
+            // If no capture, use normal hit-testing
+            if (!eventHandled) {
+                this.dispatchMouseEvent('onMouseMove', mouseEvent);
+                this.updateMouseOverStates(mouseEvent);
+            }
         });
-        this.canvas.addEventListener('mouseup', (e): void => {
-            this.dispatchMouseEvent('onMouseUp', this.createMouseEvent(e));
+        
+        window.addEventListener('mouseup', (e): void => {
+            const mouseEvent = this.createGlobalMouseEvent(e);
+            this.mouseButtonsPressed &= ~(1 << e.button);
+            
+            // Check if this button has captured the mouse
+            const capture = this.mouseCaptureMap.get(e.button);
+            if (capture) {
+                // Send mouseup to captured render object
+                const handler = capture.renderObject.onMouseUp;
+                if (handler) {
+                    handler.call(capture.renderObject, {
+                        ...mouseEvent,
+                        offsetX: mouseEvent.clientX - capture.bounds.x,
+                        offsetY: mouseEvent.clientY - capture.bounds.y
+                    });
+                }
+                // Clear capture for this button
+                this.mouseCaptureMap.delete(e.button);
+            } else {
+                // No capture, use normal hit-testing
+                this.dispatchMouseEvent('onMouseUp', mouseEvent);
+            }
         });
         this.canvas.addEventListener('click', (e): void => {
             this.dispatchMouseEvent('onClick', this.createMouseEvent(e));
@@ -145,6 +190,45 @@ export class Renderer {
         if (event.metaKey) parts.push('meta');
         parts.push(event.key.toLowerCase());
         return parts.join('+');
+    }
+
+    private createGlobalMouseEvent(e: globalThis.MouseEvent): InternalMouseEvent {
+        let stopPropagationCalled = false;
+        
+        // Get canvas position to properly offset mouse coordinates
+        const canvasRect = this.canvas.getBoundingClientRect();
+        
+        const mouseEvent: InternalMouseEvent = {
+            clientX: e.clientX - canvasRect.left,
+            clientY: e.clientY - canvasRect.top,
+            offsetX: e.clientX - canvasRect.left,
+            offsetY: e.clientY - canvasRect.top,
+            button: e.button,
+            ctrlKey: e.ctrlKey,
+            metaKey: e.metaKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            get stopPropagationCalled() {
+                return stopPropagationCalled;
+            },
+            preventDefault: () => {
+                e.preventDefault();
+            },
+            stopPropagation: () => {
+                stopPropagationCalled = true;
+                e.stopPropagation();
+            }
+        };
+        
+        return mouseEvent;
+    }
+
+    private isMouseInCanvas(e: globalThis.MouseEvent): boolean {
+        const canvasRect = this.canvas.getBoundingClientRect();
+        return e.clientX >= canvasRect.left && 
+               e.clientX < canvasRect.right && 
+               e.clientY >= canvasRect.top && 
+               e.clientY < canvasRect.bottom;
     }
 
     private createMouseEvent(e: globalThis.MouseEvent): InternalMouseEvent {
@@ -209,6 +293,14 @@ export class Renderer {
                         offsetX: event.clientX - bounds.x,
                         offsetY: event.clientY - bounds.y
                     });
+                    
+                    // Capture mouse on mousedown
+                    if (eventType === 'onMouseDown') {
+                        this.mouseCaptureMap.set(event.button, {
+                            renderObject: renderObject,
+                            bounds: bounds
+                        });
+                    }
                 }
             }
         }

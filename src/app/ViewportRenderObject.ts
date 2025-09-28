@@ -1,4 +1,4 @@
-import { RenderObject, type RenderBounds, type RenderContext } from "@voltex-viewer/plugin-api";
+import { RenderObject, type RenderBounds, type RenderContext, type MouseEventHandlers } from "@voltex-viewer/plugin-api";
 
 export class ViewportRenderObject {
     backgroundColor: [number, number, number, number] | null = null;
@@ -7,7 +7,7 @@ export class ViewportRenderObject {
     constructor(
         parent: RenderObject,
         zIndex: number = 0,
-        onMouseDown?: (event: MouseEvent) => void,
+        mouseEventHandlers?: Partial<MouseEventHandlers>,
     ) {
         this.renderObject = parent.addChild({
             zIndex,
@@ -28,7 +28,7 @@ export class ViewportRenderObject {
 
                 return false;
             },
-            onMouseDown,
+            ...mouseEventHandlers,
         });
     }
 

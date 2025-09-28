@@ -1,34 +1,4 @@
-import { percent, px, RenderBounds, RenderObjectArgs, RenderObject as RenderObject, type PositionValue, type RenderContext } from "@voltex-viewer/plugin-api";
-
-export interface MouseEvent {
-    clientX: number;
-    clientY: number;
-    offsetX: number;
-    offsetY: number;
-    button: number;
-    ctrlKey: boolean;
-    metaKey: boolean;
-    shiftKey: boolean;
-    altKey: boolean;
-    preventDefault(): void;
-    stopPropagation(): void;
-}
-
-export interface WheelEvent extends MouseEvent {
-    deltaY: number;
-    deltaX: number;
-    deltaZ: number;
-}
-
-export interface MouseEventHandlers {
-    onMouseDown?: (event: MouseEvent) => void;
-    onMouseUp?: (event: MouseEvent) => void;
-    onMouseMove?: (event: MouseEvent) => void;
-    onMouseEnter?: (event: MouseEvent) => void;
-    onMouseLeave?: (event: MouseEvent) => void;
-    onClick?: (event: MouseEvent) => void;
-    onWheel?: (event: WheelEvent) => void;
-}
+import { percent, px, RenderBounds, RenderObjectArgs, RenderObject as RenderObject, type PositionValue, type RenderContext, type MouseEvent, type WheelEvent, type MouseEventHandlers } from "@voltex-viewer/plugin-api";
 
 export class RenderObjectImpl implements RenderObject, MouseEventHandlers {
     public zIndex: number;

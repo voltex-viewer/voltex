@@ -8,6 +8,36 @@ export interface Command {
     action: () => void;
 }
 
+export interface MouseEvent {
+    clientX: number;
+    clientY: number;
+    offsetX: number;
+    offsetY: number;
+    button: number;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+    preventDefault(): void;
+    stopPropagation(): void;
+}
+
+export interface WheelEvent extends MouseEvent {
+    deltaY: number;
+    deltaX: number;
+    deltaZ: number;
+}
+
+export interface MouseEventHandlers {
+    onMouseDown?: (event: MouseEvent) => void;
+    onMouseUp?: (event: MouseEvent) => void;
+    onMouseMove?: (event: MouseEvent) => void;
+    onMouseEnter?: (event: MouseEvent) => void;
+    onMouseLeave?: (event: MouseEvent) => void;
+    onClick?: (event: MouseEvent) => void;
+    onWheel?: (event: WheelEvent) => void;
+}
+
 export enum RenderMode {
     Lines = 'lines',
     Discrete = 'discrete',
@@ -110,7 +140,7 @@ export interface SignalMetadataManager {
     setColor(signal: Signal, color: string): void;
 }
 
-export interface RenderObjectArgs {
+export interface RenderObjectArgs extends Partial<MouseEventHandlers> {
     zIndex?: number;
     viewport?: boolean;
     x?: PositionValue;
@@ -120,14 +150,6 @@ export interface RenderObjectArgs {
 
     render?(context: RenderContext, bounds: RenderBounds): boolean;
     dispose?(): void;
-
-    onClick?: (event: MouseEvent) => void;
-    onMouseEnter?: (event: MouseEvent) => void;
-    onMouseDown?: (event: MouseEvent) => void;
-    onMouseMove?: (event: MouseEvent) => void;
-    onMouseUp?: (event: MouseEvent) => void;
-    onMouseLeave?: () => void;
-    onWheel?(event: WheelEvent): void;
 }
 
 export interface PluginContext {

@@ -1,7 +1,6 @@
 import { RowImpl } from './RowImpl';
-import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters } from "@voltex-viewer/plugin-api";
+import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters, MouseEvent, WheelEvent } from "@voltex-viewer/plugin-api";
 import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
-import { type MouseEvent, type WheelEvent } from './RenderObject';
 import { RowChangedCallback } from './RowManager';
 import { CommandManager } from './CommandManager';
 
@@ -137,8 +136,56 @@ export class RowContainerRenderObject {
                         this.updateRowPositions();
                         this.requestRender();
                     }
-                } else if (this.resizeState.type !== 'dragging-rows') {
-                    // No ongoing operation, show the available operations (but not during row drag)
+                } else if (this.resizeState.type === 'dragging-rows') {
+                    // Handle row dragging
+                    const dragState = this.resizeState;
+                    
+                    const calculateInsertIndex = (mouseY: number): number => {
+                        let currentY = 0;
+                        let insertIndex = 0;
+                        
+                        for (const row of this.rows) {
+                            if (dragState.draggedRows.includes(row)) {
+                                insertIndex++;
+                                continue;
+                            }
+                            
+                            if (mouseY < currentY + row.height / 2) {
+                                return insertIndex;
+                            }
+                            
+                            currentY += row.height;
+                            insertIndex++;
+                        }
+                        
+                        return this.rows.length;
+                    }
+                    
+                    const mouseX = event.clientX - dragState.offsetX;
+                    const mouseY = event.clientY - dragState.offsetY;
+                    
+                    // Update dragged rows positions
+                    let currentY = mouseY;
+                    for (const row of dragState.draggedRows) {
+                        row.rowRenderObject.x = px(mouseX);
+                        row.rowRenderObject.y = px(currentY);
+                        row.rowRenderObject.zIndex = 1000; // Bring to front
+                        currentY += row.height;
+                    }
+                    
+                    // Calculate where to insert the rows
+                    const insertIndex = calculateInsertIndex(mouseY);
+                    if (insertIndex !== dragState.insertIndex) {
+                        this.resizeState = {
+                            ...dragState,
+                            insertIndex
+                        };
+                        this.updateRowPositionsForDrag();
+                    }
+                    
+                    this.requestRender();
+                } else {
+                    // No ongoing operation, show the available operations
                     const mousePosition = this.getMousePosition(event);
                     document.body.style.cursor = 
                         mousePosition.type === 'horizontal' ? 'ew-resize' :
@@ -152,6 +199,15 @@ export class RowContainerRenderObject {
                 }
                 else if (this.resizeState.type === 'vertical') {
                     this.requestRender();
+                    this.resizeState = { type: 'none' };
+                }
+                else if (this.resizeState.type === 'dragging-rows') {
+                    // Finalize the row reordering
+                    this.finalizeDraggedRows();
+                    
+                    // Reset cursor
+                    document.body.style.cursor = '';
+                    
                     this.resizeState = { type: 'none' };
                 }
             }),
@@ -364,6 +420,71 @@ export class RowContainerRenderObject {
         }
     }
 
+    private handleRowMouseMove(event: MouseEvent): void {
+        // Delegate to the overlay's mouse move handler for drag operations
+        if (this.resizeState.type === 'dragging-rows') {
+            const dragState = this.resizeState;
+            
+            const calculateInsertIndex = (mouseY: number): number => {
+                let currentY = 0;
+                let insertIndex = 0;
+                
+                for (const row of this.rows) {
+                    if (dragState.draggedRows.includes(row)) {
+                        insertIndex++;
+                        continue;
+                    }
+                    
+                    if (mouseY < currentY + row.height / 2) {
+                        return insertIndex;
+                    }
+                    
+                    currentY += row.height;
+                    insertIndex++;
+                }
+                
+                return this.rows.length;
+            }
+            
+            const mouseX = event.clientX - dragState.offsetX;
+            const mouseY = event.clientY - dragState.offsetY;
+            
+            // Update dragged rows positions
+            let currentY = mouseY;
+            for (const row of dragState.draggedRows) {
+                row.rowRenderObject.x = px(mouseX);
+                row.rowRenderObject.y = px(currentY);
+                row.rowRenderObject.zIndex = 1000; // Bring to front
+                currentY += row.height;
+            }
+            
+            // Calculate where to insert the rows
+            const insertIndex = calculateInsertIndex(mouseY);
+            if (insertIndex !== dragState.insertIndex) {
+                this.resizeState = {
+                    ...dragState,
+                    insertIndex
+                };
+                this.updateRowPositionsForDrag();
+            }
+            
+            this.requestRender();
+        }
+    }
+
+    private handleRowMouseUp(event: MouseEvent): void {
+        // Delegate to the overlay's mouse up handler for drag operations  
+        if (this.resizeState.type === 'dragging-rows') {
+            // Finalize the row reordering
+            this.finalizeDraggedRows();
+            
+            // Reset cursor
+            document.body.style.cursor = '';
+            
+            this.resizeState = { type: 'none' };
+        }
+    }
+
     private setupGlobalDragHandlers(): void {
         const handleMouseMove = (e: globalThis.MouseEvent) => {
             if (this.resizeState.type !== 'time-offset') return;
@@ -448,85 +569,11 @@ export class RowContainerRenderObject {
             offsetX: event.clientX - clickedRowBounds.x,
             insertIndex: this.rows.indexOf(rowsToDrag[0])
         };
-
-        // Set up global mouse handlers
-        this.setupGlobalRowDragHandlers();
         
         // Set visual feedback
         document.body.style.cursor = 'grabbing';
         
         this.requestRender();
-    }
-
-    private setupGlobalRowDragHandlers(): void {
-        const handleMouseMove = (e: globalThis.MouseEvent) => {
-            if (this.resizeState.type !== 'dragging-rows') return;
-
-            const dragState = this.resizeState; // Capture resizeState so that the closure knows the type
-            const canvasCoords = this.convertGlobalMouseToCanvasCoords(e.clientX, e.clientY);
-
-            const calculateInsertIndex = (mouseY: number): number => {
-                let currentY = 0;
-                let insertIndex = 0;
-                
-                for (const row of this.rows) {
-                    if (dragState.draggedRows.includes(row)) {
-                        insertIndex++;
-                        continue;
-                    }
-                    
-                    if (mouseY < currentY + row.height / 2) {
-                        return insertIndex;
-                    }
-                    
-                    currentY += row.height;
-                    insertIndex++;
-                }
-                
-                return this.rows.length;
-            }
-            
-            const mouseX = canvasCoords.x - dragState.offsetX;
-            const mouseY = canvasCoords.y - dragState.offsetY;
-            
-            // Update dragged rows positions
-            let currentY = mouseY;
-            for (const row of dragState.draggedRows) {
-                row.rowRenderObject.x = px(mouseX); // Use the offset-corrected mouse position
-                row.rowRenderObject.y = px(currentY);
-                row.rowRenderObject.zIndex = 1000; // Bring to front
-                currentY += row.height;
-            }
-            
-            // Calculate where to insert the rows
-            const insertIndex = calculateInsertIndex(mouseY);
-            if (insertIndex !== dragState.insertIndex) {
-                this.resizeState = {
-                    ...dragState,
-                    insertIndex
-                };
-                this.updateRowPositionsForDrag();
-            }
-            
-            this.requestRender();
-        };
-
-        const handleMouseUp = () => {
-            if (this.resizeState.type !== 'dragging-rows') return;
-            
-            // Finalize the row reordering
-            this.finalizeDraggedRows();
-            
-            // Reset cursor
-            document.body.style.cursor = '';
-            
-            // Clean up global handlers
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
     }
 
     private updateRowPositionsForDrag(): void {
@@ -683,10 +730,18 @@ export class RowContainerRenderObject {
                 this.renderObject,
                 channels,
                 insert.row.height ?? 50,
-                channels.length > 0 ? (event) => {
-                    this.handleRowMouseDown(row, event);
-                    event.preventDefault();
-                    event.stopPropagation();
+                channels.length > 0 ? {
+                    onMouseDown: (event) => {
+                        this.handleRowMouseDown(row, event);
+                        event.preventDefault();
+                        event.stopPropagation();
+                    },
+                    onMouseMove: (event) => {
+                        this.handleRowMouseMove(event);
+                    },
+                    onMouseUp: (event) => {
+                        this.handleRowMouseUp(event);
+                    }
                 } : undefined
             );
             this.rows.splice(Math.max(0, Math.min(insert.index, this.rows.length)), 0, row);

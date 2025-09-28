@@ -1,4 +1,4 @@
-import { Row, type RenderBounds, type RenderContext, px, type RenderObject, type Signal } from '@voltex-viewer/plugin-api';
+import { Row, type RenderBounds, type RenderContext, px, type RenderObject, type Signal, type MouseEvent, type MouseEventHandlers } from '@voltex-viewer/plugin-api';
 import { ViewportRenderObject } from './ViewportRenderObject';
 
 export class RowImpl implements Row {
@@ -14,7 +14,7 @@ export class RowImpl implements Row {
         parent: RenderObject,
         signals: Signal[],
         height: number,
-        onMouseDown?: (event: MouseEvent) => void,
+        mouseEventHandlers?: Partial<MouseEventHandlers>,
     ) {
         this.rowRenderObject = parent.addChild({
             render: (context: RenderContext, bounds: RenderBounds): boolean => {
@@ -40,7 +40,7 @@ export class RowImpl implements Row {
             },
             height: px(height),
         });
-        this.labelViewport = new ViewportRenderObject(this.rowRenderObject, -1, onMouseDown);
+        this.labelViewport = new ViewportRenderObject(this.rowRenderObject, -1, mouseEventHandlers);
         this.mainViewport = new ViewportRenderObject(this.rowRenderObject, -1);
 
         // Set black background for main viewport
