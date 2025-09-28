@@ -36,7 +36,7 @@ export default (context: PluginContext): void => {
 
     // Create a single global tooltip render object
     const waveformOverlays: Map<Row, WaveformRowHoverOverlayRenderObject> = new Map();
-    const tooltipRenderObject = new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays);
+    new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays);
 
     const buffers = new Map<Signal, BufferData>();
     
@@ -278,13 +278,13 @@ export default (context: PluginContext): void => {
                         99
                     ));
             }
+        }
 
-            for (const row of event.removed) {
-                const overlay = waveformOverlays.get(row);
-                if (overlay) {
-                    overlay.dispose();
-                    waveformOverlays.delete(row);
-                }
+        for (const row of event.removed) {
+            const overlay = waveformOverlays.get(row);
+            if (overlay) {
+                overlay.dispose();
+                waveformOverlays.delete(row);
             }
         }
 
