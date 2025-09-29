@@ -136,20 +136,24 @@ body {
 }
 
 .vertical-sidebar {
-    position: fixed;
-    top: var(--menu-bar-height); /* Account for menu bar */
+    position: relative;
+    top: 0;
     right: 0;
-    height: calc(100vh - var(--menu-bar-height)); /* Account for menu bar */
+    height: 100%;
     width: 320px;
     background: transparent;
     display: flex;
     flex-direction: row;
     z-index: 100;
     box-shadow: none;
-    transition: none;
     overflow: visible;
     pointer-events: none;
+    flex-shrink: 0;
 }
+.vertical-sidebar:not(.expanded) {
+    width: 48px;
+}
+
 .vertical-sidebar:not(.expanded) .sidebar-panel-container {
     width: 0;
     min-width: 0;
@@ -160,7 +164,7 @@ body {
 .sidebar-panel-container {
     width: 272px;
     min-width: 0;
-    height: calc(100vh - var(--menu-bar-height)); /* Account for menu bar */
+    height: 100%;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -169,13 +173,6 @@ body {
     border-left: 1px solid #2c313a;
     pointer-events: auto;
     overflow: hidden;
-}
-.vertical-sidebar:not(.expanded) .sidebar-panel-container {
-    width: 0;
-    min-width: 0;
-    padding: 0;
-    border: none;
-    box-shadow: none;
 }
 .sidebar-panel {
     display: none;
@@ -191,7 +188,6 @@ body {
     font-size: 16px;
     overflow-y: auto;
     z-index: 1;
-    transition: opacity 0.15s;
 }
 .vertical-sidebar.expanded .sidebar-panel.active {
     display: block;
@@ -205,7 +201,7 @@ body {
     width: 48px;
     min-width: 48px;
     max-width: 48px;
-    height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -218,7 +214,6 @@ body {
     z-index: 2;
     box-shadow: -2px 0 8px rgba(0,0,0,0.08);
     pointer-events: auto;
-    flex-shrink: 0;
     border-left: 1.5px solid #353b45;
 }
 .sidebar-icon {
@@ -259,6 +254,13 @@ html, body {
 /* Split horizontal separator for channel and waveform section (single definition) */
 /* Note: Now using border-bottom on .waveform-row instead of dedicated elements */
 
+.waveform-main-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
 .waveform-container {
   position: relative;
   flex: 1;
@@ -276,7 +278,7 @@ html, body {
 
 .waveform-root {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0px;
   background: #181a20;
   padding: 0;

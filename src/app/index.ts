@@ -11,12 +11,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!root) return;
     root.classList.add('waveform-root');
 
-    const verticalSidebar = new VerticalSidebar(root);
+    // Create main content wrapper
+    const mainContent = document.createElement('div');
+    mainContent.className = 'waveform-main-content';
+    root.appendChild(mainContent);
+
+    // Animation frame management
+    let renderRequested = false;
+    let renderer: Renderer | null = null;
+    
+    // Create sidebar with callback to resize canvas when state changes
+    const verticalSidebar = new VerticalSidebar(root, () => {
+        if (renderer) {
+            renderer.resizeCanvases();
+        }
+    });
 
     // --- Main waveform container (for time axis and channel rows) ---
     const waveformContainer = document.createElement('div');
     waveformContainer.className = 'waveform-container';
-    root.appendChild(waveformContainer);
+    mainContent.appendChild(waveformContainer);
 
     // Create single canvas that will render everything
     const mainCanvas = document.createElement('canvas');
@@ -28,9 +42,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         pxPerSecond: 200,
     }
 
-    // Animation frame management
-    let renderRequested = false;
-    let renderer: Renderer | null = null;
     function requestRender() {
         function doRender() {
             if (renderer) {

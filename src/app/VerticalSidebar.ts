@@ -19,7 +19,7 @@ export class VerticalSidebar {
     private panelContainer: HTMLDivElement;
     private iconBar: HTMLDivElement;
 
-    constructor(root: HTMLElement) {
+    constructor(root: HTMLElement, private onStateChange: () => void) {
         this.sidebar = document.createElement('div');
         this.sidebar.className = 'vertical-sidebar';
 
@@ -114,6 +114,9 @@ export class VerticalSidebar {
             } else {
                 this.sidebar.classList.remove('expanded');
             }
+            
+            // Trigger state change callback after a short delay to allow CSS transitions
+            setTimeout(() => this.onStateChange(), 50);
         });
     }
 
