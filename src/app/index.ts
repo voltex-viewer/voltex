@@ -65,6 +65,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('resize', () => renderer.resizeCanvases());
     requestRender();
 
+    // Add drag and drop file handling
+    document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    document.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    document.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        for (const file of Array.from(e.dataTransfer?.files || [])) {
+            const handled = await renderer.pluginManager.handleFileOpen(file);
+            
+            if (!handled) {
+                console.warn(`No plugin found to handle file: ${file.name}`);
+            }
+        }
+    });
+
     // Create and insert menu bar first
     document.body.insertBefore(
         createMenuBar([
