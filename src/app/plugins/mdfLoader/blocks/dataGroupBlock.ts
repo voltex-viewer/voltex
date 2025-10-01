@@ -4,11 +4,12 @@ import { DataListBlock, iterateDataListBlocks, resolveDataListOffset } from './d
 import { ChannelGroupBlock, resolveChannelGroupOffset } from './channelGroupBlock';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../BufferedFileReader';
+import { deserializeHeaderListBlock, HeaderListBlock, resolveHeaderListOffset } from './headerListBlock';
 
 export interface DataGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     dataGroupNext: MaybeLinked<DataGroupBlock<TMode>, TMode>;
     channelGroupFirst: MaybeLinked<ChannelGroupBlock<TMode>, TMode>;
-    data: MaybeLinked<DataTableBlock | DataListBlock<TMode>, TMode>;
+    data: MaybeLinked<DataTableBlock | DataListBlock<TMode> | HeaderListBlock<TMode>, TMode>;
     comment: MaybeLinked<unknown, TMode>;
     recordIdSize: number;
 }
@@ -47,6 +48,8 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
             if (block.data !== null) {
                 if ('dataListNext' in block.data) {
                     resolveDataListOffset(context, block.data);
+                } else if ('dataList' in block.data) {
+                    resolveHeaderListOffset(context, block.data);
                 } else {
                     resolveDataTableOffset(context, block.data);
                 }
@@ -59,8 +62,9 @@ export async function getDataBlocks(dataGroup: DataGroupBlock, reader: BufferedF
         const block = await readBlock(dataGroup.data, reader, undefined); // Read just the header
         if (block.type === "##DT" || block.type === "##DZ") {
             yield await deserializeDataTableBlock(block);
-        } else if (block.type === "##DL") {
-            for await (const list of iterateDataListBlocks(dataGroup.data, reader)) {
+        } else if (block.type === "##DL" || block.type === "##HL") {
+            const link = (block.type === "##DL") ? dataGroup.data : deserializeHeaderListBlock(block).dataList;
+            for await (const list of iterateDataListBlocks(link, reader)) {
                 for (const item of list.data) {
                     yield await readDataTableBlock(item, reader);
                 }
