@@ -46,7 +46,7 @@ export async function readBlock(link: Link<any>, reader: BufferedFileReader, exp
     let fileOffset = Number(getLink(link));
     const header = await readBlockHeader(link, reader, expectedType);
     
-    const payload = await reader.readBytes(fileOffset + 24, Number(header.length));
+    const payload = await reader.readBytes(fileOffset + 24, Number(header.length) - 24);
 
     const links: Link<unknown>[] = [];
     let offset = 0;
