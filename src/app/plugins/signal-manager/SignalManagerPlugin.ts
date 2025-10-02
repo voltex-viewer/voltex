@@ -14,6 +14,7 @@ interface CachedDOMElement {
 
 const domCache = new Map<string, CachedDOMElement>();
 let isDOMCacheValid = false;
+const expansionState = new Map<string, boolean>();
 
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
@@ -185,11 +186,13 @@ function buildSignalTree(): TreeNode {
             const pathPart = signalSource.name[i];
             
             if (!currentNode.children.has(pathPart)) {
+                const fullPath = signalSource.name.slice(0, i + 1);
+                const pathKey = fullPath.join('|');
                 const newNode: TreeNode = {
                     name: pathPart,
-                    fullPath: signalSource.name.slice(0, i + 1),
+                    fullPath: fullPath,
                     children: new Map(),
-                    isExpanded: true // Expand by default
+                    isExpanded: expansionState.has(pathKey) ? expansionState.get(pathKey)! : true
                 };
                 
                 // If this is the last part, attach the signal source
@@ -267,6 +270,7 @@ function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
     if (hasChildren) {
         const toggleFunction = () => {
             node.isExpanded = !node.isExpanded;
+            expansionState.set(node.fullPath.join('|'), node.isExpanded);
             toggleSpan.classList.toggle('expanded', node.isExpanded);
             updateTreeVisibility();
         };
@@ -327,7 +331,27 @@ function renderSignalTree(): void {
     treeContainer.innerHTML = '';
     
     const tree = buildSignalTree();
+    syncCacheWithTree(tree);
     addTreeNodesToContainer(tree, treeContainer as HTMLElement, 0, true);
+}
+
+function syncCacheWithTree(node: TreeNode): void {
+    for (const [_, childNode] of node.children) {
+        const cacheKey = childNode.fullPath.join('|');
+        const cachedElement = domCache.get(cacheKey);
+        
+        if (cachedElement) {
+            cachedElement.node.isExpanded = childNode.isExpanded;
+            const toggleElement = cachedElement.element.querySelector('.tree-toggle');
+            if (toggleElement) {
+                toggleElement.classList.toggle('expanded', childNode.isExpanded);
+            }
+        }
+        
+        if (childNode.children.size > 0) {
+            syncCacheWithTree(childNode);
+        }
+    }
 }
 
 function addTreeNodesToContainer(node: TreeNode, container: HTMLElement, depth: number, showAll: boolean): void {
@@ -355,89 +379,10 @@ function updateTreeVisibility(): void {
     const treeContainer = sidebarContainer.querySelector('#signal-tree');
     if (!treeContainer) return;
 
-    // Rebuild the tree structure efficiently
-    renderSignalTree();
-}
-
-function renderTreeNode(node: TreeNode, container: HTMLElement, depth: number): void {
-    const start = performance.now();
-    for (const [_, childNode] of node.children) {
-        const nodeElement = document.createElement('div');
-        nodeElement.className = 'signal-item';
-        nodeElement.setAttribute('data-signal-path', childNode.fullPath.join('|').toLowerCase());
-        
-        const isLeaf = childNode.children.size === 0;
-        const hasChildren = childNode.children.size > 0;
-        
-        nodeElement.innerHTML = `
-            <div class="tree-node ${isLeaf ? 'leaf' : 'expandable'}" style="--indent: ${depth * 12}px">
-                ${hasChildren ? `<span class="tree-toggle ${childNode.isExpanded ? 'expanded' : ''}">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
-                    </svg>
-                </span>` : '<span class="tree-toggle"></span>'}
-                <span class="tree-label">${childNode.name}</span>
-            </div>
-        `;
-
-        if (hasChildren) {
-            const treeNodeElement = nodeElement.querySelector('.tree-node') as HTMLElement;
-            const toggleElement = nodeElement.querySelector('.tree-toggle') as HTMLElement;
-            
-            const toggleFunction = () => {
-                childNode.isExpanded = !childNode.isExpanded;
-                toggleElement.classList.toggle('expanded', childNode.isExpanded);
-                
-                // Remove existing children from DOM
-                const existingChildren = container.querySelectorAll(`[data-parent-path="${childNode.fullPath.join('|')}"]`);
-                existingChildren.forEach(child => child.remove());
-                
-                if (childNode.isExpanded) {
-                    const childContainer = document.createElement('div');
-                    renderTreeNode(childNode, childContainer, depth + 1);
-                    
-                    // Mark children with parent path for easy removal
-                    const children = childContainer.querySelectorAll('.signal-item');
-                    children.forEach(child => {
-                        child.setAttribute('data-parent-path', childNode.fullPath.join('|'));
-                    });
-                    
-                    // Insert children after this node
-                    let nextSibling = nodeElement.nextSibling;
-                    while (childContainer.firstChild) {
-                        container.insertBefore(childContainer.firstChild, nextSibling);
-                    }
-                }
-            };
-            
-            treeNodeElement.addEventListener('click', toggleFunction);
-        } else if (isLeaf && childNode.signalSource) {
-            // Make the entire leaf node clickable to add the signal
-            const treeNodeElement = nodeElement.querySelector('.tree-node') as HTMLElement;
-            treeNodeElement.addEventListener('click', () => {
-                addSignalToWaveform(childNode.signalSource!);
-            });
-        }
-
-        container.appendChild(nodeElement);
-        
-        // Render children if expanded
-        if (childNode.isExpanded && hasChildren) {
-            const childContainer = document.createElement('div');
-            renderTreeNode(childNode, childContainer, depth + 1);
-            
-            // Mark children with parent path for easy removal
-            const children = childContainer.querySelectorAll('.signal-item');
-            children.forEach(child => {
-                child.setAttribute('data-parent-path', childNode.fullPath.join('|'));
-            });
-            
-            while (childContainer.firstChild) {
-                container.appendChild(childContainer.firstChild);
-            }
-        }
-    }
-    console.log(`Rendered tree node at depth ${depth} in ${(performance.now() - start).toFixed(1)} ms`);
+    // Re-render using cache
+    treeContainer.innerHTML = '';
+    const tree = buildSignalTree();
+    addTreeNodesToContainer(tree, treeContainer as HTMLElement, 0, true);
 }
 
 function filterSignals(searchTerm: string): void {
