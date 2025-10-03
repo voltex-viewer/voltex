@@ -98,5 +98,5 @@ export function resolveDataTableOffset(context: SerializeContext, block: DataTab
 }
 
 export async function readDataTableBlock(link: Link<DataTableBlock>, reader: BufferedFileReader): Promise<DataTableBlock> {
-    return await deserializeDataTableBlock(await readBlock(link, reader, "##DT"));
+    return await deserializeDataTableBlock(await readBlock(link, reader, ["##DT", "##DZ"]));
 }

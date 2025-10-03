@@ -60,10 +60,10 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
 export async function getDataBlocks(dataGroup: DataGroupBlock, reader: BufferedFileReader): Promise<AsyncIterableIterator<DataTableBlock>> {
     return (async function* () {
         let link = dataGroup.data;
-        let block = await readBlock(link, reader, undefined); // Read just the header
+        let block = await readBlock(link, reader, ["##DT", "##DZ", "##DL", "##HL"]);
         if (block.type === "##HL") {
             link = deserializeHeaderListBlock(block).dataList;
-            block = await readBlock(link, reader, undefined);
+            block = await readBlock(link, reader, ["##DT", "##DZ", "##DL"]);
         }
         if (block.type === "##DT" || block.type === "##DZ") {
             yield await deserializeDataTableBlock(block);
