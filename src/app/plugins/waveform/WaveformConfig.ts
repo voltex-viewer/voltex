@@ -4,6 +4,7 @@ import * as t from 'io-ts';
 export const WaveformConfigSchema = t.type({
     dotSize: t.number,
     lineWidth: t.number,
+    dotVisibilityThreshold: t.number,
     targetFps: t.number,
     hoverEnabled: t.boolean,
     formatTooltip: t.string,
