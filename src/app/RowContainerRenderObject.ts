@@ -312,9 +312,11 @@ export class RowContainerRenderObject {
             id: 'voltex.zoom-in',
             action: () => {
                 const zoomFactor = 1.25;
-                const centerTime = (this.state.offset + (this.canvas.width - this.labelWidth) / 2) / this.state.pxPerSecond;
+                const containerWidth = getAbsoluteBounds(this.renderObject).width;
+                const viewportWidth = containerWidth - this.labelWidth;
+                const centerTime = (this.state.offset + viewportWidth / 2) / this.state.pxPerSecond;
                 this.state.pxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * zoomFactor);
-                this.state.offset = centerTime * this.state.pxPerSecond - (this.canvas.width - this.labelWidth) / 2;
+                this.state.offset = centerTime * this.state.pxPerSecond - viewportWidth / 2;
                 this.requestRender();
             }
         });
@@ -323,9 +325,11 @@ export class RowContainerRenderObject {
             id: 'voltex.zoom-out',
             action: () => {
                 const zoomFactor = 1.25;
-                const centerTime = (this.state.offset + (this.canvas.width - this.labelWidth) / 2) / this.state.pxPerSecond;
+                const containerWidth = getAbsoluteBounds(this.renderObject).width;
+                const viewportWidth = containerWidth - this.labelWidth;
+                const centerTime = (this.state.offset + viewportWidth / 2) / this.state.pxPerSecond;
                 this.state.pxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / zoomFactor);
-                this.state.offset = centerTime * this.state.pxPerSecond - (this.canvas.width - this.labelWidth) / 2;
+                this.state.offset = centerTime * this.state.pxPerSecond - viewportWidth / 2;
                 this.requestRender();
             }
         });
@@ -333,7 +337,8 @@ export class RowContainerRenderObject {
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-left',
             action: () => {
-                const panAmount = (this.canvas.width - this.labelWidth) * 0.2;
+                const containerWidth = getAbsoluteBounds(this.renderObject).width;
+                const panAmount = (containerWidth - this.labelWidth) * 0.2;
                 this.startSmoothPan(-panAmount);
             }
         });
@@ -341,7 +346,8 @@ export class RowContainerRenderObject {
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-right',
             action: () => {
-                const panAmount = (this.canvas.width - this.labelWidth) * 0.2;
+                const containerWidth = getAbsoluteBounds(this.renderObject).width;
+                const panAmount = (containerWidth - this.labelWidth) * 0.2;
                 this.startSmoothPan(panAmount);
             }
         });
