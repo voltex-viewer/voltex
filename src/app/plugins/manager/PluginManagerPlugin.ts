@@ -21,6 +21,8 @@ export default (pluginContext: PluginContext): void => {
     config = context.loadConfig(PluginManagerConfigSchema, {
         enabledPlugins: {
             'FPS': false,
+            'Demo Signals': false,
+            'Profiler': false,
         }
     });
     
