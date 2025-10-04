@@ -1,5 +1,5 @@
 import { getAvailablePlugins } from '..';
-import type { PluginContext, SidebarEntry } from '@voltex-viewer/plugin-api';
+import type { PluginContext, SidebarEntryArgs } from '@voltex-viewer/plugin-api';
 import type { PluginManager } from '../../PluginManager';
 import { ConfigUIGenerator } from './ConfigUIGenerator';
 import * as t from 'io-ts';
@@ -24,7 +24,7 @@ export default (pluginContext: PluginContext): void => {
         }
     });
     
-    const sidebarEntry: SidebarEntry = {
+    const sidebarEntry: SidebarEntryArgs = {
         title: 'Plugin Manager',
         iconHtml: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Plugin Manager">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>

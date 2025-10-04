@@ -1,4 +1,4 @@
-import { type PluginContext, type SignalSource } from '@voltex-viewer/plugin-api'
+import { type PluginContext, type SignalSource, type SidebarEntry } from '@voltex-viewer/plugin-api'
 
 let context: PluginContext | undefined;
 let sidebarContainer: HTMLElement | undefined;
@@ -19,17 +19,10 @@ const expansionState = new Map<string, boolean>();
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
     
-    // Listen for signal source changes
-    context.signalSources.changed((event) => {
-        availableSignalSources = context.signalSources.available;
-        invalidateDOMCache();
-        refreshSignalList();
-    });
-    
     // Initialize available signal sources
     availableSignalSources = context.signalSources.available;
     
-    context.addSidebarEntry({
+    const sidebarEntry = context.addSidebarEntry({
         title: 'Signal Manager',
         iconHtml: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Signal Manager">
             <path d="M3 3v18h18"/>
@@ -40,6 +33,18 @@ export default (pluginContext: PluginContext): void => {
             <circle cx="18" cy="7" r="1"/>
         </svg>`,
         renderContent: renderContent
+    });
+    
+    // Listen for signal source changes
+    context.signalSources.changed((event) => {
+        availableSignalSources = context.signalSources.available;
+        invalidateDOMCache();
+        refreshSignalList();
+        
+        // Open the sidebar when new signal sources are added
+        if (event.added.length > 0 && sidebarEntry) {
+            sidebarEntry.open();
+        }
     });
 }
 

@@ -2,7 +2,8 @@
 export abstract class SidebarEntry {
     icon: HTMLButtonElement;
     panel: HTMLDivElement;
-    constructor(iconHtml: string) {
+    
+    constructor(iconHtml: string, private sidebar: VerticalSidebar) {
         this.icon = document.createElement('button');
         this.icon.className = 'sidebar-icon';
         this.icon.innerHTML = iconHtml;
@@ -11,6 +12,10 @@ export abstract class SidebarEntry {
         this.renderContent();
     }
     abstract renderContent(): void;
+    
+    open(): void {
+        this.sidebar.openEntry(this);
+    }
 }
 
 export class VerticalSidebar {
@@ -43,11 +48,12 @@ export class VerticalSidebar {
         this.setupEventHandlers();
     }
 
-    addDynamicEntry(entry: import('@voltex-viewer/plugin-api').SidebarEntry): SidebarEntry {
+    addDynamicEntry(entry: import('@voltex-viewer/plugin-api').SidebarEntryArgs): SidebarEntry {
         // Create a new SidebarEntry compatible object
+        const self = this;
         const dynamicEntry = new class extends SidebarEntry {
             constructor() {
-                super(entry.iconHtml);
+                super(entry.iconHtml, self);
             }
             renderContent() {
                 this.panel.innerHTML = '';
@@ -98,6 +104,19 @@ export class VerticalSidebar {
 
     private setupEventHandlers(): void {
         this.entries.forEach(entry => this.setupEventHandlerForEntry(entry));
+    }
+
+    openEntry(entry: SidebarEntry): void {
+        this.entries.forEach(e => {
+            e.icon.classList.remove('active');
+            e.panel.classList.remove('active');
+        });
+        entry.icon.classList.add('active');
+        this.sidebar.classList.add('expanded');
+        entry.panel.classList.add('active');
+        
+        // Trigger state change callback after a short delay to allow CSS transitions
+        setTimeout(() => this.onStateChange(), 50);
     }
 
     private setupEventHandlerForEntry(entry: SidebarEntry): void {

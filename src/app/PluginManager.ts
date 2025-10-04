@@ -1,4 +1,4 @@
-import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntry, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, RenderObjectArgs, Command } from '@voltex-viewer/plugin-api';
+import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntryArgs, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, RenderObjectArgs, Command } from '@voltex-viewer/plugin-api';
 import { RenderObjectImpl } from './RenderObject';
 import type { WebGlContext, WaveformState } from "@voltex-viewer/plugin-api";
 import { RowChangedEvent } from './RowManager';
@@ -24,7 +24,7 @@ interface PluginData {
     rowsChangedCallbacks: RowsChangedCallback[];
     beforeRenderCallbacks: (() => boolean)[];
     afterRenderCallbacks: (() => boolean)[];
-    sidebarEntries: SidebarEntry[];
+    sidebarEntries: SidebarEntryArgs[];
     sidebarEntryInstances: import('./VerticalSidebar').SidebarEntry[];
     renderObjects: RenderObjectImpl[];
     signalSources: SignalSource[];
@@ -47,7 +47,7 @@ export class PluginManager {
         private signalSources: SignalSourceManager,
         private rowManager: RowContainerRenderObject,
         private rootRenderObject: RenderObjectImpl,
-        private onSidebarEntryAdded: (entry: SidebarEntry) => import('./VerticalSidebar').SidebarEntry,
+        private onSidebarEntryAdded: (entry: SidebarEntryArgs) => import('./VerticalSidebar').SidebarEntry,
         private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
         private requestRender: () => void,
         private renderProfiler: RenderProfiler,
@@ -102,8 +102,8 @@ export class PluginManager {
                 const data = this.pluginData.get(plugin)!;
                 data.afterRenderCallbacks.push(callback);
             },
-            addSidebarEntry: (entry: SidebarEntry) => {
-                this.addSidebarEntry(plugin, entry);
+            addSidebarEntry: (entry: SidebarEntryArgs) => {
+                return this.addSidebarEntry(plugin, entry);
             },
             requestRender: () => {
                 if (this.requestRender) {
@@ -261,8 +261,10 @@ export class PluginManager {
         return [...this.availablePlugins];
     }
 
-    private addSidebarEntry(plugin: ActivePlugin, entry: SidebarEntry): void {
+    private addSidebarEntry(plugin: ActivePlugin, entry: SidebarEntryArgs): import('@voltex-viewer/plugin-api').SidebarEntry {
         const data = this.pluginData.get(plugin);
+        let sidebarEntry: import('./VerticalSidebar').SidebarEntry | undefined;
+        
         if (data) {
             data.sidebarEntries.push(entry);
             
@@ -270,9 +272,18 @@ export class PluginManager {
                 const instance = this.onSidebarEntryAdded(entry);
                 if (instance) {
                     data.sidebarEntryInstances.push(instance);
+                    sidebarEntry = instance;
                 }
             }
         }
+        
+        return {
+            open: () => {
+                if (sidebarEntry) {
+                    sidebarEntry.open();
+                }
+            }
+        };
     }
 
     private createPluginSignalSourceManager(plugin: ActivePlugin): PluginSignalSourceManager {

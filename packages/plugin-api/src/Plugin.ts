@@ -105,10 +105,14 @@ export interface SignalSourceManager {
 export type RowsChangedCallback = (event: RowsChangedEvent) => void;
 export type SignalsAvailableChangedCallback = (event: SignalsAvailableChangedEvent) => void;
 
-export interface SidebarEntry {
+export interface SidebarEntryArgs {
     title: string;
     iconHtml: string;
     renderContent(): string | HTMLElement;
+}
+
+export interface SidebarEntry {
+    open(): void;
 }
 
 export interface RowParameters {
@@ -162,7 +166,7 @@ export interface PluginContext {
     onRowsChanged(callback: RowsChangedCallback): void;
     onBeforeRender(callback: () => boolean): void;
     onAfterRender(callback: () => boolean): void;
-    addSidebarEntry(entry: SidebarEntry): void;
+    addSidebarEntry(entry: SidebarEntryArgs): SidebarEntry;
     requestRender(): void;
     createRows(...rows: RowParameters[]): Row[];
     spliceRows(rowsToRemove: Row[], rowsToAdd: RowInsert[]): Row[];
