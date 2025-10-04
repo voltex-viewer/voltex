@@ -333,18 +333,16 @@ export class RowContainerRenderObject {
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-left',
             action: () => {
-                const panAmount = (this.canvas.width - this.labelWidth) * 0.1;
-                this.state.offset -= panAmount;
-                this.requestRender();
+                const panAmount = (this.canvas.width - this.labelWidth) * 0.2;
+                this.startSmoothPan(-panAmount);
             }
         });
 
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-right',
             action: () => {
-                const panAmount = (this.canvas.width - this.labelWidth) * 0.1;
-                this.state.offset += panAmount;
-                this.requestRender();
+                const panAmount = (this.canvas.width - this.labelWidth) * 0.2;
+                this.startSmoothPan(panAmount);
             }
         });
     }
@@ -576,6 +574,28 @@ export class RowContainerRenderObject {
 
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    private startSmoothPan(offsetDelta: number): void {
+        // Cancel any existing animation
+        if (this.animationFrame !== null) {
+            cancelAnimationFrame(this.animationFrame);
+            this.animationFrame = null;
+        }
+
+        // Start smooth panning animation
+        let pxPerFrame = offsetDelta / 10; // Spread the pan over ~10 frames for smoothness
+        const animate = () => {
+            pxPerFrame *= this.decay;
+            this.state.offset += pxPerFrame;
+            this.requestRender();
+            if (Math.abs(pxPerFrame) > this.minVelocity) {
+                this.animationFrame = requestAnimationFrame(animate);
+            } else {
+                this.animationFrame = null;
+            }
+        };
+        this.animationFrame = requestAnimationFrame(animate);
     }
 
     private startRowDrag(clickedRow: RowImpl, event: MouseEvent): void {
