@@ -316,7 +316,7 @@ export class RowContainerRenderObject {
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.zoom-in',
             action: () => {
-                const targetPxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * 1.25);
+                const targetPxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * 2);
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
                 this.startSmoothZoom(targetPxPerSecond, viewportWidth / 2);
             }
@@ -325,7 +325,7 @@ export class RowContainerRenderObject {
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.zoom-out',
             action: () => {
-                const targetPxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / 1.25);
+                const targetPxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / 2);
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
                 this.startSmoothZoom(targetPxPerSecond, viewportWidth / 2);
             }
@@ -335,7 +335,7 @@ export class RowContainerRenderObject {
             id: 'voltex.pan-left',
             action: () => {
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                this.startSmoothPan(-viewportWidth * 0.2);
+                this.startSmoothPan(-viewportWidth * 0.05);
             }
         });
 
@@ -343,7 +343,7 @@ export class RowContainerRenderObject {
             id: 'voltex.pan-right',
             action: () => {
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                this.startSmoothPan(viewportWidth * 0.2);
+                this.startSmoothPan(viewportWidth * 0.05);
             }
         });
     }
@@ -569,9 +569,9 @@ export class RowContainerRenderObject {
         window.addEventListener('mouseup', handleMouseUp);
     }
 
-    private startSmoothPan(offsetDelta: number): void {
+    private startSmoothPan(panVelocity: number): void {
         // Set pan velocity
-        this.panVelocity = offsetDelta / 10;
+        this.panVelocity = panVelocity;
         
         // Start unified animation loop if not already running
         this.startUnifiedAnimation();
@@ -619,7 +619,7 @@ export class RowContainerRenderObject {
                 const relDiff = Math.abs(diff) / this.state.pxPerSecond;
                 
                 // Speed is proportional to distance from target
-                const step = Math.min(10, 0.25 * (1 + relDiff * 2));
+                const step = Math.min(1, 1 + relDiff * 2) * 0.25;
                 const newPxPerSecond = this.state.pxPerSecond + diff * step;
                 
                 // Detect overshoot or close enough to target
