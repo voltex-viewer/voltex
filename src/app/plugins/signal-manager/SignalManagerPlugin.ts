@@ -45,11 +45,26 @@ export default (pluginContext: PluginContext): void => {
 
 function renderContent(): HTMLElement {
     const container = document.createElement('div');
+    container.className = 'signal-manager-root';
     container.innerHTML = `
         <style>
+            .signal-manager-root {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                overflow: hidden;
+            }
+            .signal-manager-container {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                overflow: hidden;
+            }
             .search-container {
                 position: relative;
-                margin-bottom: 16px;
+                flex-shrink: 0;
+                padding: 0;
+                margin-bottom: 8px;
             }
             .search-icon {
                 position: absolute;
@@ -78,6 +93,11 @@ function renderContent(): HTMLElement {
             }
             .search-input::placeholder {
                 color: #6b7280;
+            }
+            .signal-tree-scroll-container {
+                flex: 1;
+                overflow-y: auto;
+                overflow-x: hidden;
             }
             .signal-item {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -136,17 +156,25 @@ function renderContent(): HTMLElement {
                 display: inline;
                 line-height: inherit;
             }
+            .signal-tree-container {
+                display: flex;
+                flex-direction: column;
+            }
         </style>
-        <div class="search-container">
-            <div class="search-icon">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-                    <circle cx="6" cy="6" r="3" stroke="#6b7280" stroke-width="1.5" fill="none"/>
-                    <line x1="8.5" y1="8.5" x2="12" y2="12" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
+        <div class="signal-manager-container">
+            <div class="search-container">
+                <div class="search-icon">
+                    <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+                        <circle cx="6" cy="6" r="3" stroke="#6b7280" stroke-width="1.5" fill="none"/>
+                        <line x1="8.5" y1="8.5" x2="12" y2="12" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <input type="text" id="signal-search" placeholder="Search signals..." class="search-input">
             </div>
-            <input type="text" id="signal-search" placeholder="Search signals..." class="search-input">
-        </div>
-        <div id="signal-tree" style="display: flex; flex-direction: column;">
+            <div class="signal-tree-scroll-container">
+                <div id="signal-tree" class="signal-tree-container">
+                </div>
+            </div>
         </div>
     `;
 
