@@ -1,10 +1,20 @@
-import { PluginContext, KeybindingConfigType } from '@voltex-viewer/plugin-api';
+import { PluginContext, Keybinding } from '@voltex-viewer/plugin-api';
 import * as t from 'io-ts';
 
 export default (context: PluginContext): void => {
     context.loadConfig(
         t.type({
-            keybindings: KeybindingConfigType
+            keybindings: t.type({
+                'voltex.select-all-rows': Keybinding,
+                'voltex.clear-selection': Keybinding,
+                'voltex.group-selected-rows': Keybinding,
+                'voltex.ungroup-selected-rows': Keybinding,
+                'voltex.delete-selected-rows': Keybinding,
+                'voltex.zoom-in': Keybinding,
+                'voltex.zoom-out': Keybinding,
+                'voltex.pan-left': Keybinding,
+                'voltex.pan-right': Keybinding,
+            })
         }), {
         keybindings: {
             'voltex.select-all-rows': 'ctrl+a',

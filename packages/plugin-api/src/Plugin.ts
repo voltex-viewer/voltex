@@ -1,7 +1,15 @@
 import * as t from 'io-ts';
 
-export const KeybindingConfigType = t.record(t.string, t.union([t.string, t.null]));
-export type KeybindingConfig = t.TypeOf<typeof KeybindingConfigType>;
+// Branded type for keybindings
+export interface KeybindingBrand {
+    readonly Keybinding: unique symbol;
+}
+
+export const Keybinding = t.brand(
+    t.string,
+    (s): s is t.Branded<string, KeybindingBrand> => typeof s === 'string',
+    'Keybinding'
+);
 
 export interface Command {
     id: string;
