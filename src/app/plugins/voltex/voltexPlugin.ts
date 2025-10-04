@@ -12,6 +12,10 @@ export default (context: PluginContext): void => {
             'voltex.group-selected-rows': 'ctrl+g',
             'voltex.ungroup-selected-rows': 'ctrl+shift+g',
             'voltex.delete-selected-rows': 'delete',
+            'voltex.zoom-in': 'w',
+            'voltex.zoom-out': 's',
+            'voltex.pan-left': 'a',
+            'voltex.pan-right': 'd',
         }
     });
 };

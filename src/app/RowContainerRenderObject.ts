@@ -307,6 +307,46 @@ export class RowContainerRenderObject {
                 }
             }
         });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.zoom-in',
+            action: () => {
+                const zoomFactor = 1.25;
+                const centerTime = (this.state.offset + (this.canvas.width - this.labelWidth) / 2) / this.state.pxPerSecond;
+                this.state.pxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * zoomFactor);
+                this.state.offset = centerTime * this.state.pxPerSecond - (this.canvas.width - this.labelWidth) / 2;
+                this.requestRender();
+            }
+        });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.zoom-out',
+            action: () => {
+                const zoomFactor = 1.25;
+                const centerTime = (this.state.offset + (this.canvas.width - this.labelWidth) / 2) / this.state.pxPerSecond;
+                this.state.pxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / zoomFactor);
+                this.state.offset = centerTime * this.state.pxPerSecond - (this.canvas.width - this.labelWidth) / 2;
+                this.requestRender();
+            }
+        });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.pan-left',
+            action: () => {
+                const panAmount = (this.canvas.width - this.labelWidth) * 0.1;
+                this.state.offset -= panAmount;
+                this.requestRender();
+            }
+        });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.pan-right',
+            action: () => {
+                const panAmount = (this.canvas.width - this.labelWidth) * 0.1;
+                this.state.offset += panAmount;
+                this.requestRender();
+            }
+        });
     }
 
     // Helper method to convert global mouse coordinates to canvas-relative coordinates
