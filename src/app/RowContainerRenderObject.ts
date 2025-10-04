@@ -70,6 +70,7 @@ export class RowContainerRenderObject {
         this.renderObject.addChild({
             zIndex: 2000,
             onMouseDown: ((event: MouseEvent) => {
+                if (event.button !== 0) return; // Only left button
                 const mousePosition = this.getMousePosition(event);
                 
                 if (mousePosition.type !== 'none') {
@@ -200,7 +201,8 @@ export class RowContainerRenderObject {
                         mousePosition.type === 'vertical' ? 'ns-resize' : '';
                 }
             }),
-            onMouseUp: ((_event: MouseEvent) => {
+            onMouseUp: ((event: MouseEvent) => {
+                if (event.button !== 0) return; // Only left button
                 if (this.resizeState.type === 'horizontal') {
                     this.requestRender();
                     this.resizeState = { type: 'none' };
@@ -844,6 +846,7 @@ export class RowContainerRenderObject {
                 insert.row.height ?? 50,
                 channels.length > 0 ? {
                     onMouseDown: (event) => {
+                        if (event.button !== 0) return; // Only left button
                         this.handleRowMouseDown(row, event);
                         event.preventDefault();
                         event.stopPropagation();
@@ -852,6 +855,7 @@ export class RowContainerRenderObject {
                         this.handleRowMouseMove(event);
                     },
                     onMouseUp: (event) => {
+                        if (event.button !== 0) return; // Only left button
                         this.handleRowMouseUp(event);
                     }
                 } : undefined

@@ -294,8 +294,8 @@ export class Renderer {
                         offsetY: event.clientY - bounds.y
                     });
                     
-                    // Capture mouse on mousedown
-                    if (eventType === 'onMouseDown') {
+                    // Capture mouse on mousedown (only for left button)
+                    if (eventType === 'onMouseDown' && event.button === 0) {
                         this.mouseCaptureMap.set(event.button, {
                             renderObject: renderObject,
                             bounds: bounds
