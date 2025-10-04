@@ -228,14 +228,21 @@ export class RowContainerRenderObject {
             onWheel: ((event: WheelEvent) => {
                 event.preventDefault();
                 
-                // Calculate zoom factor based on scroll amount
-                const zoomFactor = Math.pow(1.25, Math.abs(event.deltaY) / 100);
-                const currentTarget = this.targetPxPerSecond ?? this.state.pxPerSecond;
-                const newTarget = event.deltaY < 0
-                    ? Math.min(this.maxPxPerSecond, currentTarget * zoomFactor)
-                    : Math.max(this.minPxPerSecond, currentTarget / zoomFactor);
+                // Handle horizontal scrolling (panning)
+                if (Math.abs(event.deltaX) > 0) {
+                    this.startSmoothPan(event.deltaX);
+                }
                 
-                this.startSmoothZoom(newTarget, event.clientX - this.labelWidth);
+                // Handle vertical scrolling (zooming)
+                if (Math.abs(event.deltaY) > 0) {
+                    const zoomFactor = Math.pow(1.25, Math.abs(event.deltaY) / 50);
+                    const currentTarget = this.targetPxPerSecond ?? this.state.pxPerSecond;
+                    const newTarget = event.deltaY < 0
+                        ? Math.min(this.maxPxPerSecond, currentTarget * zoomFactor)
+                        : Math.max(this.minPxPerSecond, currentTarget / zoomFactor);
+                    
+                    this.startSmoothZoom(newTarget, event.clientX - this.labelWidth);
+                }
             }),
         });
 
