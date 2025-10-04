@@ -25,10 +25,18 @@ export class RowContainerRenderObject {
     
     private labelWidth = 100; // initial label width in pixels
 
-    // Animation frame for momentum scrolling
+    // Animation frame for momentum scrolling and zooming
     private animationFrame: number | null = null;
     private readonly decay = 0.85; // friction per frame (faster decay)
     private readonly minVelocity = 0.1; // px/frame threshold to stop
+    
+    // Pan animation state
+    private panVelocity: number = 0;
+    
+    // Zoom animation state
+    private targetPxPerSecond: number | null = null;
+    private zoomAnchorX: number | null = null;
+    private zoomAnchorTime: number | null = null;
     
     // Constants
     private readonly minLabelWidth = 40;
@@ -217,20 +225,15 @@ export class RowContainerRenderObject {
 
             onWheel: ((event: WheelEvent) => {
                 event.preventDefault();
-                const zoomFactor = 1.25;
-                const oldPxPerSecond = this.state.pxPerSecond;
                 
-                if (event.deltaY < 0) {
-                    this.state.pxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * zoomFactor);
-                } else {
-                    this.state.pxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / zoomFactor);
-                }
+                // Calculate zoom factor based on scroll amount
+                const zoomFactor = Math.pow(1.25, Math.abs(event.deltaY) / 100);
+                const currentTarget = this.targetPxPerSecond ?? this.state.pxPerSecond;
+                const newTarget = event.deltaY < 0
+                    ? Math.min(this.maxPxPerSecond, currentTarget * zoomFactor)
+                    : Math.max(this.minPxPerSecond, currentTarget / zoomFactor);
                 
-                const mouseX = event.clientX - this.labelWidth;
-                const mouseTime = (this.state.offset + mouseX) / oldPxPerSecond;
-                this.state.offset = mouseTime * this.state.pxPerSecond - mouseX;
-                
-                this.requestRender();
+                this.startSmoothZoom(newTarget, event.clientX - this.labelWidth);
             }),
         });
 
@@ -311,44 +314,34 @@ export class RowContainerRenderObject {
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.zoom-in',
             action: () => {
-                const zoomFactor = 1.25;
-                const containerWidth = getAbsoluteBounds(this.renderObject).width;
-                const viewportWidth = containerWidth - this.labelWidth;
-                const centerTime = (this.state.offset + viewportWidth / 2) / this.state.pxPerSecond;
-                this.state.pxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * zoomFactor);
-                this.state.offset = centerTime * this.state.pxPerSecond - viewportWidth / 2;
-                this.requestRender();
+                const targetPxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * 1.25);
+                const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
+                this.startSmoothZoom(targetPxPerSecond, viewportWidth / 2);
             }
         });
 
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.zoom-out',
             action: () => {
-                const zoomFactor = 1.25;
-                const containerWidth = getAbsoluteBounds(this.renderObject).width;
-                const viewportWidth = containerWidth - this.labelWidth;
-                const centerTime = (this.state.offset + viewportWidth / 2) / this.state.pxPerSecond;
-                this.state.pxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / zoomFactor);
-                this.state.offset = centerTime * this.state.pxPerSecond - viewportWidth / 2;
-                this.requestRender();
+                const targetPxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / 1.25);
+                const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
+                this.startSmoothZoom(targetPxPerSecond, viewportWidth / 2);
             }
         });
 
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-left',
             action: () => {
-                const containerWidth = getAbsoluteBounds(this.renderObject).width;
-                const panAmount = (containerWidth - this.labelWidth) * 0.2;
-                this.startSmoothPan(-panAmount);
+                const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
+                this.startSmoothPan(-viewportWidth * 0.2);
             }
         });
 
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-right',
             action: () => {
-                const containerWidth = getAbsoluteBounds(this.renderObject).width;
-                const panAmount = (containerWidth - this.labelWidth) * 0.2;
-                this.startSmoothPan(panAmount);
+                const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
+                this.startSmoothPan(viewportWidth * 0.2);
             }
         });
     }
@@ -555,20 +548,12 @@ export class RowContainerRenderObject {
         const handleMouseUp = () => {
             if (this.resizeState.type !== 'time-offset') return;
             
-            // Handle momentum scrolling
-            let pxPerFrame = this.resizeState.velocity * 16.67;
+            // Set pan velocity for momentum scrolling using unified animation
+            // Negate because mouse drag to right should pan left (decrease offset)
+            const pxPerFrame = this.resizeState.velocity * 16.67;
             if (Math.abs(pxPerFrame) > this.minVelocity) {
-                const animate = () => {
-                    pxPerFrame *= this.decay;
-                    this.state.offset = this.state.offset - pxPerFrame;
-                    this.requestRender();
-                    if (Math.abs(pxPerFrame) > this.minVelocity) {
-                        this.animationFrame = requestAnimationFrame(animate);
-                    } else {
-                        this.animationFrame = null;
-                    }
-                };
-                this.animationFrame = requestAnimationFrame(animate);
+                this.panVelocity = -pxPerFrame;
+                this.startUnifiedAnimation();
             }
             
             this.resizeState = { type: 'none' };
@@ -583,24 +568,85 @@ export class RowContainerRenderObject {
     }
 
     private startSmoothPan(offsetDelta: number): void {
-        // Cancel any existing animation
-        if (this.animationFrame !== null) {
-            cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
-        }
+        // Set pan velocity
+        this.panVelocity = offsetDelta / 10;
+        
+        // Start unified animation loop if not already running
+        this.startUnifiedAnimation();
+    }
 
-        // Start smooth panning animation
-        let pxPerFrame = offsetDelta / 10; // Spread the pan over ~10 frames for smoothness
+    private startSmoothZoom(targetPxPerSecond: number, anchorX: number): void {
+        // Update target zoom level
+        this.targetPxPerSecond = targetPxPerSecond;
+        
+        // If anchor changed significantly or this is first zoom, recalculate anchor time
+        if (this.zoomAnchorX === null || Math.abs(this.zoomAnchorX - anchorX) > 10) {
+            this.zoomAnchorX = anchorX;
+            this.zoomAnchorTime = (this.state.offset + anchorX) / this.state.pxPerSecond;
+        }
+        
+        // Start unified animation loop if not already running
+        this.startUnifiedAnimation();
+    }
+
+    private startUnifiedAnimation(): void {
+        // Only start if not already running
+        if (this.animationFrame !== null) return;
+        
         const animate = () => {
-            pxPerFrame *= this.decay;
-            this.state.offset += pxPerFrame;
+            let needsAnotherFrame = false;
+            
+            // Handle panning
+            if (Math.abs(this.panVelocity) > this.minVelocity) {
+                this.panVelocity *= this.decay;
+                this.state.offset += this.panVelocity;
+                
+                // If we're also zooming, update the anchor time to account for the pan
+                if (this.zoomAnchorTime !== null && this.zoomAnchorX !== null) {
+                    this.zoomAnchorTime = (this.state.offset + this.zoomAnchorX) / this.state.pxPerSecond;
+                }
+                
+                needsAnotherFrame = true;
+            } else {
+                this.panVelocity = 0;
+            }
+            
+            // Handle zooming
+            if (this.targetPxPerSecond !== null && this.zoomAnchorTime !== null && this.zoomAnchorX !== null) {
+                const diff = this.targetPxPerSecond - this.state.pxPerSecond;
+                const relDiff = Math.abs(diff) / this.state.pxPerSecond;
+                
+                // Speed is proportional to distance from target
+                const step = Math.min(10, 0.25 * (1 + relDiff * 2));
+                const newPxPerSecond = this.state.pxPerSecond + diff * step;
+                
+                // Detect overshoot or close enough to target
+                const wouldOvershoot = (diff > 0) ? newPxPerSecond > this.targetPxPerSecond : newPxPerSecond < this.targetPxPerSecond;
+                
+                if (wouldOvershoot || relDiff <= 0.001) {
+                    // Snap to final value
+                    this.state.pxPerSecond = this.targetPxPerSecond;
+                    this.state.offset = this.zoomAnchorTime * this.state.pxPerSecond - this.zoomAnchorX;
+                    this.targetPxPerSecond = null;
+                    this.zoomAnchorX = null;
+                    this.zoomAnchorTime = null;
+                } else {
+                    this.state.pxPerSecond = newPxPerSecond;
+                    this.state.offset = this.zoomAnchorTime * this.state.pxPerSecond - this.zoomAnchorX;
+                    needsAnotherFrame = true;
+                }
+            }
+            
             this.requestRender();
-            if (Math.abs(pxPerFrame) > this.minVelocity) {
+            
+            // Continue animation if needed
+            if (needsAnotherFrame) {
                 this.animationFrame = requestAnimationFrame(animate);
             } else {
                 this.animationFrame = null;
             }
         };
+        
         this.animationFrame = requestAnimationFrame(animate);
     }
 
