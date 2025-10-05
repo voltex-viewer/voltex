@@ -1,4 +1,4 @@
-import type { PositionValue, RenderObject, WaveformState, RenderBounds, RenderContext, PluginModule, Signal, MouseEvent, WheelEvent, MouseEventHandlers } from "@voltex-viewer/plugin-api";
+import type { PositionValue, RenderObject, WaveformState, RenderBounds, RenderContext, PluginModule, Signal, MouseEvent, WheelEvent, MouseEventHandlers, MouseCaptureConfig } from "@voltex-viewer/plugin-api";
 import { calculateBounds, px } from "@voltex-viewer/plugin-api";
 import { RenderObjectImpl } from './RenderObject';
 import { SignalMetadataManagerImpl } from './SignalMetadataManager';
@@ -32,7 +32,11 @@ export class Renderer {
     private rootRenderObject: RenderObjectImpl;
     private rowContainer: RowContainerRenderObject;
     private mouseButtonsPressed: number = 0;
-    private mouseCaptureMap: Map<number, { renderObject: RenderObjectImpl, bounds: RenderBounds }> = new Map();
+    private mouseCaptureMap: Map<number, { 
+        renderObject: RenderObjectImpl; 
+        bounds: RenderBounds; 
+        config: MouseCaptureConfig;
+    }> = new Map();
     
     constructor(
         private state: WaveformState,
@@ -107,24 +111,35 @@ export class Renderer {
             const mouseEvent = this.createGlobalMouseEvent(e);
             
             // Check if any button has captured the mouse
-            let eventHandled = false;
-            for (const [button, capture] of this.mouseCaptureMap) {
-                if (this.mouseButtonsPressed & (1 << button)) {
-                    // Send mousemove to captured render object
-                    const handler = capture.renderObject.onMouseMove;
-                    if (handler) {
-                        handler.call(capture.renderObject, {
-                            ...mouseEvent,
-                            offsetX: mouseEvent.clientX - capture.bounds.x,
-                            offsetY: mouseEvent.clientY - capture.bounds.y
-                        });
-                        eventHandled = true;
-                    }
+            const capture = this.mouseCaptureMap.get(0); // Only left button for now
+            if (capture && (this.mouseButtonsPressed & 1)) {
+                const offsetEvent = {
+                    ...mouseEvent,
+                    offsetX: mouseEvent.clientX - capture.bounds.x,
+                    offsetY: mouseEvent.clientY - capture.bounds.y
+                };
+                
+                // Always send to capturing object
+                const handler = capture.renderObject.onMouseMove;
+                const captureConfig = handler?.call(capture.renderObject, offsetEvent);
+                
+                // Handle preventDefault
+                if (capture.config.preventDefault || captureConfig?.preventDefault) {
+                    // Already handled via createGlobalMouseEvent
                 }
-            }
-            
-            // If no capture, use normal hit-testing
-            if (!eventHandled) {
+                
+                // Update capture config if returned from onMouseMove
+                if (captureConfig) {
+                    capture.config = { ...capture.config, ...captureConfig };
+                }
+                
+                // If allowMouseMoveThrough, also dispatch to normal hierarchy
+                if (capture.config.allowMouseMoveThrough) {
+                    this.dispatchMouseEvent('onMouseMove', mouseEvent, true);
+                    this.updateMouseOverStates(mouseEvent);
+                }
+            } else {
+                // No capture, use normal hit-testing
                 this.dispatchMouseEvent('onMouseMove', mouseEvent);
                 this.updateMouseOverStates(mouseEvent);
             }
@@ -271,11 +286,18 @@ export class Renderer {
         };
     }
 
-    private dispatchMouseEvent(eventType: keyof MouseEventHandlers, event: InternalMouseEvent): void {
+    private dispatchMouseEvent(eventType: keyof MouseEventHandlers, event: InternalMouseEvent, skipCapturingObject: boolean = false): void {
+        const capturedObject = this.mouseCaptureMap.get(0)?.renderObject; // Only left button
+        
         const dispatchMouseEventRecursive = (
             renderObject: RenderObjectImpl, 
             bounds: RenderBounds
         ): void => {
+            // Skip the capturing object if requested (to avoid duplicate events)
+            if (skipCapturingObject && renderObject === capturedObject) {
+                return;
+            }
+            
             // Process children first (in reverse z-order)
             const children = [...renderObject.children].reverse();
             for (const child of children) {
@@ -288,18 +310,28 @@ export class Renderer {
             if (isPointInBounds(event.clientX, event.clientY, bounds)) {
                 const handler = renderObject[eventType];
                 if (handler) {
-                    handler.call(renderObject, {
+                    const offsetEvent = {
                         ...event,
                         offsetX: event.clientX - bounds.x,
                         offsetY: event.clientY - bounds.y
-                    });
+                    };
                     
-                    // Capture mouse on mousedown (only for left button)
-                    if (eventType === 'onMouseDown' && event.button === 0) {
-                        this.mouseCaptureMap.set(event.button, {
-                            renderObject: renderObject,
-                            bounds: bounds
-                        });
+                    const captureConfig = handler.call(renderObject, offsetEvent);
+                    
+                    // Handle capture on mousedown or mouseMove
+                    if ((eventType === 'onMouseDown' || eventType === 'onMouseMove') && captureConfig && event.button === 0) {
+                        if (captureConfig.captureMouse) {
+                            this.mouseCaptureMap.set(event.button, {
+                                renderObject: renderObject,
+                                bounds: bounds,
+                                config: captureConfig
+                            });
+                        }
+                    }
+                    
+                    // Handle preventDefault
+                    if (captureConfig?.preventDefault) {
+                        // Already handled in createMouseEvent/createGlobalMouseEvent
                     }
                 }
             }

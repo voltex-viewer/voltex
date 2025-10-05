@@ -36,10 +36,16 @@ export interface WheelEvent extends MouseEvent {
     deltaZ: number;
 }
 
+export interface MouseCaptureConfig {
+    captureMouse?: boolean;
+    allowMouseMoveThrough?: boolean;
+    preventDefault?: boolean;
+}
+
 export interface MouseEventHandlers {
-    onMouseDown?: (event: MouseEvent) => void;
+    onMouseDown?: (event: MouseEvent) => MouseCaptureConfig | void;
     onMouseUp?: (event: MouseEvent) => void;
-    onMouseMove?: (event: MouseEvent) => void;
+    onMouseMove?: (event: MouseEvent) => MouseCaptureConfig | void;
     onMouseEnter?: (event: MouseEvent) => void;
     onMouseLeave?: (event: MouseEvent) => void;
     onClick?: (event: MouseEvent) => void;

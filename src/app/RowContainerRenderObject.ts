@@ -1,5 +1,5 @@
 import { RowImpl } from './RowImpl';
-import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters, MouseEvent, WheelEvent } from "@voltex-viewer/plugin-api";
+import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters, MouseEvent, WheelEvent, MouseCaptureConfig } from "@voltex-viewer/plugin-api";
 import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
 import { RowChangedCallback } from './RowManager';
 import { CommandManager } from './CommandManager';
@@ -92,12 +92,12 @@ export class RowContainerRenderObject {
 
                         document.body.style.cursor = 'ns-resize';
                     }
-                    event.preventDefault();
-                    event.stopPropagation();
                     this.requestRender();
+                    event.stopPropagation(); // Stop propagation to prevent row handlers from interfering
+                    return { captureMouse: true, preventDefault: true };
                 } else {
                     // Don't start panning if clicking in the label area
-                    if (event.clientX < this.labelWidth) return;
+                    if (event.clientX < this.labelWidth) return {};
                     
                     // Start drag-to-scroll
                     const mouseXInViewport = event.clientX - this.labelWidth;
@@ -116,10 +116,8 @@ export class RowContainerRenderObject {
                         cancelAnimationFrame(this.animationFrame);
                         this.animationFrame = null;
                     }
-                    event.preventDefault();
                     
-                    // Set up global mouse move and up handlers
-                    this.setupGlobalDragHandlers();
+                    return { captureMouse: true, allowMouseMoveThrough: true, preventDefault: true };
                 }
             }),
             onMouseMove: ((event: MouseEvent) => {
@@ -147,6 +145,23 @@ export class RowContainerRenderObject {
                         this.updateRowPositions();
                         this.requestRender();
                     }
+                } else if (this.resizeState.type === 'time-offset') {
+                    const now = performance.now();
+                    
+                    // Calculate new offset based on constant time at cursor
+                    const currentMouseXInViewport = event.clientX - this.labelWidth;
+                    this.state.offset = this.resizeState.startTimeAtCursor * this.state.pxPerSecond - currentMouseXInViewport;
+
+                    const velocity = (event.clientX - this.resizeState.lastX) / (now - this.resizeState.lastTime + 0.0001);
+                    
+                    this.resizeState = {
+                        ...this.resizeState,
+                        lastX: event.clientX,
+                        lastTime: now,
+                        velocity: velocity
+                    };
+                    
+                    this.requestRender();
                 } else if (this.resizeState.type === 'dragging-rows') {
                     // Handle row dragging
                     const dragState = this.resizeState;
@@ -211,6 +226,16 @@ export class RowContainerRenderObject {
                 }
                 else if (this.resizeState.type === 'vertical') {
                     this.requestRender();
+                    this.resizeState = { type: 'none' };
+                }
+                else if (this.resizeState.type === 'time-offset') {
+                    // Set pan velocity for momentum scrolling
+                    const pxPerFrame = this.resizeState.velocity * 16.67;
+                    if (Math.abs(pxPerFrame) > this.minVelocity) {
+                        this.panVelocity = -pxPerFrame;
+                        this.startUnifiedAnimation();
+                    }
+                    
                     this.resizeState = { type: 'none' };
                 }
                 else if (this.resizeState.type === 'dragging-rows') {
@@ -373,7 +398,7 @@ export class RowContainerRenderObject {
         return this.rows.filter(row => this.selectedRows.has(row));
     }
 
-    private handleRowMouseDown(row: RowImpl, event: MouseEvent): void {
+    private handleRowMouseDown(row: RowImpl, event: MouseEvent): MouseCaptureConfig {
         const handleRowClick = (row: RowImpl, event: MouseEvent): void => {
             if (event.ctrlKey || event.metaKey) {
                 // Toggle selection
@@ -431,46 +456,29 @@ export class RowContainerRenderObject {
                 event: event
             };
             
-            // Set up temporary global handlers to detect drag vs click
-            const handleMouseMove = (e: globalThis.MouseEvent) => {
-                if (this.resizeState.type !== 'potential-row-drag') return;
-                
-                const canvasCoords = this.convertGlobalMouseToCanvasCoords(e.clientX, e.clientY);
-                const deltaX = canvasCoords.x - this.resizeState.startX;
-                const deltaY = canvasCoords.y - this.resizeState.startY;
-
-                if (Math.sqrt(deltaX * deltaX + deltaY * deltaY) > this.dragThreshold) {
-                    // Exceeded threshold, start drag
-                    window.removeEventListener('mousemove', handleMouseMove);
-                    window.removeEventListener('mouseup', handleMouseUp);
-                    this.startRowDrag(this.resizeState.row, this.resizeState.event);
-                }
-            };
-            
-            const handleMouseUp = () => {
-                if (this.resizeState.type !== 'potential-row-drag') return;
-                
-                // Mouse up without exceeding threshold, treat as click
-                window.removeEventListener('mousemove', handleMouseMove);
-                window.removeEventListener('mouseup', handleMouseUp);
-                
-                const clickedRow = this.resizeState.row;
-                const originalEvent = this.resizeState.event;
-                this.resizeState = { type: 'none' };
-                
-                // Handle as normal selection
-                handleRowClick(clickedRow, originalEvent);
-            };
-            
-            window.addEventListener('mousemove', handleMouseMove);
-            window.addEventListener('mouseup', handleMouseUp);
+            // Request capture immediately so we can track mouse and detect threshold
+            return { captureMouse: true, preventDefault: true };
         } else {
             // Handle modifier key selections immediately
             handleRowClick(row, event);
+            return { preventDefault: true };
         }
     }
 
-    private handleRowMouseMove(event: MouseEvent): void {
+    private handleRowMouseMove(event: MouseEvent): MouseCaptureConfig | void {
+        // Check for potential drag threshold
+        if (this.resizeState.type === 'potential-row-drag') {
+            const deltaX = event.clientX - this.resizeState.startX;
+            const deltaY = event.clientY - this.resizeState.startY;
+
+            if (Math.sqrt(deltaX * deltaX + deltaY * deltaY) > this.dragThreshold) {
+                // Exceeded threshold, start drag
+                this.startRowDrag(this.resizeState.row, this.resizeState.event);
+                return { captureMouse: true, preventDefault: true };
+            }
+            return;
+        }
+        
         // Delegate to the overlay's mouse move handler for drag operations
         if (this.resizeState.type === 'dragging-rows') {
             const dragState = this.resizeState;
@@ -523,8 +531,31 @@ export class RowContainerRenderObject {
     }
 
     private handleRowMouseUp(event: MouseEvent): void {
-        // Delegate to the overlay's mouse up handler for drag operations  
-        if (this.resizeState.type === 'dragging-rows') {
+        // Handle potential drag that didn't exceed threshold (treat as click)
+        if (this.resizeState.type === 'potential-row-drag') {
+            const clickedRow = this.resizeState.row;
+            this.resizeState = { type: 'none' };
+            
+            // Single selection
+            if (this.selectedRows.size == 1 && this.selectedRows.has(clickedRow)) {
+                // If this is the only selected row, deselect it
+                clickedRow.selected = false;
+                this.selectedRows.clear();
+                this.lastSelectedRow = null;
+            } else {
+                // Otherwise select it
+                for (const row of this.selectedRows) {
+                    row.selected = false;
+                }
+                this.selectedRows.clear();
+                this.selectedRows.add(clickedRow);
+                clickedRow.selected = true;
+                this.lastSelectedRow = clickedRow;
+            }
+            this.requestRender();
+        } else if (this.resizeState.type === 'dragging-rows') {
+            // Delegate to the overlay's mouse up handler for drag operations  
+
             // Finalize the row reordering
             this.finalizeDraggedRows();
             
@@ -533,51 +564,6 @@ export class RowContainerRenderObject {
             
             this.resizeState = { type: 'none' };
         }
-    }
-
-    private setupGlobalDragHandlers(): void {
-        const handleMouseMove = (e: globalThis.MouseEvent) => {
-            if (this.resizeState.type !== 'time-offset') return;
-            
-            const now = performance.now();
-            
-            // Calculate new offset based on constant time at cursor
-            const canvasCoords = this.convertGlobalMouseToCanvasCoords(e.clientX, e.clientY);
-            const currentMouseXInViewport = canvasCoords.x - this.labelWidth;
-            this.state.offset = this.resizeState.startTimeAtCursor * this.state.pxPerSecond - currentMouseXInViewport;
-
-            const velocity = (canvasCoords.x - this.resizeState.lastX) / (now - this.resizeState.lastTime + 0.0001);
-            
-            this.resizeState = {
-                ...this.resizeState,
-                lastX: canvasCoords.x,
-                lastTime: now,
-                velocity: velocity
-            };
-            
-            this.requestRender();
-        };
-
-        const handleMouseUp = () => {
-            if (this.resizeState.type !== 'time-offset') return;
-            
-            // Set pan velocity for momentum scrolling using unified animation
-            // Negate because mouse drag to right should pan left (decrease offset)
-            const pxPerFrame = this.resizeState.velocity * 16.67;
-            if (Math.abs(pxPerFrame) > this.minVelocity) {
-                this.panVelocity = -pxPerFrame;
-                this.startUnifiedAnimation();
-            }
-            
-            this.resizeState = { type: 'none' };
-            
-            // Clean up global handlers
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
     }
 
     private startSmoothPan(panVelocity: number): void {
@@ -851,19 +837,17 @@ export class RowContainerRenderObject {
         // Add new rows at specified indices (sort by index descending to avoid index shifting)
         for (const insert of [...rowsToAdd].reverse().sort((a, b) => b.index - a.index)) {
             const channels = insert.row.channels ?? [];
-            const row = new RowImpl(
+            const row: RowImpl = new RowImpl(
                 this.renderObject,
                 channels,
                 insert.row.height ?? 50,
                 channels.length > 0 ? {
-                    onMouseDown: (event) => {
-                        if (event.button !== 0) return; // Only left button
-                        this.handleRowMouseDown(row, event);
-                        event.preventDefault();
-                        event.stopPropagation();
+                    onMouseDown: (event): MouseCaptureConfig => {
+                        if (event.button !== 0) return {}; // Only left button
+                        return this.handleRowMouseDown(row, event);
                     },
                     onMouseMove: (event) => {
-                        this.handleRowMouseMove(event);
+                        return this.handleRowMouseMove(event);
                     },
                     onMouseUp: (event) => {
                         if (event.button !== 0) return; // Only left button

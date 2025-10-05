@@ -1,4 +1,4 @@
-import { percent, px, RenderBounds, RenderObjectArgs, RenderObject as RenderObject, type PositionValue, type RenderContext, type MouseEvent, type WheelEvent, type MouseEventHandlers } from "@voltex-viewer/plugin-api";
+import { percent, px, RenderBounds, RenderObjectArgs, RenderObject as RenderObject, type PositionValue, type RenderContext, type MouseEvent, type WheelEvent, type MouseEventHandlers, type MouseCaptureConfig } from "@voltex-viewer/plugin-api";
 
 export class RenderObjectImpl implements RenderObject, MouseEventHandlers {
     public zIndex: number;
@@ -11,12 +11,12 @@ export class RenderObjectImpl implements RenderObject, MouseEventHandlers {
     public height: PositionValue;
     public readonly viewport: boolean;
     onClick?: (event: MouseEvent) => void;
-    onMouseDown: (event: MouseEvent) => void;
-    onMouseUp: (event: MouseEvent) => void;
-    onMouseMove: (event: MouseEvent) => void;
-    onMouseEnter: (event: MouseEvent) => void;
-    onMouseLeave: (event: MouseEvent) => void;
-    onWheel: (event: WheelEvent) => void;
+    onMouseDown?: (event: MouseEvent) => MouseCaptureConfig | void;
+    onMouseUp?: (event: MouseEvent) => void;
+    onMouseMove?: (event: MouseEvent) => MouseCaptureConfig | void;
+    onMouseEnter?: (event: MouseEvent) => void;
+    onMouseLeave?: (event: MouseEvent) => void;
+    onWheel?: (event: WheelEvent) => void;
 
     constructor(parent: RenderObjectImpl, args: RenderObjectArgs) {
         this.zIndex = args.zIndex ?? 0;
