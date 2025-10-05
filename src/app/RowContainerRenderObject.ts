@@ -27,8 +27,10 @@ export class RowContainerRenderObject {
 
     // Animation frame for momentum scrolling and zooming
     private animationFrame: number | null = null;
-    private readonly decay = 0.85; // friction per frame (faster decay)
+    private readonly panFriction = 0.7; // friction per frame for panning
+    private readonly zoomFriction = 0.5; // friction per frame for zooming
     private readonly minVelocity = 0.1; // px/frame threshold to stop
+    private readonly panAmount = 0.4; // fraction of viewport width to pan on command
     
     // Pan animation state
     private panVelocity: number = 0;
@@ -342,7 +344,8 @@ export class RowContainerRenderObject {
             id: 'voltex.pan-left',
             action: () => {
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                this.startSmoothPan(-viewportWidth * 0.05);
+                const initialVelocity = -viewportWidth * this.panAmount * (1 - this.panFriction);
+                this.startSmoothPan(initialVelocity);
             }
         });
 
@@ -350,7 +353,8 @@ export class RowContainerRenderObject {
             id: 'voltex.pan-right',
             action: () => {
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                this.startSmoothPan(viewportWidth * 0.05);
+                const initialVelocity = viewportWidth * this.panAmount * (1 - this.panFriction);
+                this.startSmoothPan(initialVelocity);
             }
         });
     }
@@ -607,8 +611,8 @@ export class RowContainerRenderObject {
             
             // Handle panning
             if (Math.abs(this.panVelocity) > this.minVelocity) {
-                this.panVelocity *= this.decay;
                 this.state.offset += this.panVelocity;
+                this.panVelocity *= this.panFriction;
                 
                 // If we're also zooming, update the anchor time to account for the pan
                 if (this.zoomAnchorTime !== null && this.zoomAnchorX !== null) {
@@ -626,7 +630,7 @@ export class RowContainerRenderObject {
                 const relDiff = Math.abs(diff) / this.state.pxPerSecond;
                 
                 // Speed is proportional to distance from target
-                const step = Math.min(1, 1 + relDiff * 2) * 0.25;
+                const step = Math.min(1, 1 + relDiff * 2) * (1 - this.zoomFriction);
                 const newPxPerSecond = this.state.pxPerSecond + diff * step;
                 
                 // Detect overshoot or close enough to target
