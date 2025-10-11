@@ -1,4 +1,4 @@
-import { InMemorySequence, Sequence, SequenceSignal } from '@voltex-viewer/plugin-api';
+import { InMemorySequence, Sequence, SequenceSignal, TextValue } from '@voltex-viewer/plugin-api';
 import { PluginContext, RenderMode, SignalSource, Signal } from '@voltex-viewer/plugin-api';
 import {
     Link, newLink, getLink, readBlock,
@@ -151,7 +151,11 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
 }
 
 class Mf4Source implements SignalSource {
-    constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock<'instanced'>, public readonly renderHint: RenderMode) {
+    constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock<'instanced'>, public textValues: TextValue[]) {
+    }
+
+    get renderHint(): RenderMode {
+        return this.textValues.length >= 2 ? RenderMode.Enum : RenderMode.Lines;
     }
 
     signal(): Signal {
@@ -162,15 +166,16 @@ class Mf4Source implements SignalSource {
 class DataGroupLoader {
     private signals: Map<ChannelBlock<'instanced'>, SequenceSignal> = new Map();
     private loaded: boolean = false;
-    private groups: {group: ChannelGroupBlock, channels: {source: SignalSource, channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string}[]}[];
+    private groups: {group: ChannelGroupBlock, channels: {source: SignalSource, channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string, textValues: TextValue[]}[]}[];
 
-    constructor(private dataGroup: DataGroupBlock, groups: {group: ChannelGroupBlock, channels: {channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string}[]}[], private reader: BufferedFileReader) {
+    constructor(private dataGroup: DataGroupBlock, groups: {group: ChannelGroupBlock, channels: {channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string, textValues: TextValue[]}[]}[], private reader: BufferedFileReader) {
         this.groups = groups.map(({group, channels}) => ({
             group,
-            channels: channels.map(({channel, conversion}) => ({
-                source: new Mf4Source([reader.file.name, channel.txName.data], this, channel, RenderMode.Lines),
+            channels: channels.map(({channel, conversion, textValues}) => ({
+                source: new Mf4Source([reader.file.name, channel.txName.data], this, channel, textValues),
                 channel,
-                conversion
+                conversion,
+                textValues
             }))
         }));
     }
@@ -234,7 +239,8 @@ class DataGroupLoader {
     }
 }
 
-function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | null): null | ((value: number) => number | string) {
+function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | null): {conversion: null | ((value: number) => number | string), textValues: TextValue[]} {
+    const textValues: TextValue[] = [];
     function convert(conversion: ChannelConversionBlock<'instanced'>): null | ((value: number) => number | string) {
         if (conversion === null) {
             return null;
@@ -355,14 +361,22 @@ function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | 
                 const conversionMap = new Map<number, string | ((value: number) => number | string)>();
                 for (let i = 0; i < conversion.values.length; i++) {
                     const ref = conversion.refs[i];
-                    conversionMap.set(conversion.values[i], 'type' in ref ? convert(ref) : ref.data);
+                    if ('type' in ref) {
+                        conversionMap.set(conversion.values[i], convert(ref));
+                    } else {
+                        conversionMap.set(conversion.values[i], ref.data);
+                        textValues.push({text: ref.data, value: conversion.values[i]});
+                    }
                 }
                 const defaultRef = conversion.refs[conversion.refs.length - 1];
                 let defaultValue: string | ((value: number) => number | string) | undefined;
                 if (defaultRef === null) {
                     defaultValue = undefined;
+                } else if ('type' in defaultRef) {
+                    defaultValue = convert(defaultRef);
                 } else {
-                    defaultValue = 'type' in defaultRef ? convert(defaultRef) : defaultRef.data;
+                    defaultValue = defaultRef.data;
+                    textValues.push({text: defaultRef.data});
                 }
                 if (typeof(defaultValue) === "function") {
                     return value => {
@@ -399,10 +413,17 @@ function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | 
                 const conversionMap: { lower: number; upper: number; result: string | ((value: number) => number | string) }[] = [];
                 for (let i = 0; i < count; i++) {
                     const ref = conversion.refs[i];
+                    let result;
+                    if ('type' in ref) {
+                        result = convert(ref);
+                    } else {
+                        result = ref.data;
+                        textValues.push({text: ref.data});
+                    }
                     conversionMap.push({
                         lower: conversion.values[i * 2],
                         upper: conversion.values[i * 2 + 1],
-                        result: 'type' in ref ? convert(ref) : ref.data
+                        result
                     });
                 }
                 // Technically the ranges should already be sorted, but we can be permissive here
@@ -411,8 +432,11 @@ function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | 
                 let defaultValue: string | ((value: number) => number | string) | undefined;
                 if (defaultRef === null) {
                     defaultValue = undefined;
+                } else if ('type' in defaultRef) {
+                    defaultValue = convert(defaultRef);
                 } else {
-                    defaultValue = 'type' in defaultRef ? convert(defaultRef) : defaultRef.data;
+                    defaultValue = defaultRef.data;
+                    textValues.push({text: defaultRef.data});
                 }
                 return value => {
                     const result = conversionMap.find(entry => entry.lower <= value && entry.upper >= value)?.result;
@@ -433,7 +457,10 @@ function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | 
                 return value => 0;
         }
     }
-    return convert(conversion);
+    return {
+        conversion: convert(conversion),
+        textValues,
+    };
 }
 
 export default (context: PluginContext): void => {
@@ -514,7 +541,8 @@ export default (context: PluginContext): void => {
                 for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, reader)) {
                     const channels = [];
                     for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, reader)) {
-                        const conversion = await readConversionBlockRecurse(channel.conversion);
+                        const conversionBlock = await readConversionBlockRecurse(channel.conversion);
+                        const {conversion, textValues} = conversionToFunction(conversionBlock);
                         channels.push({
                             channel: {
                                 ...channel,
@@ -522,12 +550,13 @@ export default (context: PluginContext): void => {
                                 component: null,
                                 txName: await readTextBlock(channel.txName, reader),
                                 siSource: null,
-                                conversion,
+                                conversion: conversionBlock,
                                 data: null,
                                 unit: null,
                                 comment: null,
                             } as ChannelBlock<'instanced'>,
-                            conversion: conversionToFunction(conversion),
+                            conversion,
+                            textValues,
                         });
                     }
                     groups.push({group: channelGroup, channels});
@@ -696,4 +725,3 @@ export default (context: PluginContext): void => {
         }
     });
 }
-

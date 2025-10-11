@@ -127,7 +127,7 @@ export class WaveformRenderObject {
         const y = (bounds.height - baselineMetrics.renderHeight) / 2;
 
         // Binary search to find the indices of visible segments
-        const maxUpdateIndex = this.bufferData.bufferLength;
+        const maxUpdateIndex = Math.min(this.signal.time.length, this.signal.values.length);
         const startIndex = this.binarySearchTimeIndex(startTime, 0, maxUpdateIndex - 1, true);
         const endIndex = this.binarySearchTimeIndex(endTime, startIndex, maxUpdateIndex - 1, false);
 
@@ -136,8 +136,15 @@ export class WaveformRenderObject {
             const segmentStartTime = this.signal.time.valueAt(i);
             const value = this.signal.values.valueAt(i);
             
-            // Get the end time of this segment (the second point of this pair)
-            const segmentEndTime = this.signal.time.valueAt(i + 1);
+            // Get the end time of this segment, extending it to include consecutive segments with the same value
+            let segmentEndTime = this.signal.time.valueAt(i + 1);
+            let j = i + 1;
+            while (j < maxUpdateIndex - 1 && this.signal.values.valueAt(j) === value) {
+                segmentEndTime = this.signal.time.valueAt(j + 1);
+                j++;
+            }
+            // Skip ahead to avoid rendering duplicate labels for the same value
+            i = j - 1;
             
             let enumText = "convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt(i).toString() : value.toString();
 

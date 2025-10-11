@@ -225,11 +225,17 @@ export interface WaveformState {
     pxPerSecond: number,
 }
 
+export interface TextValue {
+    text: string;
+    value?: number;
+}
+
 export interface Sequence {
     min: number;
     max: number;
     length: number;
     null?: number;
+    textValues?: TextValue[];
     valueAt(index: number): number;
     convertedValueAt?(index: number): number | string;
 }
