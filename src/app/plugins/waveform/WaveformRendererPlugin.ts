@@ -153,8 +153,13 @@ export default (context: PluginContext): void => {
                     // Gradient-based downsampling
                     let lastTime = sequence.time.valueAt(bufferData.signalIndex);
                     let lastValue = sequence.values.valueAt(bufferData.signalIndex);
-                    timeBuffer[0] = lastTime;
-                    valueBuffer[0] = lastValue;
+                    
+                    // Only add the first point if this is the very first chunk (bufferLength == 0)
+                    if (bufferData.bufferLength === 0) {
+                        timeBuffer[0] = lastTime;
+                        valueBuffer[0] = lastValue;
+                        bufferOffset = 1;
+                    }
                     signalIndex++;
 
                     let lastGradient = Infinity;
@@ -179,28 +184,17 @@ export default (context: PluginContext): void => {
                         let gradient = (value - lastValue) / (time - lastTime);
                         if (Math.abs(gradient - lastGradient) > gradientThreshold) {
                             // The gradient has changed significantly, add a new point
-                            bufferOffset++;
                             timeBuffer[bufferOffset] = time;
                             valueBuffer[bufferOffset] = value;
+                            bufferOffset++;
                             lastGradient = gradient;
                         } else {
                             // If the gradient hasn't changed much, overwrite the last point
-                            timeBuffer[bufferOffset] = time;
-                            valueBuffer[bufferOffset] = value;
+                            timeBuffer[bufferOffset - 1] = time;
+                            valueBuffer[bufferOffset - 1] = value;
                         }
                         lastTime = time;
                         lastValue = value;
-                    }
-                    
-                    // Ensure the last point is included
-                    if (signalIndex === seqLen && bufferOffset < maxPoints) {
-                        const time = sequence.time.valueAt(seqLen - 1);
-                        const value = sequence.values.valueAt(seqLen - 1);
-                        if (timeBuffer[bufferOffset] !== time || valueBuffer[bufferOffset] !== value) {
-                            bufferOffset++;
-                            timeBuffer[bufferOffset] = time;
-                            valueBuffer[bufferOffset] = value;
-                        }
                     }
                 }
                 
