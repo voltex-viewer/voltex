@@ -451,6 +451,10 @@ export default (context: PluginContext): void => {
             if (id.header !== "MDF     " && id.header !== "UnFinMF ") {
                 throw new Error(`Invalid MDF header: "${id.header}"`);
             }
+
+            if (id.version < 400 || id.version >= 500) {
+                throw new Error(`Unsupported MDF version: ${id.version} (long: ${id.versionLong})`);
+            }
             
             // Parse the first block (Header block) at offset 64
             const rootLink = newLink<Header>(64n);
