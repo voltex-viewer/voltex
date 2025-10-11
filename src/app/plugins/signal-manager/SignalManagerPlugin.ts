@@ -14,6 +14,7 @@ interface CachedDOMElement {
 
 const domCache = new Map<string, CachedDOMElement>();
 let isDOMCacheValid = false;
+let cachedTree: TreeNode | undefined;
 const expansionState = new Map<string, boolean>();
 
 export default (pluginContext: PluginContext): void => {
@@ -201,7 +202,11 @@ interface TreeNode {
     fullPath: string[];
     children: Map<string, TreeNode>;
     signalSource?: SignalSource;
-    isExpanded: boolean;
+}
+
+function isNodeExpanded(node: TreeNode): boolean {
+    const pathKey = node.fullPath.join('|');
+    return expansionState.has(pathKey) ? expansionState.get(pathKey)! : true;
 }
 
 function naturalCompare(a: string, b: string): number {
@@ -246,8 +251,7 @@ function buildSignalTree(): TreeNode {
     const root: TreeNode = {
         name: 'root',
         fullPath: [],
-        children: new Map(),
-        isExpanded: true
+        children: new Map()
     };
 
     for (const signalSource of availableSignalSources) {
@@ -258,12 +262,10 @@ function buildSignalTree(): TreeNode {
             
             if (!currentNode.children.has(pathPart)) {
                 const fullPath = signalSource.name.slice(0, i + 1);
-                const pathKey = fullPath.join('|');
                 const newNode: TreeNode = {
                     name: pathPart,
                     fullPath: fullPath,
-                    children: new Map(),
-                    isExpanded: expansionState.has(pathKey) ? expansionState.get(pathKey)! : true
+                    children: new Map()
                 };
                 
                 // If this is the last part, attach the signal source
@@ -281,6 +283,13 @@ function buildSignalTree(): TreeNode {
     return root;
 }
 
+function getSignalTree(): TreeNode {
+    if (!cachedTree) {
+        cachedTree = buildSignalTree();
+    }
+    return cachedTree;
+}
+
 // DOM Cache Management Functions
 function invalidateDOMCache(): void {
     // Clean up event listeners
@@ -289,6 +298,7 @@ function invalidateDOMCache(): void {
     }
     domCache.clear();
     isDOMCacheValid = false;
+    cachedTree = undefined; // Invalidate tree cache when signals change
 }
 
 function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
@@ -321,7 +331,7 @@ function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
         svg.appendChild(path);
         toggleSpan.appendChild(svg);
         
-        if (node.isExpanded) {
+        if (isNodeExpanded(node)) {
             toggleSpan.classList.add('expanded');
         }
     }
@@ -340,9 +350,11 @@ function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
     
     if (hasChildren) {
         const toggleFunction = () => {
-            node.isExpanded = !node.isExpanded;
-            expansionState.set(node.fullPath.join('|'), node.isExpanded);
-            toggleSpan.classList.toggle('expanded', node.isExpanded);
+            const pathKey = node.fullPath.join('|');
+            const currentExpanded = isNodeExpanded(node);
+            const newExpanded = !currentExpanded;
+            expansionState.set(pathKey, newExpanded);
+            toggleSpan.classList.toggle('expanded', newExpanded);
             updateTreeVisibility();
         };
         
@@ -370,7 +382,7 @@ function buildDOMCache(): void {
     
     invalidateDOMCache();
     
-    const tree = buildSignalTree();
+    const tree = getSignalTree();
     buildDOMCacheRecursive(tree, 0);
     
     isDOMCacheValid = true;
@@ -401,7 +413,7 @@ function renderSignalTree(): void {
     // Clear container and add all cached elements
     treeContainer.innerHTML = '';
     
-    const tree = buildSignalTree();
+    const tree = getSignalTree();
     syncCacheWithTree(tree);
     addTreeNodesToContainer(tree, treeContainer as HTMLElement, 0, true);
 }
@@ -412,10 +424,9 @@ function syncCacheWithTree(node: TreeNode): void {
         const cachedElement = domCache.get(cacheKey);
         
         if (cachedElement) {
-            cachedElement.node.isExpanded = childNode.isExpanded;
             const toggleElement = cachedElement.element.querySelector('.tree-toggle');
             if (toggleElement) {
-                toggleElement.classList.toggle('expanded', childNode.isExpanded);
+                toggleElement.classList.toggle('expanded', isNodeExpanded(childNode));
             }
         }
         
@@ -437,7 +448,7 @@ function addTreeNodesToContainer(node: TreeNode, container: HTMLElement, depth: 
             container.appendChild(cachedElement.element);
             
             // If expanded, add children
-            if (childNode.isExpanded && childNode.children.size > 0) {
+            if (isNodeExpanded(childNode) && childNode.children.size > 0) {
                 addTreeNodesToContainer(childNode, container, depth + 1, showAll);
             }
         }
@@ -450,10 +461,26 @@ function updateTreeVisibility(): void {
     const treeContainer = sidebarContainer.querySelector('#signal-tree');
     if (!treeContainer) return;
 
-    // Re-render using cache
-    treeContainer.innerHTML = '';
-    const tree = buildSignalTree();
-    addTreeNodesToContainer(tree, treeContainer as HTMLElement, 0, true);
+    // Check if there's an active search
+    if (lastSearchTerm.trim()) {
+        // Re-apply search filter to maintain search state
+        const tree = getSignalTree();
+        const hasMatches = markTreeNodesForSearch(tree, lastSearchTerm);
+        
+        if (!hasMatches) {
+            treeContainer.innerHTML = '<div style="color: #6b7280; padding: 16px; text-align: center;">No signals found</div>';
+            return;
+        }
+        
+        updateCachedElementsForSearch(tree, lastSearchTerm);
+        treeContainer.innerHTML = '';
+        addFilteredTreeNodes(tree, treeContainer as HTMLElement, 0);
+    } else {
+        // No search active - show normal tree
+        treeContainer.innerHTML = '';
+        const tree = getSignalTree();
+        addTreeNodesToContainer(tree, treeContainer as HTMLElement, 0, true);
+    }
 }
 
 function filterSignals(searchTerm: string): void {
@@ -473,7 +500,7 @@ function filterSignals(searchTerm: string): void {
     }
 
     // Build the tree but mark nodes for visibility based on search
-    const tree = buildSignalTree();
+    const tree = getSignalTree();
     const hasMatches = markTreeNodesForSearch(tree, searchTerm);
     
     if (!hasMatches) {
@@ -523,7 +550,7 @@ function updateCachedElementsForSearch(node: TreeNode, searchTerm: string): void
             // Update toggle state for expanded nodes
             const toggleElement = cachedElement.element.querySelector('.tree-toggle');
             if (toggleElement && childNode.children.size > 0) {
-                toggleElement.classList.toggle('expanded', childNode.isExpanded);
+                toggleElement.classList.toggle('expanded', isNodeExpanded(childNode));
             }
         }
         
@@ -548,7 +575,7 @@ function addFilteredTreeNodes(node: TreeNode, container: HTMLElement, depth: num
             container.appendChild(cachedElement.element);
             
             // If expanded and has matching children, add them
-            if (childNode.isExpanded && childNode.children.size > 0) {
+            if (isNodeExpanded(childNode) && childNode.children.size > 0) {
                 addFilteredTreeNodes(childNode, container, depth + 1);
             }
         }
@@ -578,7 +605,8 @@ function markTreeNodesForSearch(node: TreeNode, searchTerm: string): boolean {
     
     // If this node or its children match, expand it
     if (shouldShow && hasMatchingChildren) {
-        node.isExpanded = true;
+        const pathKey = node.fullPath.join('|');
+        expansionState.set(pathKey, true);
     }
     
     // Add a search property to track visibility
