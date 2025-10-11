@@ -113,7 +113,7 @@ export class WaveformRowHoverOverlayRenderObject {
                     highlightSignal, // Use the highlight signal instead of the original
                     row,
                     signal.source.renderHint === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots,
-                    zIndex + 1
+                    10
                 );
             }
         }
