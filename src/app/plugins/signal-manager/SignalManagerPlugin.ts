@@ -204,6 +204,44 @@ interface TreeNode {
     isExpanded: boolean;
 }
 
+function naturalCompare(a: string, b: string): number {
+    const regex = /(\d+)|(\D+)/g;
+    const aParts: (string | number)[] = [];
+    const bParts: (string | number)[] = [];
+    
+    let match;
+    while ((match = regex.exec(a)) !== null) {
+        aParts.push(isNaN(Number(match[0])) ? match[0] : Number(match[0]));
+    }
+    
+    regex.lastIndex = 0;
+    while ((match = regex.exec(b)) !== null) {
+        bParts.push(isNaN(Number(match[0])) ? match[0] : Number(match[0]));
+    }
+    
+    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        const aPart = aParts[i];
+        const bPart = bParts[i];
+        
+        if (aPart === undefined) return -1;
+        if (bPart === undefined) return 1;
+        
+        if (typeof aPart === 'number' && typeof bPart === 'number') {
+            if (aPart !== bPart) return aPart - bPart;
+        } else {
+            const aStr = String(aPart);
+            const bStr = String(bPart);
+            if (aStr !== bStr) return aStr.localeCompare(bStr);
+        }
+    }
+    
+    return 0;
+}
+
+function getSortedChildren(node: TreeNode): [string, TreeNode][] {
+    return Array.from(node.children.entries()).sort((a, b) => naturalCompare(a[0], b[0]));
+}
+
 function buildSignalTree(): TreeNode {
     const root: TreeNode = {
         name: 'root',
@@ -339,7 +377,7 @@ function buildDOMCache(): void {
 }
 
 function buildDOMCacheRecursive(node: TreeNode, depth: number): void {
-    for (const [_, childNode] of node.children) {
+    for (const [_, childNode] of getSortedChildren(node)) {
         const cacheKey = childNode.fullPath.join('|');
         const cachedElement = createDOMElement(childNode, depth);
         domCache.set(cacheKey, cachedElement);
@@ -369,7 +407,7 @@ function renderSignalTree(): void {
 }
 
 function syncCacheWithTree(node: TreeNode): void {
-    for (const [_, childNode] of node.children) {
+    for (const [_, childNode] of getSortedChildren(node)) {
         const cacheKey = childNode.fullPath.join('|');
         const cachedElement = domCache.get(cacheKey);
         
@@ -388,7 +426,7 @@ function syncCacheWithTree(node: TreeNode): void {
 }
 
 function addTreeNodesToContainer(node: TreeNode, container: HTMLElement, depth: number, showAll: boolean): void {
-    for (const [_, childNode] of node.children) {
+    for (const [_, childNode] of getSortedChildren(node)) {
         const cacheKey = childNode.fullPath.join('|');
         const cachedElement = domCache.get(cacheKey);
         
@@ -462,7 +500,7 @@ function clearAllHighlighting(): void {
 }
 
 function updateCachedElementsForSearch(node: TreeNode, searchTerm: string): void {
-    for (const [_, childNode] of node.children) {
+    for (const [_, childNode] of getSortedChildren(node)) {
         const cacheKey = childNode.fullPath.join('|');
         const cachedElement = domCache.get(cacheKey);
         
@@ -497,7 +535,7 @@ function updateCachedElementsForSearch(node: TreeNode, searchTerm: string): void
 }
 
 function addFilteredTreeNodes(node: TreeNode, container: HTMLElement, depth: number): void {
-    for (const [_, childNode] of node.children) {
+    for (const [_, childNode] of getSortedChildren(node)) {
         // Skip nodes that don't match search criteria
         if (!(childNode as any).searchVisible) {
             continue;
@@ -527,7 +565,7 @@ function markTreeNodesForSearch(node: TreeNode, searchTerm: string): boolean {
     
     // Check children recursively
     let hasMatchingChildren = false;
-    for (const [_, child] of node.children) {
+    for (const [_, child] of getSortedChildren(node)) {
         const childHasMatches = markTreeNodesForSearch(child, searchTerm);
         if (childHasMatches) {
             hasAnyMatches = true;
