@@ -23,6 +23,11 @@ export class VerticalSidebar {
     entries: SidebarEntry[];
     private panelContainer: HTMLDivElement;
     private iconBar: HTMLDivElement;
+    private resizeHandle: HTMLDivElement;
+    private sidebarWidth: number = 320;
+    private minWidth: number = 200;
+    private maxWidth: number = 2000;
+    private isResizing: boolean = false;
 
     constructor(root: HTMLElement, private onStateChange: () => void) {
         this.sidebar = document.createElement('div');
@@ -37,6 +42,11 @@ export class VerticalSidebar {
         this.entries.forEach(entry => this.panelContainer.appendChild(entry.panel));
         this.sidebar.appendChild(this.panelContainer);
 
+        // Resize handle
+        this.resizeHandle = document.createElement('div');
+        this.resizeHandle.className = 'sidebar-resize-handle';
+        this.sidebar.appendChild(this.resizeHandle);
+
         // Icon bar
         this.iconBar = document.createElement('div');
         this.iconBar.className = 'sidebar-icons';
@@ -46,6 +56,7 @@ export class VerticalSidebar {
         root.appendChild(this.sidebar);
 
         this.setupEventHandlers();
+        this.setupResizeHandlers();
     }
 
     addDynamicEntry(entry: import('@voltex-viewer/plugin-api').SidebarEntryArgs): SidebarEntry {
@@ -141,5 +152,41 @@ export class VerticalSidebar {
 
     getSidebarElement() {
         return this.sidebar;
+    }
+
+    private setupResizeHandlers(): void {
+        this.resizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
+            e.preventDefault();
+            this.isResizing = true;
+            document.body.style.cursor = 'ew-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e: MouseEvent) => {
+            if (!this.isResizing) return;
+            
+            const rect = this.sidebar.getBoundingClientRect();
+            const newWidth = rect.right - e.clientX;
+            
+            if (newWidth >= this.minWidth && newWidth <= this.maxWidth) {
+                this.sidebarWidth = newWidth;
+                this.updateSidebarWidth();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (this.isResizing) {
+                this.isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                this.onStateChange();
+            }
+        });
+    }
+
+    private updateSidebarWidth(): void {
+        this.sidebar.style.width = `${this.sidebarWidth}px`;
+        const panelWidth = this.sidebarWidth - 48;
+        this.panelContainer.style.width = `${panelWidth}px`;
     }
 }

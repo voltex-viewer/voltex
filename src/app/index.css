@@ -154,6 +154,23 @@ body {
     width: 48px;
 }
 
+.sidebar-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 4px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 3;
+    pointer-events: auto;
+    background: transparent;
+    transition: background 0.15s;
+}
+
+.vertical-sidebar:not(.expanded) .sidebar-resize-handle {
+    display: none;
+}
+
 .vertical-sidebar:not(.expanded) .sidebar-panel-container {
     width: 0;
     min-width: 0;
