@@ -57,6 +57,7 @@ export class GridRenderObject {
             gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
             
             gl.uniform2f(resolutionLocation, bounds.width, bounds.height);
+            gl.uniform2f(gl.getUniformLocation(program, 'u_offset'), 0, 0);
             gl.uniform4f(colorLocation, 0.267, 0.267, 0.267, 0.8);
             gl.uniform1i(dashedLocation, 1);
             gl.uniform1i(gl.getUniformLocation(program, 'u_horizontal'), 0);

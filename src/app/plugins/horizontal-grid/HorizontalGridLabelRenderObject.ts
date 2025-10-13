@@ -142,6 +142,7 @@ export class HorizontalGridLabelRenderObject {
             gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
             
             gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_bounds'), bounds.width, bounds.height);
+            gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_offset'), 0, 0);
             // Semi-transparent black background
             gl.uniform4f(gl.getUniformLocation(utils.grid, 'u_color'), 0.0, 0.0, 0.0, 0.7);
             gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_dashed'), 0);

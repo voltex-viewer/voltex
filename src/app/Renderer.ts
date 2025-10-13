@@ -163,10 +163,10 @@ export class Renderer {
                 }
                 // Clear capture for this button
                 this.mouseCaptureMap.delete(e.button);
-            } else {
-                // No capture, use normal hit-testing
-                this.dispatchMouseEvent('onMouseUp', mouseEvent);
             }
+            
+            // Always dispatch through normal hierarchy too, so other objects get mouseup
+            this.dispatchMouseEvent('onMouseUp', mouseEvent);
         });
         this.canvas.addEventListener('click', (e): void => {
             this.dispatchMouseEvent('onClick', this.createMouseEvent(e));

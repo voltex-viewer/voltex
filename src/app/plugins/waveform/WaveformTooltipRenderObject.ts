@@ -137,6 +137,7 @@ export class WaveformTooltipRenderObject {
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
         gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_bounds'), bounds.width, bounds.height);
+        gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_offset'), 0, 0);
         
         const rgba = hexToRgba(color);
         gl.uniform4f(gl.getUniformLocation(utils.grid, 'u_color'), rgba[0], rgba[1], rgba[2], rgba[3]);
@@ -190,6 +191,7 @@ export class WaveformTooltipRenderObject {
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
         gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_bounds'), bounds.width, bounds.height);
+        gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_offset'), 0, 0);
         gl.uniform4f(gl.getUniformLocation(utils.grid, 'u_color'), 0.0, 0.0, 0.0, 0.7); // Semi-transparent black
         gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_dashed'), 0);
         gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_horizontal'), 0);

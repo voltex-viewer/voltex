@@ -19,6 +19,8 @@ import mdfLoaderFunction from './mdfLoader/mdfLoaderPlugin';
 import mdfLoaderMetadata from './mdfLoader/plugin.json';
 import voltexFunction from './voltex/voltexPlugin';
 import voltexMetadata from './voltex/plugin.json';
+import CursorFunction from './cursor/CursorPlugin';
+import CursorMetadata from './cursor/plugin.json';
 
 const FpsPlugin: PluginModule = {
     plugin: FpsPluginFunction,
@@ -70,6 +72,11 @@ const voltexPlugin: PluginModule = {
     metadata: voltexMetadata,
 }
 
+const CursorPlugin: PluginModule = {
+    plugin: CursorFunction,
+    metadata: CursorMetadata,
+}
+
 export function getAvailablePlugins(): PluginModule[] {
     return [
         FpsPlugin,
@@ -82,5 +89,6 @@ export function getAvailablePlugins(): PluginModule[] {
         ProfilerPlugin,
         mdfLoaderPlugin,
         voltexPlugin,
+        CursorPlugin,
     ];
 }

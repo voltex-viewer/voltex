@@ -13,14 +13,16 @@ export class WebGLUtilsImpl {
         const lineVertexShader = this.createShader('vertex-shader', `
             attribute vec2 a_position;
             uniform vec2 u_bounds;
+            uniform vec2 u_offset;
             varying vec2 v_position;
             
             void main() {
-                vec2 zeroToOne = a_position / u_bounds;
+                vec2 offsetPosition = a_position + u_offset;
+                vec2 zeroToOne = offsetPosition / u_bounds;
                 vec2 zeroToTwo = zeroToOne * 2.0;
                 vec2 clipSpace = zeroToTwo - 1.0;
                 gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
-                v_position = a_position;
+                v_position = offsetPosition;
             }
         `);
 

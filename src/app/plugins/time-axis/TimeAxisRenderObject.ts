@@ -125,6 +125,7 @@ export class TimeAxisRenderObject {
                 gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
                 
                 gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_bounds'), bounds.width, bounds.height);
+                gl.uniform2f(gl.getUniformLocation(utils.grid, 'u_offset'), 0, 0);
                 gl.uniform4f(gl.getUniformLocation(utils.grid, 'u_color'), 0.267, 0.267, 0.267, 1.0);
                 gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_dashed'), 1);
                 gl.uniform1i(gl.getUniformLocation(utils.grid, 'u_horizontal'), 0);
