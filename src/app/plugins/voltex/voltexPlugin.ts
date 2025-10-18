@@ -14,6 +14,7 @@ export default (context: PluginContext): void => {
                 'voltex.zoom-out': Keybinding,
                 'voltex.pan-left': Keybinding,
                 'voltex.pan-right': Keybinding,
+                'voltex.fit-to-signal': Keybinding,
             })
         }), {
         keybindings: {
@@ -26,6 +27,7 @@ export default (context: PluginContext): void => {
             'voltex.zoom-out': 's',
             'voltex.pan-left': 'a',
             'voltex.pan-right': 'd',
+            'voltex.fit-to-signal': 'f',
         }
     });
 };

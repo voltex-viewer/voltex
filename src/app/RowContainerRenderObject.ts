@@ -382,6 +382,42 @@ export class RowContainerRenderObject {
                 this.startSmoothPan(initialVelocity);
             }
         });
+
+        this.commandManager.registerCommand('Voltex', {
+            id: 'voltex.fit-to-signal',
+            action: () => {
+                const selectedRowsArray = this.getSelectedRowsInOrder();
+                const rowsToCheck = selectedRowsArray.length > 0 ? selectedRowsArray : this.rows;
+                
+                let minTime = Infinity;
+                let maxTime = -Infinity;
+                
+                for (const row of rowsToCheck) {
+                    for (const signal of row.signals) {
+                        if (signal.time.length > 0) {
+                            minTime = Math.min(minTime, signal.time.min);
+                            maxTime = Math.max(maxTime, signal.time.max);
+                        }
+                    }
+                }
+                
+                if (minTime !== Infinity && maxTime !== -Infinity) {
+                    const timeRange = maxTime - minTime;
+                    const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
+                    
+                    if (timeRange > 0 && viewportWidth > 0) {
+                        // Set the zoom anchor to the center time we want to see
+                        // This will make the zoom animate while keeping centerTime at zoomAnchorX
+                        this.targetPxPerSecond = Math.max(this.minPxPerSecond, Math.min(this.maxPxPerSecond, viewportWidth / timeRange));
+                        this.zoomAnchorX = viewportWidth / 2;
+                        this.zoomAnchorTime = (minTime + maxTime) / 2;
+                        this.panVelocity = 0; // Stop any existing pan
+                        
+                        this.startUnifiedAnimation();
+                    }
+                }
+            }
+        });
     }
 
     // Helper method to convert global mouse coordinates to canvas-relative coordinates
