@@ -385,8 +385,7 @@ export default (context: PluginContext): void => {
                         sharedInstanceGeometryBuffer,
                         sharedBevelJoinGeometryBuffer,
                         instancingExt,
-                        waveformPrograms,
-                        99
+                        waveformPrograms
                     ));
             }
         }

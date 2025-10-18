@@ -36,7 +36,7 @@ export class WaveformRowHoverOverlayRenderObject {
         sharedBevelJoinGeometryBuffer: WebGLBuffer,
         instancingExt: ANGLE_instanced_arrays,
         waveformPrograms: WaveformShaders,
-        zIndex: number = 10
+        zIndex: number = 90
     ) {
         parent.addChild({
             zIndex: zIndex,
@@ -113,7 +113,7 @@ export class WaveformRowHoverOverlayRenderObject {
                     highlightSignal, // Use the highlight signal instead of the original
                     row,
                     signal.source.renderHint === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots,
-                    10
+                    95
                 );
             }
         }
@@ -151,6 +151,9 @@ export class WaveformRowHoverOverlayRenderObject {
             this._tooltipData = null;
             for (const buffer of this.highlightBuffers.values()) {
                 buffer.bufferLength = 0;
+            }
+            for (const signal of this.highlightSignals.values()) {
+                signal.updateData([], []);
             }
             return false;
         }
