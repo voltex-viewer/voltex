@@ -154,6 +154,28 @@ export default (context: PluginContext): void => {
         return { bufferOffset, signalIndex };
     };
 
+    const enumSimplifier: DownsampleFunction = (
+        sequence: Signal,
+        signalIndex: number,
+        seqLen: number
+    ) => {
+        let bufferOffset = 0;
+        let lastValue: number | undefined;
+
+        for (; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
+            const value = sequence.values.valueAt(signalIndex);
+            if (lastValue === undefined || value !== lastValue) {
+                const time = sequence.time.valueAt(signalIndex);
+                timeBuffer[bufferOffset] = time;
+                valueBuffer[bufferOffset] = value;
+                bufferOffset++;
+                lastValue = value;
+            }
+        }
+
+        return { bufferOffset, signalIndex };
+    };
+
     const simplifier: Record<typeof config.downsamplingMode, DownsampleFunction> = {
         off: rawSamples,
         aggressive: (sequence, signalIndex, seqLen) => gradientDownsampler(sequence, signalIndex, seqLen, 1),
@@ -211,7 +233,9 @@ export default (context: PluginContext): void => {
             }
             
             if (bufferData.signalIndex < seqLen) {
-                const downsampleFn = simplifier[config.downsamplingMode];
+                const downsampleFn = sequence.source.renderHint === RenderMode.Enum 
+                    ? enumSimplifier 
+                    : simplifier[config.downsamplingMode];
 
                 const { bufferOffset, signalIndex } = downsampleFn(sequence, bufferData.signalIndex, seqLen);
                 
