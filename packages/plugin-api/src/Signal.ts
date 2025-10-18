@@ -136,7 +136,7 @@ export class FunctionTimeSequence implements Sequence {
 export class FunctionValueSequence implements Sequence {
     constructor(
         private generator: (time: number) => number,
-        private time: FunctionTimeSequence,
+        private time: Sequence,
         private minVal: number,
         private maxVal: number
     ) {}
@@ -154,18 +154,17 @@ export class FunctionValueSequence implements Sequence {
     }
 
     valueAt(index: number): number {
-        const time = index / this.time.sampleRate;
-        return this.generator(time);
+        return this.generator(this.time.valueAt(index));
     }
 }
 
 export class FunctionSignal implements Signal {
     source: SignalSource;
     private _generator: (time: number) => number;
-    public readonly time: FunctionTimeSequence;
+    public readonly time: Sequence;
     public readonly values: FunctionValueSequence;
     
-    constructor(source: SignalSource, time: FunctionTimeSequence, generator: (time: number) => number, minValue: number, maxValue: number) {
+    constructor(source: SignalSource, time: Sequence, generator: (time: number) => number, minValue: number, maxValue: number) {
         this.source = source;
         this._generator = generator;
         this.time = time;

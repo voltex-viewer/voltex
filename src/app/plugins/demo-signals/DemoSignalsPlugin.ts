@@ -1,5 +1,13 @@
-import { PluginContext, RenderMode, SignalSource } from '@voltex-viewer/plugin-api';
-import { FunctionSignal, FunctionTimeSequence, InMemorySequence, SequenceSignal } from '@voltex-viewer/plugin-api';
+import { InMemorySequence, InMemorySignal, PluginContext, RenderMode, SignalSource } from '@voltex-viewer/plugin-api';
+import { FunctionSignal, FunctionTimeSequence, SequenceSignal } from '@voltex-viewer/plugin-api';
+
+function seededRandom(seed: number) {
+    let state = seed;
+    return () => {
+        state = (state * 1664525 + 1013904223) % 4294967296;
+        return state / 4294967296;
+    };
+}
 
 export default (context: PluginContext): void => {
     const freq = 1;
@@ -49,6 +57,27 @@ export default (context: PluginContext): void => {
             (t: number) => Math.sin(2 * Math.PI * freq * t),
             -1,
             1
+        ),
+        renderHint: RenderMode.Lines,
+    };
+    
+    const random = seededRandom(42);
+    const randomTime = new InMemorySequence();
+    // Random time has 100 points with a random gap (from 0-1 seconds) after each point
+    // Distribution favors values near 0 and 1 (U-shaped)
+    let currentTime = 0;
+    for (let i = 0; i < 100; i++) {
+        randomTime.push(currentTime);
+        const u = random();
+        const gap = u < 0.5 ? Math.sqrt(2 * u) / 2 : 1 - Math.sqrt(2 * (1 - u)) / 2;
+        currentTime += gap;
+    }
+
+    const randomPoints: SignalSource = {
+        name: ['Demo Signals', 'Random Points'],
+        signal: () => new InMemorySignal(
+            randomPoints,
+            Array.from({ length: randomTime.length }, (_, i) => [randomTime.valueAt(i), random() * 2 - 1] as [number, number])
         ),
         renderHint: RenderMode.Lines,
     };
@@ -106,7 +135,7 @@ export default (context: PluginContext): void => {
         renderHint: RenderMode.Enum,
     };
 
-    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, trafficLightSource];
+    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, randomPoints, trafficLightSource];
     
     context.signalSources.add(...sources);
     context.createRows(...sources.map(source => ({ channels: [source.signal()] })));
