@@ -48,8 +48,8 @@ export class RowContainerRenderObject {
     private readonly rowVerticalBorder = 1;
     private readonly resizeZoneWidth = 5;
     private readonly resizeZoneHeight = 5;
-    private readonly minPxPerSecond = 1e-9;
-    private readonly maxPxPerSecond = 1e12;
+    private readonly minPxPerSecond = 1e-5;  // ~1 year visible on a typical screen
+    private readonly maxPxPerSecond = 1e8;   // ~10 microseconds visible on a typical screen
     private readonly dragThreshold = 5; // pixels to move before starting drag
 
     private readonly renderObject: RenderObject;
