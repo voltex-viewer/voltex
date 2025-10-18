@@ -10,6 +10,8 @@ uniform float u_timeOffsetLow;
 uniform float u_pxPerSecond;
 
 varying float v_value;
+varying vec2 v_rectPosition;
+varying vec2 v_rectSize;
 
 void main() {
     vec2 pointA = vec2(pointATime, pointAValue);
@@ -40,6 +42,10 @@ void main() {
     // For enum mode, extend the line to cover the full viewport height
     // position.y ranges from -0.5 to 0.5, so scale it to full height
     vec2 point = screenPointA + xBasis * position.x + vec2(0.0, (position.y * u_bounds.y));
+    
+    // Pass rectangle dimensions and position for border detection
+    v_rectSize = vec2(length(xBasis), u_bounds.y);
+    v_rectPosition = vec2(position.x * v_rectSize.x, (position.y + 0.5) * v_rectSize.y);
     
     // Convert to clip space
     gl_Position = vec4((point / u_bounds * 2.0 - 1.0) * vec2(1, -1), 0, 1);
