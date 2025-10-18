@@ -1,4 +1,4 @@
-import { type PluginContext, type SignalSource, type SidebarEntry } from '@voltex-viewer/plugin-api'
+import { type PluginContext, type SignalSource, type SidebarEntry, RenderMode } from '@voltex-viewer/plugin-api'
 
 let context: PluginContext | undefined;
 let sidebarContainer: HTMLElement | undefined;
@@ -192,6 +192,13 @@ function renderContent(): HTMLElement {
         const searchTerm = (e.target as HTMLInputElement).value;
         lastSearchTerm = searchTerm;
         filterSignals(searchTerm);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            plotAllFilteredSignals();
+        }
     });
 
     return container;
@@ -654,6 +661,52 @@ function highlightSearchMatch(text: string, searchTerm: string): string {
         
         return text;
     }
+}
+
+function collectFilteredSignals(node: TreeNode): SignalSource[] {
+    const signals: SignalSource[] = [];
+    
+    if ((node as any).searchVisible) {
+        if (node.signalSource) {
+            signals.push(node.signalSource);
+        }
+        
+        for (const [_, childNode] of getSortedChildren(node)) {
+            signals.push(...collectFilteredSignals(childNode));
+        }
+    }
+    
+    return signals;
+}
+
+function plotAllFilteredSignals(): void {
+    if (!context) return;
+    
+    const tree = getSignalTree();
+    const filteredSignals = lastSearchTerm.trim() ? collectFilteredSignals(tree) : [];
+    
+    if (filteredSignals.length === 0) return;
+    
+    const lineSignals: SignalSource[] = [];
+    const otherSignals: SignalSource[] = [];
+    
+    for (const signalSource of filteredSignals) {
+        if ([RenderMode.Lines, RenderMode.Discrete].includes(signalSource.renderHint)) {
+            lineSignals.push(signalSource);
+        } else {
+            otherSignals.push(signalSource);
+        }
+    }
+
+    for (const otherSignal of otherSignals) {
+        context.createRows({ channels: [otherSignal.signal()] });
+    }
+    
+    if (lineSignals.length > 0) {
+        context.createRows({ channels: lineSignals.map(s => s.signal()) });
+    }
+    
+    context.requestRender();
 }
 
 function addSignalToWaveform(signalSource: SignalSource): void {
