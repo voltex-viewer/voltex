@@ -90,21 +90,11 @@ export class WaveformRenderObject {
         } else if (renderMode === RenderMode.Dots) {
             this.renderSignal(gl, this.waveformPrograms.dot, dotsBindUniforms);
         } else if (renderMode === RenderMode.Enum) {
-            this.renderEnumSignal(gl, this.waveformPrograms.enumLine, enumLinesBindUniforms, context, bounds);
+            this.renderInstancedLines(gl, this.waveformPrograms.enumLine, enumLinesBindUniforms);
+        } else if (renderMode === RenderMode.Text) {
+            this.renderEnumText(context, bounds);
         }
         return false;
-    }
-    
-    private renderEnumSignal(
-        gl: WebGLRenderingContext,
-        program: WebGLProgram,
-        bindUniforms: (program: WebGLProgram) => void,
-        context: RenderContext,
-        bounds: RenderBounds
-    ): void {
-        // Use custom instanced line rendering for enum signals to handle pairs correctly
-        this.renderInstancedLines(gl, program, bindUniforms);
-        this.renderEnumText(context, bounds);
     }
 
     private renderEnumText(

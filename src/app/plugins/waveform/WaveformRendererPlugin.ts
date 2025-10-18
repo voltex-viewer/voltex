@@ -282,19 +282,38 @@ export default (context: PluginContext): void => {
                 
                 rowSignals.push(channel);
                 
+                const buffer = buffers.get(channel)!;
+                const color = context.signalMetadata.getColor(channel);
                 new WaveformRenderObject(
                     row.mainArea,
                     config,
-                    buffers.get(channel)!,
+                    buffer,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     instancingExt,
-                    context.signalMetadata.getColor(channel),
+                    color,
                     waveformPrograms,
                     channel,
                     row,
                     channel.source.renderHint,
+                    0,
                 );
+                if (channel.source.renderHint === RenderMode.Enum) {
+                    new WaveformRenderObject(
+                        row.mainArea,
+                        config,
+                        buffer,
+                        sharedInstanceGeometryBuffer,
+                        sharedBevelJoinGeometryBuffer,
+                        instancingExt,
+                        color,
+                        waveformPrograms,
+                        channel,
+                        row,
+                        RenderMode.Text,
+                        100,
+                    );
+                }
                 
                 // If channel has Lines render hint, create dot overlay
                 if ([RenderMode.Lines, RenderMode.Discrete].includes(channel.source.renderHint)) {

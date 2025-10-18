@@ -57,6 +57,7 @@ export enum RenderMode {
     Discrete = 'discrete',
     Dots = 'dots',
     Enum = 'enum',
+    Text = 'text',
 }
 
 export interface MeasureInfo {
