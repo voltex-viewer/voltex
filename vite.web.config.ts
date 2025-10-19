@@ -1,5 +1,14 @@
 import { defineConfig } from 'vite';
 import path from 'path';
+import { execSync } from 'child_process';
+
+function getGitCommitHash(): string {
+  try {
+    return execSync('git rev-parse HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
 
 // https://vitejs.dev/config
 export default defineConfig({
@@ -22,6 +31,7 @@ export default defineConfig({
     __VUE_PROD_DEVTOOLS__: false,
     // Define environment as browser for web builds
     __IS_WEB_BUILD__: true,
+    __GIT_COMMIT_HASH__: JSON.stringify(getGitCommitHash()),
   },
   server: {
     port: 3000,

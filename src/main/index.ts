@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron';
 import path from 'path';
 import started from 'electron-squirrel-startup';
 
@@ -26,6 +26,10 @@ ipcMain.handle('open-file-dialog', async () => {
         return filePaths[0];
     }
     return null;
+});
+
+ipcMain.handle('open-external-url', async (_event, url: string) => {
+    await shell.openExternal(url);
 });
 
 ipcMain.handle('quit-app', () => {

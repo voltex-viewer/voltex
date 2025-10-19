@@ -160,6 +160,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     }
                 ]
+            },
+            {
+                label: 'Help',
+                items: [
+                    {
+                        label: 'View Commit on GitHub',
+                        action: () => {
+                            const commitHash = __GIT_COMMIT_HASH__;
+                            if (commitHash && commitHash !== 'unknown') {
+                                const url = `https://github.com/voltex-viewer/voltex/commit/${commitHash}`;
+                                if (window.waveformApi) {
+                                    window.waveformApi.openExternalUrl(url);
+                                } else {
+                                    window.open(url, '_blank');
+                                }
+                            }
+                        }
+                    }
+                ]
             }
         ]),
         document.body.firstChild);
