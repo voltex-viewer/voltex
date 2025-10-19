@@ -70,7 +70,7 @@ export class Renderer {
         // Create row container and add it to root
         const configManager = new PluginConfigManager();
         const commandManager = new CommandManager(configManager);
-        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, this.canvas, commandManager);
+        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, commandManager);
         
         this.pluginManager = new PluginManager(
             this.state,

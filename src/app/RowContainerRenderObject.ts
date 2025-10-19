@@ -12,6 +12,11 @@ type ResizeState =
     | { type: 'dragging-rows'; draggedRows: RowImpl[]; startY: number; offsetY: number; offsetX: number; insertIndex: number }
     | { type: 'potential-row-drag'; row: RowImpl; startX: number; startY: number; event: MouseEvent };
 
+interface ViewTransform {
+    time: number;
+    pxPerSecond: number;
+}
+
 export class RowContainerRenderObject {
     private rows: RowImpl[] = [];
     private changeCallbacks: RowChangedCallback[] = [];
@@ -27,17 +32,12 @@ export class RowContainerRenderObject {
 
     // Animation frame for momentum scrolling and zooming
     private animationFrame: number | null = null;
-    private readonly panFriction = 0.7; // friction per frame for panning
-    private readonly zoomFriction = 0.5; // friction per frame for zooming
-    private readonly minVelocity = 0.1; // px/frame threshold to stop
-    private readonly panAmount = 0.4; // fraction of viewport width to pan on command
+    private animationLastTime: number = 0;
+    private readonly friction = 0.7;
+    private readonly panAmount = 0.4;
     
-    // Pan animation state
-    private panVelocity: number = 0;
-    
-    // Zoom animation state
-    private targetPxPerSecond: number | null = null;
-    private zoomAnchorX: number | null = null;
+    // Animation state - viewport transform
+    private targetTransform: ViewTransform;
     private zoomAnchorTime: number | null = null;
     
     // Constants
@@ -58,11 +58,13 @@ export class RowContainerRenderObject {
         parent: RenderObject,
         private state: WaveformState,
         private requestRender: () => void,
-        private canvas: HTMLCanvasElement,
         private commandManager: CommandManager,
     ) {
+        // Initialize targetTransform to current state
+        this.targetTransform = this.getCurrentTransform();
+        
         this.renderObject = parent.addChild({
-            render: (context: RenderContext, bounds: RenderBounds): boolean => {
+            render: (_context: RenderContext, _bounds: RenderBounds): boolean => {
                 this.rows.forEach(row => row.calculateOptimalScaleAndOffset());
                 return false;
             }
@@ -96,18 +98,14 @@ export class RowContainerRenderObject {
                     event.stopPropagation(); // Stop propagation to prevent row handlers from interfering
                     return { captureMouse: true, preventDefault: true };
                 } else {
-                    // Don't start panning if clicking in the label area
-                    if (event.clientX < this.labelWidth) return {};
-                    
-                    // Start drag-to-scroll
                     const mouseXInViewport = event.clientX - this.labelWidth;
-                    const timeAtCursor = (this.state.offset + mouseXInViewport) / this.state.pxPerSecond;
+                    if (mouseXInViewport < 0) return {};
                     
                     this.resizeState = {
                         type: 'time-offset',
                         startX: event.clientX,
-                        startTimeAtCursor: timeAtCursor,
-                        lastX: event.clientX,
+                        startTimeAtCursor: (this.state.offset + mouseXInViewport) / this.state.pxPerSecond,
+                        lastX: mouseXInViewport,
                         lastTime: performance.now(),
                         velocity: 0
                     };
@@ -147,18 +145,23 @@ export class RowContainerRenderObject {
                     }
                 } else if (this.resizeState.type === 'time-offset') {
                     const now = performance.now();
+                    const mouseXInViewport = event.clientX - this.labelWidth;
                     
-                    // Calculate new offset based on constant time at cursor
-                    const currentMouseXInViewport = event.clientX - this.labelWidth;
-                    this.state.offset = this.resizeState.startTimeAtCursor * this.state.pxPerSecond - currentMouseXInViewport;
+                    this.state.offset = this.resizeState.startTimeAtCursor * this.state.pxPerSecond - mouseXInViewport;
+                    this.targetTransform = {
+                        time: this.resizeState.startTimeAtCursor - mouseXInViewport / this.targetTransform.pxPerSecond,
+                        pxPerSecond: this.targetTransform.pxPerSecond
+                    };
+                    
+                    if (this.zoomAnchorTime !== null) {
+                        this.zoomAnchorTime = this.resizeState.startTimeAtCursor;
+                    }
 
-                    const velocity = (event.clientX - this.resizeState.lastX) / (now - this.resizeState.lastTime + 0.0001);
-                    
                     this.resizeState = {
                         ...this.resizeState,
-                        lastX: event.clientX,
+                        lastX: mouseXInViewport,
                         lastTime: now,
-                        velocity: velocity
+                        velocity: (mouseXInViewport - this.resizeState.lastX) / (now - this.resizeState.lastTime + 0.0001)
                     };
                     
                     this.requestRender();
@@ -229,13 +232,10 @@ export class RowContainerRenderObject {
                     this.resizeState = { type: 'none' };
                 }
                 else if (this.resizeState.type === 'time-offset') {
-                    // Set pan velocity for momentum scrolling
                     const pxPerFrame = this.resizeState.velocity * 16.67;
-                    if (Math.abs(pxPerFrame) > this.minVelocity) {
-                        this.panVelocity = -pxPerFrame;
-                        this.startUnifiedAnimation();
+                    if (Math.abs(pxPerFrame) > 0.1) {
+                        this.startSmoothPan(-pxPerFrame);
                     }
-                    
                     this.resizeState = { type: 'none' };
                 }
                 else if (this.resizeState.type === 'dragging-rows') {
@@ -263,7 +263,7 @@ export class RowContainerRenderObject {
                 // Handle vertical scrolling (zooming)
                 if (Math.abs(event.deltaY) > 0) {
                     const zoomFactor = Math.pow(1.25, Math.abs(event.deltaY) / 50);
-                    const currentTarget = this.targetPxPerSecond ?? this.state.pxPerSecond;
+                    const currentTarget = this.targetTransform.pxPerSecond;
                     const newTarget = event.deltaY < 0
                         ? Math.min(this.maxPxPerSecond, currentTarget * zoomFactor)
                         : Math.max(this.minPxPerSecond, currentTarget / zoomFactor);
@@ -350,36 +350,38 @@ export class RowContainerRenderObject {
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.zoom-in',
             action: () => {
-                const targetPxPerSecond = Math.min(this.maxPxPerSecond, this.state.pxPerSecond * 2);
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                this.startSmoothZoom(targetPxPerSecond, viewportWidth / 2);
+                const anchorX = this.resizeState.type === 'time-offset' 
+                    ? this.resizeState.lastX : viewportWidth / 2;
+                this.startSmoothZoom(Math.min(this.maxPxPerSecond, this.state.pxPerSecond * 2), anchorX);
             }
         });
 
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.zoom-out',
             action: () => {
-                const targetPxPerSecond = Math.max(this.minPxPerSecond, this.state.pxPerSecond / 2);
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                this.startSmoothZoom(targetPxPerSecond, viewportWidth / 2);
+                const anchorX = this.resizeState.type === 'time-offset' 
+                    ? this.resizeState.lastX : viewportWidth / 2;
+                this.startSmoothZoom(Math.max(this.minPxPerSecond, this.state.pxPerSecond / 2), anchorX);
             }
         });
 
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-left',
             action: () => {
+                if (this.resizeState.type === 'time-offset') return;
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                const initialVelocity = -viewportWidth * this.panAmount * (1 - this.panFriction);
-                this.startSmoothPan(initialVelocity);
+                this.startSmoothPan(-viewportWidth * this.panAmount * (1 - this.friction));
             }
         });
 
         this.commandManager.registerCommand('Voltex', {
             id: 'voltex.pan-right',
             action: () => {
+                if (this.resizeState.type === 'time-offset') return;
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                const initialVelocity = viewportWidth * this.panAmount * (1 - this.panFriction);
-                this.startSmoothPan(initialVelocity);
+                this.startSmoothPan(viewportWidth * this.panAmount * (1 - this.friction));
             }
         });
 
@@ -405,28 +407,23 @@ export class RowContainerRenderObject {
                     const timeRange = maxTime - minTime;
                     const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
                     
-                    if (timeRange > 0 && viewportWidth > 0) {
-                        // Set the zoom anchor to the center time we want to see
-                        // This will make the zoom animate while keeping centerTime at zoomAnchorX
-                        this.targetPxPerSecond = Math.max(this.minPxPerSecond, Math.min(this.maxPxPerSecond, viewportWidth / timeRange));
-                        this.zoomAnchorX = viewportWidth / 2;
-                        this.zoomAnchorTime = (minTime + maxTime) / 2;
-                        this.panVelocity = 0; // Stop any existing pan
+                    if (viewportWidth > 0) {
+                        console.log('Fitting to signal range:', minTime, maxTime);
+                        const centerTime = (minTime + maxTime) / 2;
+                        const targetPxPerSecond = timeRange > 0 
+                            ? Math.max(this.minPxPerSecond, Math.min(this.maxPxPerSecond, viewportWidth / timeRange))
+                            : this.state.pxPerSecond;
                         
+                        this.targetTransform = {
+                            time: centerTime - (viewportWidth / 2) / targetPxPerSecond,
+                            pxPerSecond: targetPxPerSecond
+                        };
+                        this.zoomAnchorTime = null;
                         this.startUnifiedAnimation();
                     }
                 }
             }
         });
-    }
-
-    // Helper method to convert global mouse coordinates to canvas-relative coordinates
-    private convertGlobalMouseToCanvasCoords(globalX: number, globalY: number): { x: number; y: number } {
-        const canvasRect = this.canvas.getBoundingClientRect();
-        return {
-            x: globalX - canvasRect.left,
-            y: globalY - canvasRect.top
-        };
     }
 
     private getSelectedRowsInOrder(): RowImpl[] {
@@ -602,84 +599,94 @@ export class RowContainerRenderObject {
         }
     }
 
-    private startSmoothPan(panVelocity: number): void {
-        // Set pan velocity
-        this.panVelocity = panVelocity;
+    private startSmoothPan(velocity: number): void {
+        const stoppingDistanceTime = velocity / (1 - this.friction) / this.targetTransform.pxPerSecond;
         
-        // Start unified animation loop if not already running
+        this.targetTransform = {
+            time: this.targetTransform.time + stoppingDistanceTime,
+            pxPerSecond: this.targetTransform.pxPerSecond
+        };
+        
+        if (this.zoomAnchorTime !== null) {
+            this.zoomAnchorTime += stoppingDistanceTime;
+        } else {
+            this.zoomAnchorTime = null;
+        }
+        
         this.startUnifiedAnimation();
     }
 
     private startSmoothZoom(targetPxPerSecond: number, anchorX: number): void {
-        // Update target zoom level
-        this.targetPxPerSecond = targetPxPerSecond;
-        
-        // If anchor changed significantly or this is first zoom, recalculate anchor time
-        if (this.zoomAnchorX === null || Math.abs(this.zoomAnchorX - anchorX) > 10) {
-            this.zoomAnchorX = anchorX;
-            this.zoomAnchorTime = (this.state.offset + anchorX) / this.state.pxPerSecond;
-        }
-        
-        // Start unified animation loop if not already running
+        this.zoomAnchorTime = this.targetTransform.time + anchorX / this.targetTransform.pxPerSecond;
+        this.targetTransform = {
+            time: this.zoomAnchorTime - anchorX / targetPxPerSecond,
+            pxPerSecond: targetPxPerSecond
+        };
         this.startUnifiedAnimation();
     }
 
+    private getCurrentTransform(): ViewTransform {
+        return {
+            time: this.state.offset / this.state.pxPerSecond,
+            pxPerSecond: this.state.pxPerSecond
+        };
+    }
+
+    private updateStateFromTransform(transform: ViewTransform): void {
+        this.state.pxPerSecond = transform.pxPerSecond;
+        this.state.offset = transform.time * transform.pxPerSecond;
+    }
+
     private startUnifiedAnimation(): void {
-        // Only start if not already running
         if (this.animationFrame !== null) return;
         
-        const animate = () => {
-            let needsAnotherFrame = false;
+        this.animationLastTime = performance.now();
+        const animate = (currentTime: number) => {
+            const deltaTime = currentTime - this.animationLastTime;
+            this.animationLastTime = currentTime;
             
-            // Handle panning
-            if (Math.abs(this.panVelocity) > this.minVelocity) {
-                this.state.offset += this.panVelocity;
-                this.panVelocity *= this.panFriction;
-                
-                // If we're also zooming, update the anchor time to account for the pan
-                if (this.zoomAnchorTime !== null && this.zoomAnchorX !== null) {
-                    this.zoomAnchorTime = (this.state.offset + this.zoomAnchorX) / this.state.pxPerSecond;
-                }
-                
-                needsAnotherFrame = true;
-            } else {
-                this.panVelocity = 0;
-            }
+            const current = this.getCurrentTransform();
+            const step = Math.min(1, 1 - Math.pow(this.friction, deltaTime / 16.67));
+            const diffZoom = this.targetTransform.pxPerSecond - current.pxPerSecond;
+            const diffTime = this.targetTransform.time - current.time;
             
-            // Handle zooming
-            if (this.targetPxPerSecond !== null && this.zoomAnchorTime !== null && this.zoomAnchorX !== null) {
-                const diff = this.targetPxPerSecond - this.state.pxPerSecond;
-                const relDiff = Math.abs(diff) / this.state.pxPerSecond;
+            // Check if we're close enough to stop animating
+            const zoomClose = Math.abs(diffZoom / current.pxPerSecond) < 0.001;
+            const timeClose = Math.abs(diffTime * current.pxPerSecond) < 0.5;
+            
+            if (this.zoomAnchorTime !== null) {
+                const currentAnchorScreenPos = (this.zoomAnchorTime - current.time) * current.pxPerSecond;
+                const targetAnchorScreenPos = (this.zoomAnchorTime - this.targetTransform.time) * this.targetTransform.pxPerSecond;
+                const anchorClose = Math.abs(currentAnchorScreenPos - targetAnchorScreenPos) < 0.5;
                 
-                // Speed is proportional to distance from target
-                const step = Math.min(1, 1 + relDiff * 2) * (1 - this.zoomFriction);
-                const newPxPerSecond = this.state.pxPerSecond + diff * step;
-                
-                // Detect overshoot or close enough to target
-                const wouldOvershoot = (diff > 0) ? newPxPerSecond > this.targetPxPerSecond : newPxPerSecond < this.targetPxPerSecond;
-                
-                if (wouldOvershoot || relDiff <= 0.001) {
-                    // Snap to final value
-                    this.state.pxPerSecond = this.targetPxPerSecond;
-                    this.state.offset = this.zoomAnchorTime * this.state.pxPerSecond - this.zoomAnchorX;
-                    this.targetPxPerSecond = null;
-                    this.zoomAnchorX = null;
+                if (anchorClose && zoomClose) {
+                    this.updateStateFromTransform(this.targetTransform);
                     this.zoomAnchorTime = null;
+                    this.requestRender();
+                    this.animationFrame = null;
                 } else {
-                    this.state.pxPerSecond = newPxPerSecond;
-                    this.state.offset = this.zoomAnchorTime * this.state.pxPerSecond - this.zoomAnchorX;
-                    needsAnotherFrame = true;
+                    const newPxPerSecond = current.pxPerSecond + diffZoom * step;
+                    const newAnchorScreenPos = currentAnchorScreenPos + (targetAnchorScreenPos - currentAnchorScreenPos) * step;
+                    this.updateStateFromTransform({
+                        time: this.zoomAnchorTime - newAnchorScreenPos / newPxPerSecond,
+                        pxPerSecond: newPxPerSecond
+                    });
+                }
+            } else {
+                if (timeClose && zoomClose) {
+                    this.updateStateFromTransform(this.targetTransform);
+                    this.requestRender();
+                    this.animationFrame = null;
+                } else {   
+                    this.updateStateFromTransform({
+                        time: current.time + diffTime * step,
+                        pxPerSecond: current.pxPerSecond + diffZoom * step
+                    });
                 }
             }
             
             this.requestRender();
-            
-            // Continue animation if needed
-            if (needsAnotherFrame) {
-                this.animationFrame = requestAnimationFrame(animate);
-            } else {
-                this.animationFrame = null;
-            }
+            this.animationFrame = requestAnimationFrame(animate);
         };
         
         this.animationFrame = requestAnimationFrame(animate);
