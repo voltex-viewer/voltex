@@ -131,10 +131,6 @@ export default (context: PluginContext): void => {
                 }
             }
             
-            // Add final point
-            timeSeq.push(currentTime);
-            valueSeq.push(0);
-            
             const signal = new SequenceSignal(trafficLightSource, timeSeq, valueSeq);
             (signal.values as any).textValues = [
                 { text: 'stop', value: 0 },
