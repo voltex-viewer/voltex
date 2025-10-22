@@ -61,6 +61,18 @@ export default (context: PluginContext): void => {
         renderHint: RenderMode.Lines,
     };
     
+    const flatSignalSource: SignalSource = {
+        name: ['Demo Signals', 'Flat Signal'],
+        signal: () => new FunctionSignal(
+            flatSignalSource,
+            time,
+            (t: number) => 0,
+            0,
+            0
+        ),
+        renderHint: RenderMode.Lines,
+    };
+    
     const random = seededRandom(42);
     const randomTime = new InMemorySequence();
     // Random time has 100 points with a random gap (from 0-1 seconds) after each point
@@ -135,7 +147,7 @@ export default (context: PluginContext): void => {
         renderHint: RenderMode.Enum,
     };
 
-    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, randomPoints, trafficLightSource];
+    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, flatSignalSource, randomPoints, trafficLightSource];
     
     context.signalSources.add(...sources);
     context.createRows(...sources.map(source => ({ channels: [source.signal()] })));
