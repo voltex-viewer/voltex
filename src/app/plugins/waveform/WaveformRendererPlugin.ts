@@ -149,6 +149,7 @@ export default (context: PluginContext): void => {
                 timeBuffer[bufferOffset] = time;
                 valueBuffer[bufferOffset] = value;
             }
+            bufferOffset++;
         }
 
         return { bufferOffset, signalIndex };
@@ -170,6 +171,16 @@ export default (context: PluginContext): void => {
                 valueBuffer[bufferOffset] = value;
                 bufferOffset++;
                 lastValue = value;
+            }
+        }
+
+        if (signalIndex === seqLen && bufferOffset < maxPoints && bufferOffset > 0) {
+            const lastTime = sequence.time.valueAt(seqLen - 1);
+            const lastEmittedTime = timeBuffer[bufferOffset - 1];
+            if (lastTime !== lastEmittedTime) {
+                timeBuffer[bufferOffset] = lastTime;
+                valueBuffer[bufferOffset] = sequence.values.valueAt(seqLen - 1);
+                bufferOffset++;
             }
         }
 
