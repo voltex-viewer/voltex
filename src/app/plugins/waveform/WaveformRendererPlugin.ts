@@ -149,7 +149,6 @@ export default (context: PluginContext): void => {
                 timeBuffer[bufferOffset] = time;
                 valueBuffer[bufferOffset] = value;
             }
-            bufferOffset++;
         }
 
         return { bufferOffset, signalIndex };
