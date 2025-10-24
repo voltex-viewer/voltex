@@ -4,6 +4,7 @@ import { WaveformRenderObject } from './WaveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';
 import { WaveformTooltipRenderObject } from './WaveformTooltipRenderObject';
 import { WaveformShaders } from './WaveformShaders';
+import { createGradientDownsampler } from './gradientDownsampler';
 
 export interface BufferData {
     timeBuffer: WebGLBuffer;
@@ -109,50 +110,7 @@ export default (context: PluginContext): void => {
         return { bufferOffset, signalIndex };
     };
 
-    function gradientDownsampler(
-        sequence: Signal,
-        signalIndex: number,
-        seqLen: number,
-        gradientThreshold: number
-    ) {
-        let lastTime = sequence.time.valueAt(signalIndex);
-        let lastValue = sequence.values.valueAt(signalIndex);
-        timeBuffer[0] = lastTime;
-        valueBuffer[0] = lastValue;
-        signalIndex++;
-
-        let lastGradient = Infinity;
-        let bufferOffset = 0;
-
-        for (; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
-            const time = sequence.time.valueAt(signalIndex);
-            const value = sequence.values.valueAt(signalIndex);
-            let gradient = (value - lastValue) / (time - lastTime);
-            if (Math.abs(gradient - lastGradient) > gradientThreshold) {
-                bufferOffset++;
-                timeBuffer[bufferOffset] = time;
-                valueBuffer[bufferOffset] = value;
-                lastGradient = gradient;
-            } else {
-                timeBuffer[bufferOffset] = time;
-                valueBuffer[bufferOffset] = value;
-            }
-            lastTime = time;
-            lastValue = value;
-        }
-
-        if (signalIndex === seqLen && bufferOffset < maxPoints) {
-            const time = sequence.time.valueAt(seqLen - 1);
-            const value = sequence.values.valueAt(seqLen - 1);
-            if (timeBuffer[bufferOffset] !== time || valueBuffer[bufferOffset] !== value) {
-                bufferOffset++;
-                timeBuffer[bufferOffset] = time;
-                valueBuffer[bufferOffset] = value;
-            }
-        }
-
-        return { bufferOffset, signalIndex };
-    };
+    const gradientDownsampler = createGradientDownsampler(maxPoints, timeBuffer, valueBuffer);
 
     const enumSimplifier: DownsampleFunction = (
         sequence: Signal,
