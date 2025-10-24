@@ -1,10 +1,10 @@
 import { InMemorySequence, SequenceSignal, SignalSource, PluginContext, RenderMode, Signal, Sequence } from '@voltex-viewer/plugin-api';
 
 class CsvSource implements SignalSource {
-    constructor(public readonly name: string[], private _signal: Signal) {}
+    constructor(public readonly name: string[], private _signal: Signal, private textValueCount: number) {}
 
     get renderHint(): RenderMode {
-        return RenderMode.Lines;
+        return this.textValueCount >= 2 ? RenderMode.Enum : RenderMode.Lines;
     }
 
     signal(): Signal {
@@ -35,7 +35,9 @@ export default (context: PluginContext): void => {
             
             const signalSequences = signalHeaders.map(() => ({
                 time: new InMemorySequence(),
-                values: new InMemorySequence()
+                numericValues: [] as number[],
+                textValues: [] as (number | string)[],
+                allNumericValues: new Set<number>()
             }));
 
             for (let i = 1; i < lines.length; i++) {
@@ -52,10 +54,16 @@ export default (context: PluginContext): void => {
                 for (let j = 0; j < signalHeaders.length; j++) {
                     const valueStr = values[j + 1].trim();
                     if (valueStr !== '') {
-                        const value = parseFloat(valueStr);
-                        if (!isNaN(value)) {
+                        const numValue = parseFloat(valueStr);
+                        if (!isNaN(numValue)) {
                             signalSequences[j].time.push(timestamp);
-                            signalSequences[j].values.push(value);
+                            signalSequences[j].numericValues.push(numValue);
+                            signalSequences[j].textValues.push(numValue);
+                            signalSequences[j].allNumericValues.add(numValue);
+                        } else {
+                            signalSequences[j].time.push(timestamp);
+                            signalSequences[j].numericValues.push(0);
+                            signalSequences[j].textValues.push(valueStr);
                         }
                     }
                 }
@@ -64,14 +72,47 @@ export default (context: PluginContext): void => {
             const sources: SignalSource[] = [];
             for (let i = 0; i < signalHeaders.length; i++) {
                 const name = [file.name, signalHeaders[i]];
-                const signal = new SequenceSignal(
-                    null as any,
-                    signalSequences[i].time,
-                    signalSequences[i].values
-                );
-                const source = new CsvSource(name, signal);
-                (signal as any).source = source;
-                sources.push(source);
+                const seq = signalSequences[i];
+                
+                const hasTextValues = seq.textValues.some(v => typeof v === 'string');
+                
+                if (hasTextValues) {
+                    const maxNumeric = seq.allNumericValues.size > 0 ? Math.max(...seq.allNumericValues) : -1;
+                    let nextCode = Math.floor(maxNumeric) + 1;
+                    const textToCode = new Map<string, number>();
+                    const codeToText = new Map<number, string>();
+                    
+                    for (const value of seq.textValues) {
+                        if (typeof value === 'string' && !textToCode.has(value)) {
+                            while (seq.allNumericValues.has(nextCode)) {
+                                nextCode++;
+                            }
+                            textToCode.set(value, nextCode);
+                            codeToText.set(nextCode, value);
+                            nextCode++;
+                        }
+                    }
+                    
+                    const valuesSeq = new InMemorySequence((value: number) => codeToText.get(value) ?? value);
+                    for (const value of seq.textValues) {
+                        const numValue = typeof value === 'string' ? textToCode.get(value)! : value;
+                        valuesSeq.push(numValue);
+                    }
+                    
+                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq);
+                    const source = new CsvSource(name, signal, codeToText.size);
+                    (signal as any).source = source;
+                    sources.push(source);
+                } else {
+                    const valuesSeq = new InMemorySequence();
+                    for (const value of seq.numericValues) {
+                        valuesSeq.push(value);
+                    }
+                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq);
+                    const source = new CsvSource(name, signal, 0);
+                    (signal as any).source = source;
+                    sources.push(source);
+                }
             }
 
             console.log(`Loaded ${sources.length} signal sources from ${file.name} in ${(performance.now() - start).toFixed(1)} ms`);
@@ -119,7 +160,8 @@ export default (context: PluginContext): void => {
                         if (signalIndices[i] < signal.time.length) {
                             const signalTimestamp = signal.time.valueAt(signalIndices[i]);
                             if (signalTimestamp === timestamp) {
-                                value = signal.values.valueAt(signalIndices[i]).toString();
+                                const convertedValue = signal.values.convertedValueAt(signalIndices[i]);
+                                value = convertedValue.toString();
                                 signalIndices[i]++;
                             }
                         }
