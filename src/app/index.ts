@@ -103,7 +103,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 // Show file picker
                                 const fileHandles = await window.showOpenFilePicker({
                                     multiple: false,
-                                    excludeAcceptAllOption: true,
                                     types: renderer.pluginManager.getFileOpenTypes(),
                                 });
 
@@ -130,7 +129,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                             try {
                                 // Show file picker
                                 const fileHandle = await window.showSaveFilePicker({
-                                    excludeAcceptAllOption: true,
                                     types: renderer.pluginManager.getFileSaveTypes(),
                                 });
 

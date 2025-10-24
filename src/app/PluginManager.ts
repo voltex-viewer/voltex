@@ -440,12 +440,27 @@ export class PluginManager {
     }
 
     getFileOpenTypes(): FilePickerAcceptType[] {
-        return this.plugins.flatMap(plugin =>
+        const individualTypes = this.plugins.flatMap(plugin =>
             this.pluginData.get(plugin).fileExtensionHandlers.map(handler => ({
                 description: handler.description,
                 accept: { [handler.mimeType]: handler.extensions }
             }))
         );
+
+        if (individualTypes.length === 0) {
+            return [];
+        }
+
+        const allExtensions = individualTypes.flatMap(type => 
+            Object.values(type.accept).flat()
+        );
+
+        const allSupportedFiles: FilePickerAcceptType = {
+            description: 'All Supported Files',
+            accept: { '*/*': allExtensions }
+        };
+
+        return [allSupportedFiles, ...individualTypes];
     }
 
     async handleFileSave(name: string, file: FileSystemWritableFileStream): Promise<boolean> {
