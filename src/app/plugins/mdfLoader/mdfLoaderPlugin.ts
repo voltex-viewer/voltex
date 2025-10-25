@@ -38,7 +38,11 @@ async function parseData<T>(dataGroup: DataGroupBlock, reader: BufferedFileReade
         } else {
             throw new Error(`Unsupported record size: ${recordSize}`);
         }
-        return records.get(recordId);
+        const metadata = records.get(recordId);
+        if (typeof(metadata) === "undefined") {
+            throw new Error(`Unknown record ID: ${recordId}`);
+        }
+        return metadata;
     }
 
     for await (const dataBlock of await getDataBlocks(dataGroup, reader)) {
