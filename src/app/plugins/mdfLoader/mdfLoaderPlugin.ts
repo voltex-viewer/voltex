@@ -206,7 +206,7 @@ class DataGroupLoader {
             if (records.has(recordId)) {
                 throw new Error(`Duplicate record ID found: ${recordId}`);
             }
-            if (recordId >= (1 << (this.dataGroup.recordIdSize * 8))) {
+            if (recordId >= (1n << BigInt(this.dataGroup.recordIdSize * 8))) {
                 console.warn(`Record ID ${recordId} exceeds maximum value for ${this.dataGroup.recordIdSize * 8}-bit unsigned integer`);
             }
             const sequences = [];
