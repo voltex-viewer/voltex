@@ -131,46 +131,61 @@ export default (context: PluginContext): void => {
                 throw new Error('No signals to save');
             }
 
-            const allTimestamps = new Set<number>();
-            for (const signal of signals) {
-                for (let i = 0; i < signal.time.length; i++) {
-                    allTimestamps.add(signal.time.valueAt(i));
-                }
-            }
-
-            const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
-
-            const signalNames = signals.map(s => s.source.name.join('.'));
-            const header = ['timestamp', ...signalNames].join(',') + '\n';
+            const signalNames = signals.map(s => s.source.name.slice(1).join('.'));
+            const header = 'timestamp,' + signalNames.join(',') + '\n';
 
             const writer = file.getWriter();
             try {
-                const BUFFER_SIZE = 8192;
-                let buffer = header;
+                await writer.write(header);
 
-                const signalIndices = signals.map(() => 0);
+                const BUFFER_SIZE = 1024 * 1024;
+                let buffer = '';
 
-                for (const timestamp of sortedTimestamps) {
-                    const row = [timestamp.toString()];
-                    
-                    for (let i = 0; i < signals.length; i++) {
-                        const signal = signals[i];
-                        let value = '';
+                const signalData = signals.map(s => ({
+                    time: s.time,
+                    values: s.values,
+                    index: 0,
+                    length: s.time.length
+                }));
+
+                const rows: Map<number, string[][]> = new Map();
+                
+                for (let i = 0; i < signalData.length; i++) {
+                    const data = signalData[i];
+                    for (let j = 0; j < data.length; j++) {
+                        const timestamp = data.time.valueAt(j);
+                        const value = data.values.convertedValueAt ? 
+                            data.values.convertedValueAt(j) : 
+                            data.values.valueAt(j);
                         
-                        if (signalIndices[i] < signal.time.length) {
-                            const signalTimestamp = signal.time.valueAt(signalIndices[i]);
-                            if (signalTimestamp === timestamp) {
-                                const convertedValue = signal.values.convertedValueAt(signalIndices[i]);
-                                value = convertedValue.toString();
-                                signalIndices[i]++;
+                        if (!rows.has(timestamp)) {
+                            rows.set(timestamp, []);
+                        }
+                        const timestampRows = rows.get(timestamp)!;
+                        
+                        let targetRow = timestampRows.find(row => row[i + 1] === undefined);
+                        if (!targetRow) {
+                            targetRow = new Array(signals.length + 1);
+                            targetRow[0] = timestamp.toString();
+                            timestampRows.push(targetRow);
+                        }
+                        targetRow[i + 1] = value.toString();
+                    }
+                }
+
+                const sortedTimestamps = Array.from(rows.keys()).sort((a, b) => a - b);
+                
+                for (const timestamp of sortedTimestamps) {
+                    const timestampRows = rows.get(timestamp)!;
+                    for (const row of timestampRows) {
+                        for (let i = 1; i <= signals.length; i++) {
+                            if (row[i] === undefined) {
+                                row[i] = '';
                             }
                         }
-                        
-                        row.push(value);
+                        buffer += row.join(',') + '\n';
                     }
                     
-                    buffer += row.join(',') + '\n';
-
                     if (buffer.length >= BUFFER_SIZE) {
                         await writer.write(buffer);
                         buffer = '';
