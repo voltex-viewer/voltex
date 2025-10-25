@@ -80,13 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault();
         e.stopPropagation();
 
-        for (const file of Array.from(e.dataTransfer?.files || [])) {
-            const handled = await renderer.pluginManager.handleFileOpen(file);
-            
-            if (!handled) {
-                console.warn(`No plugin found to handle file: ${file.name}`);
-            }
-        }
+        await renderer.pluginManager.loadFiles(...Array.from(e.dataTransfer?.files || []))
     });
 
     // Create and insert menu bar first
@@ -105,14 +99,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     multiple: false,
                                     types: renderer.pluginManager.getFileOpenTypes(),
                                 });
-
-                                const file = await fileHandles[0].getFile();
                                 
-                                const handled = await renderer.pluginManager.handleFileOpen(file);
-                                
-                                if (!handled) {
-                                    throw Error(`No plugin found to handle file: ${file.name}`);
-                                }
+                                const files = await Promise.all(fileHandles.map(fh => fh.getFile()));
+                                await renderer.pluginManager.loadFiles(...files);
                             } catch (error) {
                                 if (error.name === 'AbortError') {
                                     // User cancelled the file picker

@@ -415,28 +415,40 @@ export class PluginManager {
         };
     }
 
-    async handleFileOpen(file: File): Promise<boolean> {
-        let fileExtension = file.name.split('.').pop()?.toLowerCase();
-        if (!fileExtension) {
-            return false;
-        }
-        fileExtension = `.${fileExtension}`;
+    async loadFiles(...files: File[]): Promise<void> {
+        const errors: string[] = [];
+        for (const file of files) {
+            let fileExtension = file.name.split('.').pop()?.toLowerCase();
+            if (!fileExtension) {
+                errors.push(`No extension for file: ${file.name}`);
+                continue;
+            }
+            fileExtension = `.${fileExtension}`;
 
-        let handled = false;
-        for (const plugin of this.plugins) {
-            for (const handler of this.pluginData.get(plugin).fileExtensionHandlers) {
-                if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
-                    try {
-                        await handler.handler(file);
-                        handled = true;
-                    } catch (error) {
-                        console.error(`Error handling file ${file.name} with plugin ${plugin.metadata.name}:`, error);
+            const fileErrors: string[] = [];
+            let handled = false;
+            for (const plugin of this.plugins) {
+                for (const handler of this.pluginData.get(plugin).fileExtensionHandlers) {
+                    if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
+                        try {
+                            await handler.handler(file);
+                            handled = true;
+                        } catch (error) {
+                            fileErrors.push(`Error in plugin ${plugin.metadata.name} while handling file ${file.name}: ${error.message}`);
+                        }
                     }
                 }
             }
+            if (!handled) {
+                if (fileErrors.length === 0) {
+                    fileErrors.push(`No plugin found to handle file: ${file.name}`);
+                }
+                errors.push(...fileErrors);
+            }
         }
-
-        return handled;
+        if (errors.length > 0) {
+            alert(`Errors occurred while loading file(s):\n${errors.join('\n')}`);
+        }
     }
 
     getFileOpenTypes(): FilePickerAcceptType[] {
