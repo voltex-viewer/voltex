@@ -10,7 +10,8 @@ type ResizeState =
     | { type: 'vertical'; startY: number; row: RowImpl }
     | { type: 'time-offset'; startX: number; startTimeAtCursor: number; lastX: number; lastTime: number; velocity: number }
     | { type: 'dragging-rows'; draggedRows: RowImpl[]; startY: number; offsetY: number; offsetX: number; insertIndex: number }
-    | { type: 'potential-row-drag'; row: RowImpl; startX: number; startY: number; event: MouseEvent };
+    | { type: 'potential-row-drag'; row: RowImpl; startX: number; startY: number; event: MouseEvent }
+    | { type: 'scrollbar'; startY: number; startOffset: number };
 
 interface ViewTransform {
     time: number;
@@ -29,6 +30,10 @@ export class RowContainerRenderObject {
     private lastSelectedRow: RowImpl | null = null;
     
     private labelWidth = 100; // initial label width in pixels
+
+    // Vertical scrolling state
+    private verticalScrollOffset = 0; // Pixels scrolled from top
+    private scrollbarWidth = 8;
 
     // Animation frame for momentum scrolling and zooming
     private animationFrame: number | null = null;
@@ -70,6 +75,15 @@ export class RowContainerRenderObject {
             }
         });
 
+        // Create a separate render object for the scrollbar
+        parent.addChild({
+            zIndex: 3000,
+            render: (context: RenderContext, bounds: RenderBounds): boolean => {
+                this.renderScrollbar(context, bounds);
+                return false;
+            }
+        });
+
         // Create a high z-order overlay to intercept resize events
         this.renderObject.addChild({
             zIndex: 2000,
@@ -78,7 +92,16 @@ export class RowContainerRenderObject {
                 const mousePosition = this.getMousePosition(event);
                 
                 if (mousePosition.type !== 'none') {
-                    if (mousePosition.type === 'horizontal') {
+                    if (mousePosition.type === 'scrollbar') {
+                        this.resizeState = {
+                            type: 'scrollbar',
+                            startY: event.clientY,
+                            startOffset: this.verticalScrollOffset
+                        };
+                        
+                        document.body.style.cursor = 'default';
+                        return { captureMouse: true, preventDefault: true, allowMouseMoveThrough: true };
+                    } else if (mousePosition.type === 'horizontal') {
                         this.resizeState = { 
                             type: 'horizontal', 
                             startX: event.clientX - this.labelWidth 
@@ -120,7 +143,19 @@ export class RowContainerRenderObject {
             }),
             onMouseMove: ((event: MouseEvent) => {
                 // Handle ongoing resize operations
-                if (this.resizeState.type === 'horizontal') {
+                if (this.resizeState.type === 'scrollbar') {
+                    const viewportHeight = getAbsoluteBounds(this.renderObject).height;
+                    const totalHeight = this.getTotalRowsHeight();
+                    const deltaY = event.clientY - this.resizeState.startY;
+                    
+                    // Convert screen delta to content delta
+                    const scrollRatio = totalHeight / viewportHeight;
+                    this.verticalScrollOffset = this.resizeState.startOffset + deltaY * scrollRatio;
+                    this.clampScrollOffset(viewportHeight);
+                    
+                    this.updateRowPositions();
+                    this.requestRender();
+                } else if (this.resizeState.type === 'horizontal') {
                     const newWidth = Math.max(
                         this.minLabelWidth, 
                         Math.min(this.maxLabelWidth, event.clientX - this.resizeState.startX)
@@ -223,7 +258,11 @@ export class RowContainerRenderObject {
             }),
             onMouseUp: ((event: MouseEvent) => {
                 if (event.button !== 0) return; // Only left button
-                if (this.resizeState.type === 'horizontal') {
+                if (this.resizeState.type === 'scrollbar') {
+                    this.requestRender();
+                    this.resizeState = { type: 'none' };
+                }
+                else if (this.resizeState.type === 'horizontal') {
                     this.requestRender();
                     this.resizeState = { type: 'none' };
                 }
@@ -254,6 +293,18 @@ export class RowContainerRenderObject {
 
             onWheel: ((event: WheelEvent) => {
                 event.preventDefault();
+                
+                const mouseXInViewport = event.clientX - this.labelWidth;
+                
+                // If mouse is over the label area, scroll vertically through rows
+                if (mouseXInViewport < 0 && Math.abs(event.deltaY) > 0) {
+                    const viewportHeight = getAbsoluteBounds(this.renderObject).height;
+                    this.verticalScrollOffset += event.deltaY;
+                    this.clampScrollOffset(viewportHeight);
+                    this.updateRowPositions();
+                    this.requestRender();
+                    return;
+                }
                 
                 // Handle horizontal scrolling (panning)
                 if (Math.abs(event.deltaX) > 0) {
@@ -800,7 +851,7 @@ export class RowContainerRenderObject {
     }
 
     private updateRowPositions(): void {
-        let currentY = 0;
+        let currentY = -this.verticalScrollOffset; // Apply vertical scroll offset
         for (const row of this.rows) {
             row.rowRenderObject.x = px(0); // Reset x position
             row.rowRenderObject.y = px(currentY);
@@ -829,17 +880,30 @@ export class RowContainerRenderObject {
     private getMousePosition(event: MouseEvent): 
         | { type: 'horizontal' }
         | { type: 'vertical'; row: RowImpl }
+        | { type: 'scrollbar' }
         | { type: 'none' } {
         const labelWidth = this.labelWidth;
         const halfResizeZoneWidth = this.resizeZoneWidth / 2;
         const halfResizeZoneHeight = this.resizeZoneHeight / 2;
+        
+        // Check for scrollbar (only show if content overflows)
+        const totalHeight = this.getTotalRowsHeight();
+        const viewportHeight = getAbsoluteBounds(this.renderObject).height;
+        const viewportWidth = getAbsoluteBounds(this.renderObject).width;
+        if (totalHeight > viewportHeight) {
+            const scrollbarX = viewportWidth - this.scrollbarWidth;
+            if (event.clientX >= scrollbarX && event.clientX <= scrollbarX + this.scrollbarWidth) {
+                return { type: 'scrollbar' };
+            }
+        }
+        
         if (event.clientX >= labelWidth - halfResizeZoneWidth &&
             event.clientX <= labelWidth + halfResizeZoneWidth &&
             event.clientY <= this.rows.map(r => r.height).reduce((a, b) => a + b, 0) + halfResizeZoneHeight) {
             return { type: 'horizontal' };
         }
         if (event.clientX >= 0 && event.clientX < labelWidth) {
-            let currentY = 0;
+            let currentY = -this.verticalScrollOffset;
             for (const row of this.rows) {
                 const rowBottom = currentY + row.height;
                 if (event.clientY >= rowBottom - halfResizeZoneHeight && event.clientY <= rowBottom + halfResizeZoneHeight) {
@@ -911,5 +975,78 @@ export class RowContainerRenderObject {
             callback({ added: addedRows, removed: removedRows });
         }
         return addedRows;
+    }
+
+    private getTotalRowsHeight(): number {
+        return this.rows.reduce((sum, row) => sum + row.height, 0);
+    }
+
+    private getMaxScrollOffset(viewportHeight: number): number {
+        const totalHeight = this.getTotalRowsHeight();
+        return Math.max(0, totalHeight - viewportHeight);
+    }
+
+    private clampScrollOffset(viewportHeight: number): void {
+        const maxOffset = this.getMaxScrollOffset(viewportHeight);
+        this.verticalScrollOffset = Math.max(0, Math.min(maxOffset, this.verticalScrollOffset));
+    }
+
+    private renderScrollbar(context: RenderContext, bounds: RenderBounds): void {
+        const totalHeight = this.getTotalRowsHeight();
+        const viewportHeight = bounds.height;
+        
+        // Don't show scrollbar if all content fits
+        if (totalHeight <= viewportHeight) {
+            return;
+        }
+
+        const { gl, utils } = context.render;
+        
+        // Calculate scrollbar dimensions
+        const scrollbarHeight = Math.max(20, (viewportHeight / totalHeight) * viewportHeight);
+        const scrollbarY = (this.verticalScrollOffset / totalHeight) * viewportHeight;
+        const scrollbarX = bounds.width - this.scrollbarWidth;
+        
+        // Draw scrollbar track
+        const trackVertices = new Float32Array([
+            scrollbarX, 0,
+            scrollbarX + this.scrollbarWidth, 0,
+            scrollbarX, viewportHeight,
+            scrollbarX + this.scrollbarWidth, viewportHeight
+        ]);
+        
+        const trackBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, trackBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, trackVertices, gl.STATIC_DRAW);
+        
+        gl.useProgram(utils.line);
+        
+        const positionLocation = gl.getAttribLocation(utils.line, 'a_position');
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+        
+        const resolutionLocation = gl.getUniformLocation(utils.line, 'u_bounds');
+        gl.uniform2f(resolutionLocation, bounds.width, bounds.height);
+        
+        const colorLocation = gl.getUniformLocation(utils.line, 'u_color');
+        gl.uniform4f(colorLocation, 0.125, 0.141, 0.188, 0.5); // Semi-transparent dark background
+        
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Draw scrollbar thumb
+        const thumbVertices = new Float32Array([
+            scrollbarX, scrollbarY,
+            scrollbarX + this.scrollbarWidth, scrollbarY,
+            scrollbarX, scrollbarY + scrollbarHeight,
+            scrollbarX + this.scrollbarWidth, scrollbarY + scrollbarHeight
+        ]);
+        
+        gl.bufferData(gl.ARRAY_BUFFER, thumbVertices, gl.STATIC_DRAW);
+        gl.uniform4f(colorLocation, 0.35, 0.37, 0.42, 0.8); // Lighter thumb color
+        
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        gl.deleteBuffer(trackBuffer);
+        gl.disableVertexAttribArray(positionLocation);
     }
 }
