@@ -496,8 +496,11 @@ export default (context: PluginContext): void => {
             for await (const dataGroup of iterateDataGroupBlocks(header.firstDataGroup, reader)) {
                 const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock<'instanced'>>();
                 async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<ChannelConversionBlock<'instanced'> | null> {
-                    if (getLink(link) === 0n || conversionMap.has(link)) {
+                    if (getLink(link) === 0n) {
                         return null;
+                    }
+                    if (conversionMap.has(link)) {
+                        return conversionMap.get(link)!;
                     }
                     const srcBlock = await readConversionBlock(link, reader);
                     const block = {
