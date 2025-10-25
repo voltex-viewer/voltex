@@ -64,7 +64,7 @@ async function parseData<T>(dataGroup: DataGroupBlock, reader: BufferedFileReade
                     blockDataOffset += newData.length;
                 }
                 if (carryLength == recordSize + metadata.length) {
-                    rowHandler(metadata, new DataView(carry.buffer, recordSize, carry.length));
+                    rowHandler(metadata, new DataView(carry.buffer, recordSize, metadata.length));
                     carryLength = 0;
                 }
             }
