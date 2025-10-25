@@ -22,9 +22,8 @@ async function parseData<T>(dataGroup: DataGroupBlock, reader: BufferedFileReade
     let carry = new Uint8Array(recordSize + Math.max(...records.values().map(x => x.length)));
     let carryLength = 0;
 
-    function getMetadata(array: ArrayBuffer) {
+    function getMetadata(view: DataView) {
         let recordId;
-        const view = new DataView(array);
         if (recordSize === 0) {
             recordId = 0;
         } else if (recordSize === 1) {
@@ -57,7 +56,7 @@ async function parseData<T>(dataGroup: DataGroupBlock, reader: BufferedFileReade
                 blockDataOffset += newData.length;
             }
             if (carryLength >= recordSize) {
-                const metadata = getMetadata(carry.buffer);
+                const metadata = getMetadata(new DataView(carry.buffer, 0, carryLength));
                 if (carryLength < recordSize + metadata.length) {
                     const newData = blockData.subarray(blockDataOffset, blockDataOffset + recordSize + metadata.length - carryLength);
                     carry.set(newData, carryLength);
@@ -72,7 +71,7 @@ async function parseData<T>(dataGroup: DataGroupBlock, reader: BufferedFileReade
         }
         let buffer = blockData.subarray(blockDataOffset);
         while (buffer.length >= recordSize) {
-            const metadata = getMetadata(buffer.buffer);
+            const metadata = getMetadata(new DataView(buffer.buffer, buffer.byteOffset, buffer.length));
             if (buffer.length < recordSize + metadata.length) {
                 break;
             }
