@@ -23,6 +23,12 @@ export interface OneToOneConversion {
     refs: [],
 }
 
+export interface AlgebraicConversion<TMode extends 'linked' | 'instanced' = 'linked'> {
+    type: ConversionType.Algebraic,
+    values: [],
+    refs: [formula: MaybeLinked<TextBlock, TMode>],
+}
+
 export interface LinearConversion {
     type: ConversionType.Linear,
     values: [intercept: number, slope: number],
@@ -88,7 +94,7 @@ export interface ChannelConversionBlockBase<TMode extends 'linked' | 'instanced'
     physicalRangeMaximum: number;
 };
 
-export type ChannelConversionBlock<TMode extends 'linked' | 'instanced' = 'linked'> = ChannelConversionBlockBase<TMode> & (OneToOneConversion | LinearConversion | RationalConversion | ValueToValueTableWithInterpolation | ValueToValueTableWithoutInterpolation | ValueRangeToValueTable | ValueToTextOrScale<TMode> | ValueRangeToTextOrScale<TMode> | TextToValue<TMode> | TextToText<TMode>);
+export type ChannelConversionBlock<TMode extends 'linked' | 'instanced' = 'linked'> = ChannelConversionBlockBase<TMode> & (OneToOneConversion | LinearConversion | AlgebraicConversion<TMode> | RationalConversion | ValueToValueTableWithInterpolation | ValueToValueTableWithoutInterpolation | ValueRangeToValueTable | ValueToTextOrScale<TMode> | ValueRangeToTextOrScale<TMode> | TextToValue<TMode> | TextToText<TMode>);
 
 export function deserializeConversionBlock(block: GenericBlock): ChannelConversionBlock<'linked'> {
     const view = block.buffer;

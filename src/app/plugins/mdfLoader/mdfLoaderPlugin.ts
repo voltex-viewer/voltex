@@ -258,6 +258,9 @@ function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | 
                 return value => {
                     return (numerator_x2 * value ** 2 + numerator_x1 * value + numerator_x0) / (denominator_x2 * value ** 2 + denominator_x1 * value + denominator_x0);
                 };
+            case ConversionType.Algebraic:
+                const formula = conversion.refs[0];
+                return new Function('X', `return ${formula.data.replaceAll('x', 'X').replaceAll('^', '**')};`) as (value: number) => number;
             case ConversionType.ValueToValueTableWithInterpolation:
             case ConversionType.ValueToValueTableWithoutInterpolation:
                 const pairs = [];
