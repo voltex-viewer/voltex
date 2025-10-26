@@ -39,8 +39,8 @@ ipcMain.handle('quit-app', () => {
 const createWindow = () => {
     // Create the browser window.
     const mainWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
+        width: 1600,
+        height: 900,
         icon: app.isPackaged 
             ? path.join(process.resourcesPath, 'assets', 'icon.ico')
             : path.join(__dirname, '../../assets/icon.ico'),
