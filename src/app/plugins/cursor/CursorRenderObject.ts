@@ -17,15 +17,16 @@ export class CursorRenderObject {
         private context: PluginContext,
         private cursorNumber: number,
         private color: string,
-        initialTime: number | null
+        initialTime: number | null,
+        hoveredRow?: Row
     ) {
         if (initialTime !== null) {
-            this.position = this.snapToNearestPoint(initialTime);
+            this.position = this.snapToNearestPoint(initialTime, hoveredRow);
         }
     }
 
-    updatePosition(time: number): void {
-        const snappedTime = this.snapToNearestPoint(time);
+    updatePosition(time: number, hoveredRow?: Row): void {
+        const snappedTime = this.snapToNearestPoint(time, hoveredRow);
         if (snappedTime !== null) {
             this.position = snappedTime;
         }
@@ -77,7 +78,12 @@ export class CursorRenderObject {
         return time * state.pxPerSecond - state.offset;
     }
 
-    private snapToNearestPoint(time: number): number | null {
+    private snapToNearestPoint(time: number, hoveredRow?: Row): number | null {
+        // If no row is hovered, don't snap
+        if (!hoveredRow) {
+            return time;
+        }
+        
         const SNAP_DISTANCE_PX = 10;
         const { state } = this.context;
         const snapDistanceTime = SNAP_DISTANCE_PX / state.pxPerSecond;
@@ -85,19 +91,18 @@ export class CursorRenderObject {
         let nearestTime: number | null = null;
         let nearestDistance = snapDistanceTime;
 
-        for (const row of this.context.getRows()) {
-            for (const signal of row.signals) {
-                const startIndex = this.binarySearch(signal.time, time - snapDistanceTime);
-                const endIndex = this.binarySearch(signal.time, time + snapDistanceTime);
+        // Only snap to signals in the hovered row
+        for (const signal of hoveredRow.signals) {
+            const startIndex = this.binarySearch(signal.time, time - snapDistanceTime);
+            const endIndex = this.binarySearch(signal.time, time + snapDistanceTime);
+            
+            for (let i = startIndex; i <= endIndex && i < signal.time.length; i++) {
+                const pointTime = signal.time.valueAt(i);
+                const distance = Math.abs(pointTime - time);
                 
-                for (let i = startIndex; i <= endIndex && i < signal.time.length; i++) {
-                    const pointTime = signal.time.valueAt(i);
-                    const distance = Math.abs(pointTime - time);
-                    
-                    if (distance < nearestDistance) {
-                        nearestDistance = distance;
-                        nearestTime = pointTime;
-                    }
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestTime = pointTime;
                 }
             }
         }

@@ -1,4 +1,4 @@
-import { type PluginContext, Keybinding, type MouseEvent } from '@voltex-viewer/plugin-api';
+import { type PluginContext, Keybinding, type MouseEvent, Row } from '@voltex-viewer/plugin-api';
 import * as t from 'io-ts';
 import { CursorRenderObject } from './CursorRenderObject';
 import { CursorSidebar } from './CursorSidebar';
@@ -79,6 +79,7 @@ export default (context: PluginContext): void => {
     let nextCursorNumber = 1;
     let activeCursor: CursorRenderObject | null = null;
     let mouseDownPosition: { x: number; y: number } | null = null;
+    let hoveredRow: Row | null = null;
 
     const removeCursor = (cursor: CursorRenderObject) => {
         cursor.cleanup();
@@ -109,6 +110,22 @@ export default (context: PluginContext): void => {
         for (const cursor of cursors) {
             cursor.addRowRenderObjects(event.added);
         }
+        
+        // Set up hover tracking for each row
+        for (const row of event.added) {
+            row.mainArea.addChild({
+                zIndex: -999,
+                onMouseEnter: () => {
+                    hoveredRow = row;
+                },
+                onMouseLeave: () => {
+                    if (hoveredRow === row) {
+                        hoveredRow = null;
+                    }
+                }
+            });
+        }
+        
         cursorSidebar.updateContent();
     });
 
@@ -121,7 +138,7 @@ export default (context: PluginContext): void => {
             const mouseX = mouseTracker.getLastMouseX();
             if (mouseX !== null) {
                 const time = mouseTracker.screenXToTime(mouseX);
-                activeCursor.updatePosition(time);
+                activeCursor.updatePosition(time, hoveredRow);
                 cursorSidebar.updateContent();
                 context.requestRender();
             }
@@ -185,7 +202,8 @@ export default (context: PluginContext): void => {
                 context,
                 cursorNumber,
                 color,
-                initialTime
+                initialTime,
+                hoveredRow
             );
             cursor.addRowRenderObjects(context.getRows());
             
