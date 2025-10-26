@@ -251,16 +251,6 @@ body {
     background: #353b45;
     color: #fff;
 }
-@media (max-width: 600px) {
-    .vertical-sidebar.expanded {
-        width: 90vw;
-    }
-    .vertical-sidebar.expanded .sidebar-panel-container {
-        width: calc(90vw - 48px);
-        min-width: 0;
-        max-width: none;
-    }
-}
 html, body {
   background: #181c20;
   height: 100%;
