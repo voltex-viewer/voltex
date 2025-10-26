@@ -1,6 +1,7 @@
 import { type PluginContext, Keybinding, type MouseEvent } from '@voltex-viewer/plugin-api';
 import * as t from 'io-ts';
 import { CursorRenderObject } from './CursorRenderObject';
+import { CursorSidebar } from './CursorSidebar';
 
 const CURSOR_COLORS = [
     '#FF6B6B',
@@ -21,6 +22,10 @@ const CursorConfigSchema = t.type({
         'cursor.cancel': Keybinding,
     })
 });
+
+type CursorConfig = t.TypeOf<typeof CursorConfigSchema>;
+
+export type { CursorConfig };
 
 class MousePositionTracker {
     private lastMouseX: number | null = null;
@@ -61,10 +66,10 @@ class MousePositionTracker {
 }
 
 export default (context: PluginContext): void => {
-    const config = context.loadConfig(CursorConfigSchema, {
+    const config: CursorConfig = context.loadConfig(CursorConfigSchema, {
         keybindings: {
-            'cursor.add': 'c',
-            'cursor.cancel': 'escape',
+            'cursor.add': 'c' as any,
+            'cursor.cancel': 'escape' as any,
         }
     });
 
@@ -75,10 +80,36 @@ export default (context: PluginContext): void => {
     let activeCursor: CursorRenderObject | null = null;
     let mouseDownPosition: { x: number; y: number } | null = null;
 
+    const removeCursor = (cursor: CursorRenderObject) => {
+        cursor.cleanup();
+        const index = cursors.indexOf(cursor);
+        if (index > -1) {
+            cursors.splice(index, 1);
+        }
+        if (activeCursor === cursor) {
+            activeCursor = null;
+            isAddingCursor = false;
+        }
+        cursorSidebar.updateContent();
+        context.requestRender();
+    };
+
+    const cursorSidebar = new CursorSidebar(context, cursors, removeCursor, config);
+    
+    context.addSidebarEntry({
+        title: 'Cursors',
+        iconHtml: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="3" width="8" height="8" rx="2"/>
+            <line x1="12" y1="11" x2="12" y2="21"/>
+        </svg>`,
+        renderContent: () => cursorSidebar.render()
+    });
+
     context.onRowsChanged((event) => {
         for (const cursor of cursors) {
             cursor.addRowRenderObjects(event.added);
         }
+        cursorSidebar.updateContent();
     });
 
     // Set up global mouse tracking for active cursor
@@ -91,6 +122,7 @@ export default (context: PluginContext): void => {
             if (mouseX !== null) {
                 const time = mouseTracker.screenXToTime(mouseX);
                 activeCursor.updatePosition(time);
+                cursorSidebar.updateContent();
                 context.requestRender();
             }
             
@@ -119,6 +151,7 @@ export default (context: PluginContext): void => {
                 if (position !== null) {
                     activeCursor = null;
                     isAddingCursor = false;
+                    cursorSidebar.updateContent();
                     context.requestRender();
                 }
             }
@@ -133,7 +166,15 @@ export default (context: PluginContext): void => {
             if (isAddingCursor) return;
             
             isAddingCursor = true;
-            const cursorNumber = nextCursorNumber++;
+            
+            // Find the smallest available cursor number
+            const usedNumbers = new Set(cursors.map(c => c.getCursorNumber()));
+            let cursorNumber = 1;
+            while (usedNumbers.has(cursorNumber)) {
+                cursorNumber++;
+            }
+            nextCursorNumber = Math.max(nextCursorNumber, cursorNumber + 1);
+            
             const color = CURSOR_COLORS[(cursorNumber - 1) % CURSOR_COLORS.length];
             
             // Get initial position from mouse tracker
@@ -150,6 +191,7 @@ export default (context: PluginContext): void => {
             
             activeCursor = cursor;
             cursors.push(cursor);
+            cursorSidebar.updateContent();
             context.requestRender();
         }
     });
@@ -168,6 +210,7 @@ export default (context: PluginContext): void => {
             isAddingCursor = false;
             nextCursorNumber--;
             mouseDownPosition = null;
+            cursorSidebar.updateContent();
             context.requestRender();
         }
     });

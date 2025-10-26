@@ -35,6 +35,14 @@ export class CursorRenderObject {
         return this.position;
     }
 
+    getCursorNumber(): number {
+        return this.cursorNumber;
+    }
+
+    getColor(): string {
+        return this.color;
+    }
+
     cleanup(): void {
         for (const renderObject of this.renderObjects) {
             if (renderObject.parent) {
