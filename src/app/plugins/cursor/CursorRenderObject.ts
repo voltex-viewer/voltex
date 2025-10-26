@@ -6,18 +6,11 @@ import {
     type Row
 } from '@voltex-viewer/plugin-api';
 
-interface CursorData {
-    renderObject: RenderObject;
-    timeAxisRenderObject: RenderObject;
-}
-
 const alpha = 0.8;
 
 export class CursorRenderObject {
     private position: number | null = null;
-    private renderObjects: CursorData[] = [];
-    private timeAxisRow: Row | null = null;
-    private timeAxisRenderObject: RenderObject | null = null;
+    private renderObjects: RenderObject[] = [];
     private rectBuffer: { buffer: WebGLBuffer, vertexCount: number } | null = null;
 
     constructor(
@@ -29,7 +22,6 @@ export class CursorRenderObject {
         if (initialTime !== null) {
             this.position = this.snapToNearestPoint(initialTime);
         }
-        this.initialize();
     }
 
     updatePosition(time: number): void {
@@ -44,63 +36,32 @@ export class CursorRenderObject {
     }
 
     cleanup(): void {
-        for (const data of this.renderObjects) {
-            if (data.renderObject.parent) {
-                data.renderObject.parent.removeChild(data.renderObject);
+        for (const renderObject of this.renderObjects) {
+            if (renderObject.parent) {
+                renderObject.parent.removeChild(renderObject);
             }
         }
         this.renderObjects = [];
-        
-        if (this.timeAxisRenderObject?.parent) {
-            this.timeAxisRenderObject.parent.removeChild(this.timeAxisRenderObject);
-            this.timeAxisRenderObject = null;
-        }
         
         if (this.rectBuffer) {
             this.context.webgl.gl.deleteBuffer(this.rectBuffer.buffer);
         }
     }
 
-    private initialize(): void {
-        const rows = this.context.getRows();
-        
-        if (rows.length > 0) {
-            this.timeAxisRow = rows[0];
-            this.timeAxisRenderObject = this.timeAxisRow.mainArea.addChild({
-                zIndex: 1000,
-                render: this.renderTimeAxis.bind(this),
-            });
-        }
-
+    addRowRenderObjects(rows: Row[]): void {
         for (const row of rows) {
-            if (row !== this.timeAxisRow) {
-                const renderObject = row.mainArea.addChild({
+            if (row.signals.length > 0) {
+                this.renderObjects.push(row.mainArea.addChild({
                     zIndex: 1000,
                     render: this.render.bind(this),
-                });
-                
-                this.renderObjects.push({
-                    renderObject,
-                    timeAxisRenderObject: null!,
-                });
+                }));
+            } else {
+                this.renderObjects.push(row.mainArea.addChild({
+                    zIndex: 1000,
+                    render: this.renderTimeAxis.bind(this),
+                }));
             }
         }
-
-        this.context.onRowsChanged((event) => {
-            for (const row of event.added) {
-                if (row !== this.timeAxisRow) {
-                    const renderObject = row.mainArea.addChild({
-                        zIndex: 1000,
-                        render: this.render.bind(this),
-                    });
-                    
-                    this.renderObjects.push({
-                        renderObject,
-                        timeAxisRenderObject: null!,
-                    });
-                }
-            }
-        });
     }
 
     private timeToScreenX(time: number): number {

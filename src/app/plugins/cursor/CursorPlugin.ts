@@ -75,6 +75,12 @@ export default (context: PluginContext): void => {
     let activeCursor: CursorRenderObject | null = null;
     let mouseDownPosition: { x: number; y: number } | null = null;
 
+    context.onRowsChanged((event) => {
+        for (const cursor of cursors) {
+            cursor.addRowRenderObjects(event.added);
+        }
+    });
+
     // Set up global mouse tracking for active cursor
     context.rootRenderObject.addChild({
         zIndex: 1001, // Higher than cursor render objects
@@ -140,6 +146,7 @@ export default (context: PluginContext): void => {
                 color,
                 initialTime
             );
+            cursor.addRowRenderObjects(context.getRows());
             
             activeCursor = cursor;
             cursors.push(cursor);
