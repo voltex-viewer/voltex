@@ -67,6 +67,21 @@ export class PluginManager {
         }
     }
 
+    unregisterPluginType(pluginName: string): boolean {
+        const index = this.availablePlugins.findIndex(p => p.metadata.name === pluginName);
+        if (index === -1) {
+            return false;
+        }
+        
+        this.availablePlugins.splice(index, 1);
+        
+        for (const callback of this.pluginRegisteredCallbacks) {
+            callback();
+        }
+        
+        return true;
+    }
+
     onPluginRegistered(callback: () => void): void {
         this.pluginRegisteredCallbacks.push(callback);
     }

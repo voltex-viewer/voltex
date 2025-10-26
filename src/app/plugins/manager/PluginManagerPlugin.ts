@@ -3,6 +3,8 @@ import type { PluginContext, SidebarEntryArgs } from '@voltex-viewer/plugin-api'
 import type { PluginManager } from '../../PluginManager';
 import { ConfigUIGenerator } from './ConfigUIGenerator';
 import * as t from 'io-ts';
+import { CustomPluginStorage } from './CustomPluginStorage';
+import { VxpkgLoader } from './VxpkgLoader';
 
 const PluginManagerConfigSchema = t.type({
     enabledPlugins: t.record(t.string, t.boolean)
@@ -14,6 +16,8 @@ let pluginManager: PluginManager | undefined;
 let sidebarContainer: HTMLElement | undefined;
 let context: PluginContext | undefined;
 let config: PluginManagerConfig;
+let customPluginStorage: CustomPluginStorage;
+let customPluginNames = new Set<string>();
 
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
@@ -23,6 +27,18 @@ export default (pluginContext: PluginContext): void => {
             'FPS': false,
             'Demo Signals': false,
             'Profiler': false,
+        }
+    });
+
+    customPluginStorage = new CustomPluginStorage();
+    
+    // Register file handler for .vxpkg files
+    context.registerFileOpenHandler({
+        extensions: ['.vxpkg'],
+        description: 'Voltex Plugin Package',
+        mimeType: 'application/zip',
+        handler: async (file: File) => {
+            await handleVxpkgUpload(file);
         }
     });
     
@@ -42,21 +58,108 @@ export default (pluginContext: PluginContext): void => {
 export function setPluginManager(manager: PluginManager): void {
     pluginManager = manager;
     
-    // Register all available plugins with the plugin manager
-    const availablePlugins = getAvailablePlugins();
-    for (const plugin of availablePlugins) {
-        pluginManager.registerPluginType(plugin);
-    }
-    
-    // Apply saved plugin states from config
-    restorePluginStates();
+    // Load custom plugins from OPFS, then restore states
+    loadCustomPlugins().then(() => {
+        // Register all available plugins with the plugin manager
+        const availablePlugins = getAvailablePlugins();
+        for (const plugin of availablePlugins) {
+            pluginManager.registerPluginType(plugin);
+        }
+        
+        // Apply saved plugin states from config (after custom plugins are loaded)
+        restorePluginStates();
+        
+        refreshPluginList();
+    });
     
     // Register to be notified when new plugins are registered
     pluginManager.onPluginRegistered(() => {
         refreshPluginList();
     });
+}
+
+async function loadCustomPlugins(): Promise<void> {
+    if (!pluginManager || !customPluginStorage) return;
+    
+    try {
+        const plugins = await customPluginStorage.getAllPlugins();
+        
+        for (const [name, pluginData] of plugins) {
+            try {
+                const pluginModule = await customPluginStorage.loadPluginModule(pluginData);
+                pluginManager.registerPluginType(pluginModule);
+                customPluginNames.add(name);
+            } catch (error) {
+                console.error(`Failed to load custom plugin ${name}:`, error);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load custom plugins:', error);
+    }
+}
+
+async function handleVxpkgUpload(file: File): Promise<void> {
+    try {
+        const contents = await VxpkgLoader.loadFromFile(file);
+        const metadata = VxpkgLoader.manifestToMetadata(contents.manifest);
+        
+        // Save to OPFS
+        await customPluginStorage.savePlugin(metadata.name, contents.code, metadata);
+        
+        // Load the plugin module
+        const pluginData = await customPluginStorage.getPlugin(metadata.name);
+        if (pluginData) {
+            const pluginModule = await customPluginStorage.loadPluginModule(pluginData);
+            
+            // Check if plugin already exists
+            const existingPlugin = pluginManager?.getAvailablePlugins().find(p => p.metadata.name === metadata.name);
+            if (existingPlugin) {
+                // Disable existing plugin first
+                const enabledPlugin = pluginManager?.getPlugins().find(p => p.metadata.name === metadata.name);
+                if (enabledPlugin) {
+                    pluginManager?.disablePlugin(enabledPlugin);
+                }
+            }
+            
+            // Register the new/updated plugin
+            pluginManager?.registerPluginType(pluginModule);
+            customPluginNames.add(metadata.name);
+            
+            // Enable the plugin
+            pluginManager?.enablePlugin(pluginModule);
+            savePluginState(metadata.name, true);
+            
+            refreshPluginList();
+            context?.requestRender();
+        }
+    } catch (error) {
+        console.error('Failed to upload plugin:', error);
+        alert(`Failed to upload plugin: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+async function deleteCustomPlugin(pluginName: string): Promise<void> {
+    if (!pluginManager || !customPluginStorage) return;
+    
+    // Disable the plugin first
+    const enabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
+    if (enabledPlugin) {
+        pluginManager.disablePlugin(enabledPlugin);
+    }
+    
+    // Unregister the plugin type from available plugins
+    pluginManager.unregisterPluginType(pluginName);
+    
+    // Delete from OPFS
+    await customPluginStorage.deletePlugin(pluginName);
+    customPluginNames.delete(pluginName);
+    
+    // Remove from config
+    delete config.enabledPlugins[pluginName];
+    pluginManager.getConfigManager().updateConfig('Plugin Manager', config);
     
     refreshPluginList();
+    context?.requestRender();
 }
 
 function restorePluginStates(): void {
@@ -166,6 +269,30 @@ function renderContent(): HTMLElement {
             }
             .config-button:hover {
                 color: #e5e7eb;
+            }
+            .delete-button {
+                width: 24px;
+                height: 24px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #9ca3af;
+                transition: all 0.2s;
+                margin-right: 8px;
+            }
+            .delete-button:hover {
+                color: #ef4444;
+            }
+            .custom-plugin-badge {
+                display: inline-block;
+                padding: 2px 6px;
+                background: #4f46e5;
+                color: #e0e7ff;
+                font-size: 10px;
+                border-radius: 3px;
+                margin-left: 8px;
+                font-weight: 500;
             }
             .back-button {
                 display: flex;
@@ -309,13 +436,21 @@ function renderPluginList(): void {
         const enabledPlugin = pluginManager!.getPlugins().find(p => p.metadata.name === pluginModule.metadata.name);
         const isEnabled = !!enabledPlugin;
         const hasConfig = pluginManager!.getConfigManager().hasConfig(pluginModule.metadata.name);
+        const isCustomPlugin = customPluginNames.has(pluginModule.metadata.name);
         
         pluginItem.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2c313a; border-radius: 6px; border: 1px solid #374151;">
-            <span style="color: #e5e7eb; font-weight: 400; font-size: 13px;">
-            ${pluginModule.metadata.name}
+            <span style="color: #e5e7eb; font-weight: 400; font-size: 13px; display: flex; align-items: center;">
+            ${pluginModule.metadata.name}${isCustomPlugin ? '<span class="custom-plugin-badge">Custom</span>' : ''}
             </span>
             <div style="display: flex; align-items: center;">
+            ${isCustomPlugin ? `
+            <div class="delete-button" data-plugin="${pluginModule.metadata.name}" title="Delete custom plugin">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/>
+            </svg>
+            </div>
+            ` : ''}
             ${hasConfig ? `
             <div class="config-button" data-plugin="${pluginModule.metadata.name}" title="Configure plugin">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -343,6 +478,16 @@ function renderPluginList(): void {
         if (configButton) {
             configButton.addEventListener('click', () => {
                 showConfigView(pluginModule.metadata.name);
+            });
+        }
+
+        // Add delete button event listener for custom plugins
+        const deleteButton = pluginItem.querySelector('.delete-button') as HTMLElement;
+        if (deleteButton) {
+            deleteButton.addEventListener('click', async () => {
+                if (confirm(`Are you sure you want to delete the custom plugin "${pluginModule.metadata.name}"?`)) {
+                    await deleteCustomPlugin(pluginModule.metadata.name);
+                }
             });
         }
 
