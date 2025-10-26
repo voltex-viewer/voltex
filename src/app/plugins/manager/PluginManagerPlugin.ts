@@ -101,7 +101,7 @@ async function loadCustomPlugins(): Promise<void> {
 async function handleVxpkgUpload(file: File): Promise<void> {
     try {
         const contents = await VxpkgLoader.loadFromFile(file);
-        const metadata = VxpkgLoader.manifestToMetadata(contents.manifest);
+        const metadata = contents.manifest;
         
         // Save to OPFS
         await customPluginStorage.savePlugin(metadata.name, contents.code, metadata);
@@ -284,16 +284,6 @@ function renderContent(): HTMLElement {
             .delete-button:hover {
                 color: #ef4444;
             }
-            .custom-plugin-badge {
-                display: inline-block;
-                padding: 2px 6px;
-                background: #4f46e5;
-                color: #e0e7ff;
-                font-size: 10px;
-                border-radius: 3px;
-                margin-left: 8px;
-                font-weight: 500;
-            }
             .back-button {
                 display: flex;
                 align-items: center;
@@ -425,7 +415,7 @@ function renderPluginList(): void {
 
     pluginListContainer.innerHTML = '';
 
-    for (const pluginModule of pluginManager.getAvailablePlugins().sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))) {
+    for (const pluginModule of pluginManager.getAvailablePlugins().sort((a, b) => (a.metadata.displayName || a.metadata.name).localeCompare(b.metadata.displayName || b.metadata.name))) {
         const pluginItem = document.createElement('div');
         pluginItem.className = 'plugin-item';
         pluginItem.setAttribute('data-plugin-name', pluginModule.metadata.name.toLowerCase());
@@ -437,11 +427,12 @@ function renderPluginList(): void {
         const isEnabled = !!enabledPlugin;
         const hasConfig = pluginManager!.getConfigManager().hasConfig(pluginModule.metadata.name);
         const isCustomPlugin = customPluginNames.has(pluginModule.metadata.name);
+        const displayName = pluginModule.metadata.displayName || pluginModule.metadata.name;
         
         pluginItem.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2c313a; border-radius: 6px; border: 1px solid #374151;">
-            <span style="color: #e5e7eb; font-weight: 400; font-size: 13px; display: flex; align-items: center;">
-            ${pluginModule.metadata.name}${isCustomPlugin ? '<span class="custom-plugin-badge">Custom</span>' : ''}
+            <span style="color: #e5e7eb; font-weight: 400; font-size: 13px; display: flex; align-items: center; overflow: hidden; flex: 1; min-width: 0;">
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${displayName}</span>
             </span>
             <div style="display: flex; align-items: center;">
             ${isCustomPlugin ? `
@@ -527,6 +518,8 @@ function showConfigView(pluginName: string): void {
     const configSchema = pluginManager.getConfigManager().getConfigSchema(pluginName);
     if (!configSchema) return;
 
+    const pluginModule = pluginManager.getAvailablePlugins().find(p => p.metadata.name === pluginName);
+    const displayName = pluginModule ? ((pluginModule.metadata as any).displayName || pluginModule.metadata.name) : pluginName;
     const enabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
     const isEnabled = !!enabledPlugin;
     
@@ -537,7 +530,7 @@ function showConfigView(pluginName: string): void {
     const configToggle = sidebarContainer.querySelector('#config-toggle') as HTMLElement;
     
     // Update plugin name
-    pluginNameSpan.textContent = pluginName;
+    pluginNameSpan.textContent = displayName;
     
     // Update toggle state
     configToggle.className = `toggle-switch ${isEnabled ? 'enabled' : ''}`;

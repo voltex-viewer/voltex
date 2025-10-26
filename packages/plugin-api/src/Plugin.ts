@@ -209,9 +209,11 @@ export interface RenderObject {
 
 export interface PluginMetadata {
     name: string;
+    displayName?: string;
     version: string;
     description?: string;
     author?: string;
+    url?: string;
 }
 
 export type PluginFunction = (context: PluginContext) => void;

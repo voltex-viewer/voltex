@@ -1,13 +1,9 @@
 import JSZip from 'jszip';
 import type { PluginMetadata } from '@voltex-viewer/plugin-api';
 
-export interface VxpkgManifest {
+export interface VxpkgManifest extends PluginMetadata {
     voltexApiVersion: string;
     main: string;
-    name: string;
-    version: string;
-    description?: string;
-    author?: string;
 }
 
 export interface VxpkgContents {
@@ -44,15 +40,6 @@ export class VxpkgLoader {
         return {
             manifest,
             code
-        };
-    }
-
-    static manifestToMetadata(manifest: VxpkgManifest): PluginMetadata {
-        return {
-            name: manifest.name,
-            version: manifest.version,
-            description: manifest.description,
-            author: manifest.author
         };
     }
 
