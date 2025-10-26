@@ -185,8 +185,8 @@ export class VerticalSidebar {
     }
 
     private updateSidebarWidth(): void {
-        this.sidebar.style.width = `${this.sidebarWidth}px`;
+        this.sidebar.style.setProperty('--sidebar-width', `${this.sidebarWidth}px`);
         const panelWidth = this.sidebarWidth - 48;
-        this.panelContainer.style.width = `${panelWidth}px`;
+        this.panelContainer.style.setProperty('--panel-width', `${panelWidth}px`);
     }
 }
