@@ -69,20 +69,21 @@ export class ConfigUIGenerator {
                     height: 18px;
                     cursor: pointer;
                 }
-                .config-ui-reset-btn {
+                .action-button {
                     width: 100%;
-                    padding: 8px 16px;
-                    background: #4b5563;
+                    padding: 8px 12px;
+                    background: #374151;
                     color: #e5e7eb;
-                    border: 1px solid #6b7280;
-                    border-radius: 4px;
+                    border: 1px solid #4b5563;
+                    border-radius: 6px;
                     cursor: pointer;
                     font-size: 13px;
-                    margin-top: 16px;
-                    transition: background-color 0.2s;
+                    margin-top: 12px;
+                    transition: all 0.2s;
                 }
-                .config-ui-reset-btn:hover {
-                    background: #374151;
+                .action-button:hover {
+                    background: #4b5563;
+                    border-color: #6b7280;
                 }
                 .config-ui-record-container {
                     margin-bottom: 8px;
@@ -130,7 +131,7 @@ export class ConfigUIGenerator {
         const resetButton = document.createElement('button');
         resetButton.type = 'button';
         resetButton.textContent = 'Reset';
-        resetButton.className = 'config-ui-reset-btn';
+        resetButton.className = 'action-button';
         resetButton.addEventListener('click', options.onReset);
         form.appendChild(resetButton);
         container.appendChild(form);

@@ -5,6 +5,7 @@ import { ConfigUIGenerator } from './ConfigUIGenerator';
 import * as t from 'io-ts';
 import { CustomPluginStorage } from './CustomPluginStorage';
 import { VxpkgLoader } from './VxpkgLoader';
+import { GitHubReleaseLoader } from './GitHubReleaseLoader';
 
 const PluginManagerConfigSchema = t.type({
     enabledPlugins: t.record(t.string, t.boolean)
@@ -18,6 +19,7 @@ let context: PluginContext | undefined;
 let config: PluginManagerConfig;
 let customPluginStorage: CustomPluginStorage;
 let customPluginNames = new Set<string>();
+let availableUpdates = new Map<string, string>();
 
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
@@ -39,6 +41,14 @@ export default (pluginContext: PluginContext): void => {
         mimeType: 'application/zip',
         handler: async (file: File) => {
             await handleVxpkgUpload(file);
+        }
+    });
+    
+    // Register command to check for updates
+    context.registerCommand({
+        id: 'plugin-manager.checkForUpdates',
+        action: () => {
+            checkForUpdates();
         }
     });
     
@@ -95,6 +105,35 @@ async function loadCustomPlugins(): Promise<void> {
         }
     } catch (error) {
         console.error('Failed to load custom plugins:', error);
+    }
+}
+
+async function checkForUpdates(): Promise<void> {
+    if (!pluginManager || !customPluginStorage) return;
+
+    const plugins = await customPluginStorage.getAllPlugins();
+    
+    for (const [name, pluginData] of plugins) {
+        const url = pluginData.metadata.url;
+        if (!url) continue;
+
+        try {
+            const release = await GitHubReleaseLoader.fetchLatestRelease(url);
+            if (!release) continue;
+
+            const latestVersion = GitHubReleaseLoader.parseVersion(release.tag_name);
+            const currentVersion = pluginData.metadata.version;
+
+            if (GitHubReleaseLoader.compareVersions(currentVersion, latestVersion) < 0) {
+                availableUpdates.set(name, latestVersion);
+            }
+        } catch (error) {
+            console.error(`Failed to check updates for ${name}:`, error);
+        }
+    }
+
+    if (availableUpdates.size > 0) {
+        refreshPluginList();
     }
 }
 
@@ -160,6 +199,36 @@ async function deleteCustomPlugin(pluginName: string): Promise<void> {
     
     refreshPluginList();
     context?.requestRender();
+}
+
+async function openPluginUpdate(pluginName: string): Promise<void> {
+    if (!pluginManager || !customPluginStorage) return;
+
+    const pluginData = await customPluginStorage.getPlugin(pluginName);
+    if (!pluginData || !pluginData.metadata.url) {
+        alert('Cannot update plugin: no repository URL found');
+        return;
+    }
+
+    try {
+        const release = await GitHubReleaseLoader.fetchLatestRelease(pluginData.metadata.url);
+        if (!release) {
+            alert('Failed to fetch latest release from GitHub');
+            return;
+        }
+
+        const releaseUrl = GitHubReleaseLoader.getReleasePageUrl(release);
+        
+        // Open the release page
+        if (window.waveformApi) {
+            window.waveformApi.openExternalUrl(releaseUrl);
+        } else {
+            window.open(releaseUrl, '_blank');
+        }
+    } catch (error) {
+        console.error('Failed to open release page:', error);
+        alert(`Failed to open release page: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 function restorePluginStates(): void {
@@ -283,6 +352,33 @@ function renderContent(): HTMLElement {
             }
             .delete-button:hover {
                 color: #ef4444;
+            }
+            .update-icon {
+                width: 16px;
+                height: 16px;
+                color: #3b82f6;
+                margin-right: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            .update-icon:hover {
+                color: #60a5fa;
+            }
+            .action-button {
+                padding: 8px 12px;
+                background: #374151;
+                color: #e5e7eb;
+                border: 1px solid #4b5563;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                transition: all 0.2s;
+                width: 100%;
+                margin-top: 12px;
+            }
+            .action-button:hover {
+                background: #4b5563;
+                border-color: #6b7280;
             }
             .back-button {
                 display: flex;
@@ -428,6 +524,8 @@ function renderPluginList(): void {
         const hasConfig = pluginManager!.getConfigManager().hasConfig(pluginModule.metadata.name);
         const isCustomPlugin = customPluginNames.has(pluginModule.metadata.name);
         const displayName = pluginModule.metadata.displayName || pluginModule.metadata.name;
+        const hasUpdate = availableUpdates.has(pluginModule.metadata.name);
+        const updateVersion = availableUpdates.get(pluginModule.metadata.name);
         
         pluginItem.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2c313a; border-radius: 6px; border: 1px solid #374151;">
@@ -435,14 +533,15 @@ function renderPluginList(): void {
             <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${displayName}</span>
             </span>
             <div style="display: flex; align-items: center;">
-            ${isCustomPlugin ? `
-            <div class="delete-button" data-plugin="${pluginModule.metadata.name}" title="Delete custom plugin">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/>
+            ${hasUpdate ? `
+            <div class="update-icon" data-plugin="${pluginModule.metadata.name}" title="Update available: v${updateVersion}">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
+                <path d="M8 1c.55 0 1 .45 1 1v5.59l1.29-1.29a1 1 0 111.41 1.41l-3 3a1 1 0 01-1.41 0l-3-3a1 1 0 111.41-1.41L7 7.59V2c0-.55.45-1 1-1z"/>
+                <rect x="2" y="11" width="12" height="3" rx="1.5"/>
             </svg>
             </div>
             ` : ''}
-            ${hasConfig ? `
+            ${hasConfig || isCustomPlugin ? `
             <div class="config-button" data-plugin="${pluginModule.metadata.name}" title="Configure plugin">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
@@ -464,21 +563,19 @@ function renderPluginList(): void {
             });
         }
 
+        // Add update icon event listener
+        const updateIcon = pluginItem.querySelector('.update-icon') as HTMLElement;
+        if (updateIcon) {
+            updateIcon.addEventListener('click', async () => {
+                await openPluginUpdate(pluginModule.metadata.name);
+            });
+        }
+
         // Add config button event listener
         const configButton = pluginItem.querySelector('.config-button') as HTMLElement;
         if (configButton) {
             configButton.addEventListener('click', () => {
                 showConfigView(pluginModule.metadata.name);
-            });
-        }
-
-        // Add delete button event listener for custom plugins
-        const deleteButton = pluginItem.querySelector('.delete-button') as HTMLElement;
-        if (deleteButton) {
-            deleteButton.addEventListener('click', async () => {
-                if (confirm(`Are you sure you want to delete the custom plugin "${pluginModule.metadata.name}"?`)) {
-                    await deleteCustomPlugin(pluginModule.metadata.name);
-                }
             });
         }
 
@@ -522,6 +619,10 @@ function showConfigView(pluginName: string): void {
     const displayName = pluginModule ? ((pluginModule.metadata as any).displayName || pluginModule.metadata.name) : pluginName;
     const enabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
     const isEnabled = !!enabledPlugin;
+    const isCustomPlugin = customPluginNames.has(pluginName);
+    const hasUpdate = availableUpdates.has(pluginName);
+    const updateVersion = availableUpdates.get(pluginName);
+    const currentVersion = pluginModule?.metadata.version;
     
     const listView = sidebarContainer.querySelector('#list-view') as HTMLElement;
     const configView = sidebarContainer.querySelector('#config-view') as HTMLElement;
@@ -566,4 +667,18 @@ function showConfigView(pluginName: string): void {
     });
 
     configContent.appendChild(configUI);
+    
+    // Add delete button for custom plugins
+    if (isCustomPlugin) {
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'action-button';
+        deleteButton.textContent = 'Delete Plugin';
+        deleteButton.addEventListener('click', async () => {
+            if (confirm(`Are you sure you want to delete the custom plugin "${pluginName}"?`)) {
+                await deleteCustomPlugin(pluginName);
+                showListView();
+            }
+        });
+        configContent.appendChild(deleteButton);
+    }
 }
