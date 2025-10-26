@@ -1,4 +1,4 @@
-import { type PluginContext, type SignalSource, type SidebarEntry, RenderMode } from '@voltex-viewer/plugin-api'
+import { type PluginContext, type SignalSource, type SidebarEntry, RenderMode, type Row, type RowInsert } from '@voltex-viewer/plugin-api'
 
 let context: PluginContext | undefined;
 let sidebarContainer: HTMLElement | undefined;
@@ -166,6 +166,23 @@ function renderContent(): HTMLElement {
                 display: flex;
                 flex-direction: column;
             }
+            .tree-remove-btn {
+                width: 18px;
+                height: 18px;
+                margin-left: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                color: #9ca3af;
+                transition: all 0.1s;
+                cursor: pointer;
+                border-radius: 3px;
+            }
+            .tree-remove-btn:hover {
+                color: #ef4444;
+                background: rgba(239, 68, 68, 0.1);
+            }
         </style>
         <div class="signal-manager-container">
             <div class="search-container">
@@ -315,6 +332,7 @@ function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
     
     const isLeaf = node.children.size === 0;
     const hasChildren = node.children.size > 0;
+    const isTopLevel = depth === 0;
     
     // Create elements programmatically instead of using innerHTML
     const treeNodeDiv = document.createElement('div');
@@ -350,13 +368,39 @@ function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
     
     treeNodeDiv.appendChild(toggleSpan);
     treeNodeDiv.appendChild(labelSpan);
+    
+    // Add remove button for top-level nodes with children
+    if (isTopLevel && hasChildren) {
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'tree-remove-btn';
+        removeBtn.title = 'Remove all signals from this source';
+        
+        const removeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        removeSvg.setAttribute('width', '16');
+        removeSvg.setAttribute('height', '16');
+        removeSvg.setAttribute('viewBox', '0 0 16 16');
+        removeSvg.setAttribute('fill', 'currentColor');
+        
+        const removePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        removePath.setAttribute('d', 'M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z');
+        
+        removeSvg.appendChild(removePath);
+        removeBtn.appendChild(removeSvg);
+        treeNodeDiv.appendChild(removeBtn);
+    }
+    
     nodeElement.appendChild(treeNodeDiv);
     
     // Set up event listeners and track cleanup functions
     const eventListeners: (() => void)[] = [];
     
     if (hasChildren) {
-        const toggleFunction = () => {
+        const toggleFunction = (e: MouseEvent) => {
+            // Don't toggle if clicking the remove button
+            if ((e.target as HTMLElement).closest('.tree-remove-btn')) {
+                return;
+            }
+            
             const pathKey = node.fullPath.join('|');
             const currentExpanded = isNodeExpanded(node);
             const newExpanded = !currentExpanded;
@@ -367,6 +411,20 @@ function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
         
         treeNodeDiv.addEventListener('click', toggleFunction);
         eventListeners.push(() => treeNodeDiv.removeEventListener('click', toggleFunction));
+        
+        // Add remove button click handler for top-level nodes
+        if (isTopLevel) {
+            const removeBtn = treeNodeDiv.querySelector('.tree-remove-btn');
+            if (removeBtn) {
+                const removeBtnFunction = (e: MouseEvent) => {
+                    e.stopPropagation();
+                    removeSignalSourceAndChildren(node);
+                };
+                
+                removeBtn.addEventListener('click', removeBtnFunction);
+                eventListeners.push(() => removeBtn.removeEventListener('click', removeBtnFunction));
+            }
+        }
     } else if (isLeaf && node.signalSource) {
         const clickFunction = () => {
             addSignalToWaveform(node.signalSource!);
@@ -722,6 +780,74 @@ function addSignalToWaveform(signalSource: SignalSource): void {
         return null;
     }
     context.createRows({ channels: [getExistingSignal() ?? signalSource.signal()] });
+    context.requestRender();
+}
+
+
+function removeSignalSourceAndChildren(node: TreeNode): void {
+    if (!context) return;
+
+    function collectAllSignalSources(node: TreeNode): SignalSource[] {
+        const sources: SignalSource[] = [];
+        
+        if (node.signalSource) {
+            sources.push(node.signalSource);
+        }
+        
+        for (const [_, childNode] of node.children.entries()) {
+            sources.push(...collectAllSignalSources(childNode));
+        }
+        
+        return sources;
+    }
+    
+    const signalSourcesToRemove = collectAllSignalSources(node);
+    
+    if (signalSourcesToRemove.length === 0) return;
+    
+    // Create a Set of signal sources to remove for faster lookup
+    const signalSourceSet = new Set(signalSourcesToRemove);
+    
+    // Process all rows and remove signals
+    const allRows = context.getRows();
+    const rowsToRemove: Row[] = [];
+    const rowsToAdd: RowInsert[] = [];
+    
+    for (let i = 0; i < allRows.length; i++) {
+        const row = allRows[i];
+        
+        // Filter out signals that are being removed
+        const remainingSignals = row.signals.filter(signal => !signalSourceSet.has(signal.source));
+        
+        // If signals were removed from this row
+        if (remainingSignals.length !== row.signals.length) {
+            rowsToRemove.push(row);
+            
+            // Only recreate the row if there are remaining signals
+            if (remainingSignals.length > 0) {
+                // Calculate the actual index after accounting for previous removals
+                const numRemovedBefore = rowsToRemove.length - 1;
+                const adjustedIndex = i - numRemovedBefore;
+                
+                rowsToAdd.push({
+                    index: adjustedIndex,
+                    row: {
+                        channels: remainingSignals,
+                        height: row.height
+                    }
+                });
+            }
+        }
+    }
+    
+    // Remove the rows and add back the ones with remaining signals
+    if (rowsToRemove.length > 0) {
+        context.spliceRows(rowsToRemove, rowsToAdd);
+    }
+    
+    // Remove the signal sources
+    context.signalSources.remove(...signalSourcesToRemove);
+    
     context.requestRender();
 }
 
