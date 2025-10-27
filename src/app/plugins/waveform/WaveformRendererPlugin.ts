@@ -120,25 +120,19 @@ export default (context: PluginContext): void => {
         let bufferOffset = 0;
         let lastValue: number | undefined;
 
-        for (; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
+        for (; signalIndex < seqLen && bufferOffset < maxPoints; signalIndex++) {
             const value = sequence.values.valueAt(signalIndex);
-            if (lastValue === undefined || value !== lastValue) {
-                const time = sequence.time.valueAt(signalIndex);
-                timeBuffer[bufferOffset] = time;
+            if (value !== lastValue) {
+                timeBuffer[bufferOffset] = sequence.time.valueAt(signalIndex);
                 valueBuffer[bufferOffset] = value;
                 bufferOffset++;
                 lastValue = value;
             }
         }
-
-        if (signalIndex === seqLen && bufferOffset < maxPoints && bufferOffset > 0) {
-            const lastTime = sequence.time.valueAt(seqLen - 1);
-            const lastEmittedTime = timeBuffer[bufferOffset - 1];
-            if (lastTime !== lastEmittedTime) {
-                timeBuffer[bufferOffset] = lastTime;
-                valueBuffer[bufferOffset] = sequence.values.valueAt(seqLen - 1);
-                bufferOffset++;
-            }
+        
+        // Always overwrite the last slot with the final time to extend the last segment
+        if (bufferOffset > 0 && signalIndex === seqLen) {
+            timeBuffer[bufferOffset - 1] = sequence.time.valueAt(seqLen - 1);
         }
 
         return { bufferOffset, signalIndex };
