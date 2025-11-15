@@ -4,6 +4,7 @@ export interface Id {
     header: IdHeader;
     versionLong: string;
     program: string;
+    littleEndian: boolean;
     version: number;
 }
 
@@ -24,6 +25,7 @@ export function deserializeId(buffer: ArrayBuffer): Id {
         header,
         versionLong: String.fromCharCode(...new Uint8Array(buffer, 8, 8)),
         program: String.fromCharCode(...new Uint8Array(buffer, 16, 8)),
+        littleEndian: view.getUint16(24, true) === 0,
         version: view.getUint16(28, true),
     };
 }

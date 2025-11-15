@@ -1,0 +1,112 @@
+import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { resolveTextBlockOffset, TextBlock } from './textBlock';
+import { SerializeContext } from './serializer';
+import { BufferedFileReader } from '../../BufferedFileReader';
+import { MdfView } from './mdfView';
+
+export enum DataType {
+    Uint = 0,
+    Int = 1,
+    Float = 2,
+    Double = 3,
+    FFloat = 4,
+    GFloat = 5,
+    DFloat = 6,
+    String = 7,
+    Bytes = 8,
+    UintBe = 9,
+    IntBe = 10,
+    FloatBe = 11,
+    DoubleBe = 12,
+    UintLe = 13,
+    IntLe = 14,
+    FloatLe = 15,
+    DoubleLe = 16,
+}
+
+export function parseDataType(value: number): DataType {
+    if (value >= 0 && value <= 16) {
+        return value as DataType;
+    }
+    throw new Error(`Invalid DataType value: ${value}`);
+}
+
+export interface ChannelBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
+    channelNext: MaybeLinked<ChannelBlock<TMode>, TMode>;
+    conversion: MaybeLinked<unknown, TMode>;
+    extensions: MaybeLinked<unknown, TMode>;
+    dependency: MaybeLinked<unknown, TMode>;
+    comment: MaybeLinked<TextBlock, TMode>;
+    channelType: number;
+    name: string;
+    description: string;
+    bitOffset: number;
+    bitCount: number;
+    dataType: DataType;
+    rangeValid: boolean;
+    minimum: number;
+    maximum: number;
+    sampleRate: number;
+    longName: MaybeLinked<TextBlock, TMode>;
+    displayName: MaybeLinked<TextBlock, TMode>;
+    byteOffset: number;
+}
+
+export function deserializeChannelBlock(block: GenericBlock): ChannelBlock<'linked'> {
+    const view = block.buffer;
+
+    return {
+        channelNext: view.readLink(),
+        conversion: view.readLink(),
+        extensions: view.readLink(),
+        dependency: view.readLink(),
+        comment: view.readLink(),
+        channelType: view.readUint16(),
+        name: view.readString(32),
+        description: view.readString(128),
+        bitOffset: view.readUint16(),
+        bitCount: view.readUint16(),
+        dataType: parseDataType(view.readUint16()),
+        rangeValid: view.readBool(),
+        minimum: view.readReal(),
+        maximum: view.readReal(),
+        sampleRate: view.readReal(),
+        longName: view.readLink(),
+        displayName: view.readLink(),
+        byteOffset: view.readUint16(),
+    };
+}
+
+export function serializeChannelBlock(view: MdfView, context: SerializeContext, block: ChannelBlock<'instanced'>) {
+    
+}
+
+export function resolveChannelOffset(context: SerializeContext, block: ChannelBlock<'instanced'>) {
+    return context.resolve(
+        block, 
+        {
+            type: "##CN",
+            length: 224,
+        },
+        serializeChannelBlock,
+        block => {
+            resolveChannelOffset(context, block.channelNext);
+            resolveTextBlockOffset(context, block.comment);
+            resolveTextBlockOffset(context, block.longName);
+            resolveTextBlockOffset(context, block.displayName);
+        });
+}
+
+export async function readChannelBlock(link: Link<ChannelBlock>, reader: BufferedFileReader): Promise<ChannelBlock<'linked'>> {
+    return deserializeChannelBlock(await readBlock(link, reader, "CN"));
+}
+
+export async function* iterateChannelBlocks(startLink: Link<ChannelBlock>, reader: BufferedFileReader): AsyncIterableIterator<ChannelBlock<'linked'>> {
+    let currentLink = startLink;
+    
+    while (getLink(currentLink) !== 0) {
+        const channel = await readChannelBlock(currentLink, reader);
+        yield channel;
+        currentLink = channel.channelNext;
+    }
+}

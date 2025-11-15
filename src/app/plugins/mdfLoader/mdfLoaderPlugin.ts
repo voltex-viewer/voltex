@@ -12,249 +12,41 @@ import {
     resolveHeaderOffset,
     DataTableBlock,
     DataListBlock
-} from './blocks';
-import * as blocks from './blocks'
-import { SerializeContext } from './blocks/serializer';
+} from './blocks/v4';
+import * as v4 from './blocks/v4';
+import * as v3 from './blocks/v3'
+import { SerializeContext } from './blocks/v4/serializer';
 import { BufferedFileReader } from './BufferedFileReader';
 import { AbstractChannel, AbstractDataGroup, AbstractGroup, ChannelType, DataGroupLoader, DataType } from './decoder';
 
-function mdfTypeToDataType(type: blocks.DataType): DataType {
+function mdf3TypeToDataType(type: v3.DataType, littleEndian: boolean): DataType {
     switch (type) {
-        case blocks.DataType.UintLe: return DataType.UintLe;
-        case blocks.DataType.UintBe: return DataType.UintBe;
-        case blocks.DataType.IntLe: return DataType.IntLe;
-        case blocks.DataType.IntBe: return DataType.IntBe;
-        case blocks.DataType.FloatLe: return DataType.FloatLe;
-        case blocks.DataType.FloatBe: return DataType.FloatBe;
+        case v3.DataType.Uint: return littleEndian ? DataType.UintLe : DataType.UintBe;
+        case v3.DataType.Int: return littleEndian ? DataType.IntLe : DataType.IntBe;
+        case v3.DataType.Float: return littleEndian ? DataType.FloatLe : DataType.FloatBe;
+        case v3.DataType.Double: return littleEndian ? DataType.FloatLe : DataType.FloatBe;
+        case v3.DataType.UintBe: return DataType.UintBe;
+        case v3.DataType.IntBe: return DataType.IntBe;
+        case v3.DataType.FloatBe: return DataType.FloatBe;
+        case v3.DataType.DoubleBe: return DataType.FloatBe;
+        case v3.DataType.UintLe: return DataType.UintLe;
+        case v3.DataType.IntLe: return DataType.IntLe;
+        case v3.DataType.FloatLe: return DataType.FloatLe;
+        case v3.DataType.DoubleLe: return DataType.FloatLe;
         default: return DataType.Unknown;
     }
 }
 
-function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | null): {conversion: null | ((value: number) => number | string), textValues: TextValue[]} {
-    const textValues: TextValue[] = [];
-    function convert(conversion: ChannelConversionBlock<'instanced'>): null | ((value: number) => number | string) {
-        if (conversion === null) {
-            return null;
-        }
-        switch (conversion.type) {
-            case ConversionType.OneToOne:
-                return (value) => value;
-            case ConversionType.Linear:
-                const [intercept, slope] = conversion.values;
-                return value => {
-                    return slope * value + intercept;
-                };
-            case ConversionType.Rational:
-                const [numerator_x2, numerator_x1, numerator_x0, denominator_x2, denominator_x1, denominator_x0] = conversion.values;
-                return value => {
-                    return (numerator_x2 * value ** 2 + numerator_x1 * value + numerator_x0) / (denominator_x2 * value ** 2 + denominator_x1 * value + denominator_x0);
-                };
-            case ConversionType.Algebraic:
-                const formula = conversion.refs[0];
-                return new Function('X', `return ${formula.data.replaceAll('x', 'X').replaceAll('^', '**')};`) as (value: number) => number;
-            case ConversionType.ValueToValueTableWithInterpolation:
-            case ConversionType.ValueToValueTableWithoutInterpolation:
-                const pairs = [];
-                for (let i = 0; i < conversion.values.length; i += 2) {
-                    pairs.push([conversion.values[i], conversion.values[i + 1]]);
-                }
-                pairs.sort((a, b) => a[0] - b[0]);
-                const keys = pairs.map(pair => pair[0]);
-                const values = pairs.map(pair => pair[1]);
-
-                if (conversion.type === ConversionType.ValueToValueTableWithInterpolation) {
-                    return value => {
-                        if (value <= keys[0]) return values[0];
-                        if (value >= keys[keys.length - 1]) return values[values.length - 1];
-                        
-                        let left = 0;
-                        let right = keys.length - 1;
-                        
-                        while (left < right - 1) {
-                            const mid = (left + right) >>> 1;
-                            if (keys[mid] <= value) {
-                                left = mid;
-                            } else {
-                                right = mid;
-                            }
-                        }
-                        
-                        const t = (value - keys[left]) / (keys[right] - keys[left]);
-                        return values[left] + t * (values[right] - values[left]);
-                    };
-                } else {
-                    return value => {
-                        if (value <= keys[0]) return values[0];
-                        if (value >= keys[keys.length - 1]) return values[values.length - 1];
-                        
-                        let left = 0;
-                        let right = keys.length - 1;
-                        
-                        while (left < right - 1) {
-                            const mid = (left + right) >>> 1;
-                            if (keys[mid] <= value) {
-                                left = mid;
-                            } else {
-                                right = mid;
-                            }
-                        }
-                        
-                        const leftDist = value - keys[left];
-                        const rightDist = keys[right] - value;
-                        
-                        return leftDist <= rightDist ? values[left] : values[right];
-                    };
-                }
-
-            case ConversionType.ValueRangeToValueTable: {
-                if ((conversion.values.length % 3) !== 1) {
-                    throw new Error(`Invalid number of values for ValueRangeToValueTable: ${conversion.values.length}`);
-                }
-                const groups = [];
-                for (let i = 0; i < conversion.values.length - 2; i += 3) {
-                    groups.push([conversion.values[i], conversion.values[i + 1], conversion.values[i + 2]]);
-                }
-                const defaultValue = conversion.values[conversion.values.length - 1];
-                groups.sort((a, b) => a[0] - b[0]);
-                const keys_min = groups.map(group => group[0]);
-                const keys_max = groups.map(group => group[1]);
-                const values = groups.map(group => group[2]);
-                if (keys_min.length <= 8) {
-                    return value => {
-                        for (let i = 0; i < keys_min.length; i++) {
-                            if (value >= keys_min[i] && value <= keys_max[i]) {
-                                return values[i];
-                            }
-                        }
-                        return defaultValue;
-                    };
-                } else {
-                    return value => {
-                        let left = 0;
-                        let right = keys_min.length - 1;
-                        
-                        while (left <= right) {
-                            const mid = (left + right) >>> 1;
-                            if (value >= keys_min[mid] && value <= keys_max[mid]) {
-                                return values[mid];
-                            } else if (value < keys_min[mid]) {
-                                right = mid - 1;
-                            } else {
-                                left = mid + 1;
-                            }
-                        }
-                        return defaultValue;
-                    };
-                }
-            }
-
-            case ConversionType.ValueToTextOrScale: {
-                if (conversion.values.length + 1 !== conversion.refs.length) {
-                    throw new Error(`Mismatched lengths for ValueToTextOrScale`);
-                }
-                const conversionMap = new Map<number, string | ((value: number) => number | string)>();
-                for (let i = 0; i < conversion.values.length; i++) {
-                    const ref = conversion.refs[i];
-                    if ('type' in ref) {
-                        conversionMap.set(conversion.values[i], convert(ref));
-                    } else {
-                        conversionMap.set(conversion.values[i], ref.data);
-                        textValues.push({text: ref.data, value: conversion.values[i]});
-                    }
-                }
-                const defaultRef = conversion.refs[conversion.refs.length - 1];
-                let defaultValue: string | ((value: number) => number | string) | undefined;
-                if (defaultRef === null) {
-                    defaultValue = undefined;
-                } else if ('type' in defaultRef) {
-                    defaultValue = convert(defaultRef);
-                } else {
-                    defaultValue = defaultRef.data;
-                    textValues.push({text: defaultRef.data});
-                }
-                if (typeof(defaultValue) === "function") {
-                    return value => {
-                        const result = conversionMap.get(value);
-                        switch (typeof(result)) {
-                            case "function":
-                                return result(value);
-                            case "undefined":
-                                return defaultValue(value);
-                            default:
-                                return result;
-                        }
-                    };
-                } else {
-                    return value => {
-                        const result = conversionMap.get(value);
-                        switch (typeof(result)) {
-                            case "function":
-                                return result(value);
-                            case "undefined":
-                                return defaultValue;
-                            default:
-                                return result;
-                        }
-                    };
-                }
-            }
-
-            case ConversionType.ValueRangeToTextOrScale: {
-                const count = conversion.values.length / 2;
-                if (count + 1 !== conversion.refs.length || conversion.values.length % 2 !== 0) {
-                    throw new Error(`Mismatched lengths for ValueRangeToTextOrScale`);
-                }
-                const conversionMap: { lower: number; upper: number; result: string | ((value: number) => number | string) }[] = [];
-                for (let i = 0; i < count; i++) {
-                    const ref = conversion.refs[i];
-                    let result;
-                    if ('type' in ref) {
-                        result = convert(ref);
-                    } else {
-                        result = ref.data;
-                        textValues.push({text: ref.data});
-                    }
-                    conversionMap.push({
-                        lower: conversion.values[i * 2],
-                        upper: conversion.values[i * 2 + 1],
-                        result
-                    });
-                }
-                // Technically the ranges should already be sorted, but we can be permissive here
-                conversionMap.sort((a, b) => a.lower - b.lower);
-                const defaultRef = conversion.refs[conversion.refs.length - 1];
-                let defaultValue: string | ((value: number) => number | string) | undefined;
-                if (defaultRef === null) {
-                    defaultValue = undefined;
-                } else if ('type' in defaultRef) {
-                    defaultValue = convert(defaultRef);
-                } else {
-                    defaultValue = defaultRef.data;
-                    textValues.push({text: defaultRef.data});
-                }
-                return value => {
-                    const result = conversionMap.find(entry => entry.lower <= value && entry.upper >= value)?.result;
-                    switch (typeof(result)) {
-                        case "function":
-                            return result(value);
-                        case "undefined":
-                            return typeof(defaultValue) === "function" ? defaultValue(value) : defaultValue;
-                        default:
-                            return result;
-                    }
-                };
-            }
-
-            case ConversionType.TextToValue:
-            case ConversionType.TextToText:
-            default:
-                return value => 0;
-        }
+function mdf4TypeToDataType(type: v4.DataType): DataType {
+    switch (type) {
+        case v4.DataType.UintLe: return DataType.UintLe;
+        case v4.DataType.UintBe: return DataType.UintBe;
+        case v4.DataType.IntLe: return DataType.IntLe;
+        case v4.DataType.IntBe: return DataType.IntBe;
+        case v4.DataType.FloatLe: return DataType.FloatLe;
+        case v4.DataType.FloatBe: return DataType.FloatBe;
+        default: return DataType.Unknown;
     }
-    return {
-        conversion: convert(conversion),
-        textValues,
-    };
 }
 
 export default (context: PluginContext): void => {
@@ -273,96 +65,17 @@ export default (context: PluginContext): void => {
                 throw new Error(`Invalid MDF header: "${id.header}"`);
             }
 
-            if (id.version < 400 || id.version >= 500) {
+            reader.version == id.version;
+            reader.littleEndian = id.littleEndian;
+
+            let sources: SignalSource[];
+
+            if (id.version >= 400 && id.version < 500) {
+                sources = await readMf4(reader);
+            } else if (id.version >= 300 && id.version < 400) {
+                sources = await readMf3(reader);
+            } else {
                 throw new Error(`Unsupported MDF version: ${id.version} (long: ${id.versionLong})`);
-            }
-            
-            // Parse the first block (Header block) at offset 64
-            const rootLink = newLink<Header>(64n);
-            const header = await readHeader(rootLink, reader);
-            console.log(header);
-            
-            let sources: SignalSource[] = [];
-
-            for await (const dataGroup of iterateDataGroupBlocks(header.firstDataGroup, reader)) {
-                const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock<'instanced'>>();
-                async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<ChannelConversionBlock<'instanced'> | null> {
-                    if (getLink(link) === 0n) {
-                        return null;
-                    }
-                    if (conversionMap.has(link)) {
-                        return conversionMap.get(link)!;
-                    }
-                    const srcBlock = await readConversionBlock(link, reader);
-                    const block = {
-                        ...srcBlock,
-                        txName: null,
-                        mdUnit: null,
-                        mdComment: null,
-                        inverse: null,
-                        refs: [],
-                    } as ChannelConversionBlock<'instanced'>;
-                    conversionMap.set(link, block);
-                    for (const ref of srcBlock.refs) {
-                        if (getLink(ref) === 0n) {
-                            (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(null);
-                        } else {
-                            const refBlock = await readBlock(ref, reader);
-                            
-                            if (refBlock.type === "##CC") {
-                                (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(await readConversionBlockRecurse(ref));
-                            } else if (refBlock.type === "##TX") {
-                                (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(deserializeTextBlock(refBlock));
-                            } else {
-                                throw new Error(`Invalid block type in channel conversion block: "${block.type}"`);
-                            }
-                        }
-                    }
-                    
-                    if (getLink(srcBlock.mdUnit) !== 0n) {
-                        const unit = await readBlock(srcBlock.mdUnit, reader);
-
-                        if (unit.type === "##TX") {
-                            block.mdUnit = deserializeTextBlock(unit);
-                        } else if (unit.type == "##MD") {
-                            // TODO: Should parse this XML properly
-                            block.mdUnit = deserializeMetadataBlock(unit);
-                        } else {
-                            throw new Error(`Invalid block type in channel conversion block: "${unit.type}"`);
-                        }
-                    }
-
-                    return block;
-                }
-                const groups: AbstractGroup[] = [];
-                for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, reader)) {
-                    const channels: AbstractChannel[] = [];
-                    for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, reader)) {
-                        const conversionBlock = await readConversionBlockRecurse(channel.conversion);
-                        const {conversion, textValues} = conversionToFunction(conversionBlock);
-                        channels.push({
-                            name: [reader.file.name, (await readTextBlock(channel.txName, reader)).data],
-                            type: channel.channelType === 2 ? ChannelType.Time : channel.channelType == 0 ? ChannelType.Signal : ChannelType.Unknown,
-                            dataType: mdfTypeToDataType(channel.dataType),
-                            byteOffset: channel.byteOffset,
-                            bitOffset: channel.bitOffset,
-                            bitCount: channel.bitCount,
-                            conversion,
-                            textValues,
-                        });
-                    }
-                    groups.push({
-                        recordId: Number(channelGroup.recordId),
-                        dataBytes: channelGroup.dataBytes,
-                        invalidationBytes: channelGroup.invalidationBytes,
-                        channels,
-                    });
-                }
-                const data: AbstractDataGroup = {
-                    recordIdSize: dataGroup.recordIdSize,
-                    groups,
-                };
-                sources.push(...new DataGroupLoader(data, () => getDataBlocks(dataGroup, reader)).sources());
             }
 
             console.log(`Loaded ${sources.length} signal sources from ${file.name} in ${(performance.now() - start).toFixed(1)} ms`);
@@ -419,7 +132,7 @@ export default (context: PluginContext): void => {
                     comment: null,
                     channelType: index == 0 ? 2 : 0,
                     syncType: index == 0 ? 1 : 0,
-                    dataType: blocks.DataType.FloatLe,
+                    dataType: v4.DataType.FloatLe,
                     bitOffset: 0,
                     byteOffset: index * 4,
                     bitCount: 32,
@@ -526,3 +239,147 @@ export default (context: PluginContext): void => {
         }
     });
 }
+
+async function readMf3(reader: BufferedFileReader): Promise<SignalSource[]> {
+    const rootLink = newLink<Header>(64n);
+    const header = await v3.readHeader(rootLink, reader);
+    let sources: SignalSource[] = [];
+    console.log(header);
+    for await (const dataGroup of v3.iterateDataGroupBlocks(header.firstDataGroup, reader)) {
+        const groups: AbstractGroup[] = [];
+        let totalRows = 0;
+        for await (const channelGroup of v3.iterateChannelGroupBlocks(dataGroup.channelGroupFirst, reader)) {
+            totalRows += channelGroup.numberOfRecords;
+            const channels: AbstractChannel[] = [];
+            for await (const channel of v3.iterateChannelBlocks(channelGroup.channelFirst, reader)) {
+                const conversionBlockLinked = await v3.readChannelConversionBlock(channel.conversion, reader);
+                let conversionBlockInstanced: v3.ChannelConversionBlock<'instanced'> | undefined;
+                if (conversionBlockLinked.type === v3.ConversionType.TextRangeTable) {
+                    conversionBlockInstanced = {
+                        ...conversionBlockLinked,
+                        default: v3.getLink(conversionBlockLinked.default) === 0 ? null : await v3.readTextBlock(conversionBlockLinked.default, reader),
+                        table: await Promise.all(conversionBlockLinked.table.map(async x => [x[0], x[1], await v3.readTextBlock(x[2], reader)])),
+                    };
+                } else {
+                    conversionBlockInstanced = conversionBlockLinked;
+                }
+                const {conversion, textValues} = v3.conversionToFunction(conversionBlockInstanced);
+                channels.push({
+                    name: [reader.file.name, v3.getLink(channel.longName) !== 0 ? (await readTextBlock(channel.longName, reader)).data : channel.name],
+                    type: channel.channelType === 0 ? ChannelType.Signal : channel.channelType == 1 ? ChannelType.Time : ChannelType.Unknown,
+                    dataType: mdf3TypeToDataType(channel.dataType, reader.littleEndian),
+                    byteOffset: channel.byteOffset + Math.floor(channel.bitOffset / 8),
+                    bitOffset: channel.bitOffset % 8,
+                    bitCount: channel.bitCount,
+                    conversion,
+                    textValues,
+                });
+            }
+            groups.push({
+                recordId: Number(channelGroup.recordId),
+                dataBytes: channelGroup.dataBytes + (dataGroup.recordIdType == 2 ? 1 : 0), // Include the extra record ID at the end
+                invalidationBytes: 0,
+                channels,
+            });
+        }
+        const data: AbstractDataGroup = {
+            recordIdSize: dataGroup.recordIdType == 0 ? 0 : 1,
+            totalRows,
+            groups,
+        };
+        sources.push(...new DataGroupLoader(data, () => v3.getDataBlocks(dataGroup, reader)).sources());
+    }
+
+    return sources;
+}
+async function readMf4(reader: BufferedFileReader) {
+    // Parse the first block (Header block) at offset 64
+    const rootLink = newLink<Header>(64n);
+    const header = await readHeader(rootLink, reader);
+    console.log(header);
+    
+    let sources: SignalSource[] = [];
+
+    for await (const dataGroup of iterateDataGroupBlocks(header.firstDataGroup, reader)) {
+        const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock<'instanced'>>();
+        async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<ChannelConversionBlock<'instanced'> | null> {
+            if (getLink(link) === 0n) {
+                return null;
+            }
+            if (conversionMap.has(link)) {
+                return conversionMap.get(link)!;
+            }
+            const srcBlock = await readConversionBlock(link, reader);
+            const block = {
+                ...srcBlock,
+                txName: null,
+                mdUnit: null,
+                mdComment: null,
+                inverse: null,
+                refs: [],
+            } as ChannelConversionBlock<'instanced'>;
+            conversionMap.set(link, block);
+            for (const ref of srcBlock.refs) {
+                if (getLink(ref) === 0n) {
+                    (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(null);
+                } else {
+                    const refBlock = await readBlock(ref, reader);
+                    
+                    if (refBlock.type === "##CC") {
+                        (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(await readConversionBlockRecurse(ref));
+                    } else if (refBlock.type === "##TX") {
+                        (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(deserializeTextBlock(refBlock));
+                    } else {
+                        throw new Error(`Invalid block type in channel conversion block: "${block.type}"`);
+                    }
+                }
+            }
+            
+            if (getLink(srcBlock.mdUnit) !== 0n) {
+                const unit = await readBlock(srcBlock.mdUnit, reader);
+
+                if (unit.type === "##TX") {
+                    block.mdUnit = deserializeTextBlock(unit);
+                } else if (unit.type == "##MD") {
+                    // TODO: Should parse this XML properly
+                    block.mdUnit = deserializeMetadataBlock(unit);
+                } else {
+                    throw new Error(`Invalid block type in channel conversion block: "${unit.type}"`);
+                }
+            }
+
+            return block;
+        }
+        const groups: AbstractGroup[] = [];
+        for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, reader)) {
+            const channels: AbstractChannel[] = [];
+            for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, reader)) {
+                const conversionBlock = await readConversionBlockRecurse(channel.conversion);
+                const {conversion, textValues} = v4.conversionToFunction(conversionBlock);
+                channels.push({
+                    name: [reader.file.name, (await readTextBlock(channel.txName, reader)).data],
+                    type: channel.channelType === 2 ? ChannelType.Time : channel.channelType == 0 ? ChannelType.Signal : ChannelType.Unknown,
+                    dataType: mdf4TypeToDataType(channel.dataType),
+                    byteOffset: channel.byteOffset,
+                    bitOffset: channel.bitOffset,
+                    bitCount: channel.bitCount,
+                    conversion,
+                    textValues,
+                });
+            }
+            groups.push({
+                recordId: Number(channelGroup.recordId),
+                dataBytes: channelGroup.dataBytes,
+                invalidationBytes: channelGroup.invalidationBytes,
+                channels,
+            });
+        }
+        const data: AbstractDataGroup = {
+            recordIdSize: dataGroup.recordIdSize,
+            groups,
+        };
+        sources.push(...new DataGroupLoader(data, () => getDataBlocks(dataGroup, reader)).sources());
+    }
+    return sources;
+}
+

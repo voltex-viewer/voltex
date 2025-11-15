@@ -9,11 +9,14 @@ export class BufferedFileReader {
     private bufferSize: number;
     private maxBuffers: number;
     private cache: Map<number, CacheEntry> = new Map();
+    public version: number;
+    public littleEndian: boolean;
 
     constructor(file: File, bufferSize: number = 1024 * 1024, maxBuffers: number = 4) {
         this._file = file;
         this.bufferSize = bufferSize;
         this.maxBuffers = maxBuffers;
+        this.littleEndian = true;
     }
 
     // Getter for the file property

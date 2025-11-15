@@ -1,6 +1,6 @@
 import { InMemorySequence, SequenceSignal, Signal, SignalSource, TextValue, RenderMode } from "@voltex-viewer/plugin-api";
 
-class Mf4Source implements SignalSource {
+class MdfSource implements SignalSource {
     constructor(public readonly name: string[], public signal: () => Promise<Signal>) {
     }
 }
@@ -24,6 +24,7 @@ export enum DataType {
 export interface AbstractDataGroup {
     recordIdSize: number;
     groups: AbstractGroup[];
+    totalRows?: number | undefined;
 }
 
 export interface AbstractGroup {
@@ -50,7 +51,7 @@ export class DataGroupLoader {
     private mappedSources: Map<AbstractChannel, SignalSource>;
 
     constructor(private data: AbstractDataGroup, private blocks: () => Promise<AsyncIterableIterator<DataView<ArrayBuffer>>>) {
-        this.mappedSources = new Map(this.data.groups.flatMap(group => group.channels.map(channel => [channel, new Mf4Source(channel.name, () => Promise.resolve(this.get(channel)))])));
+        this.mappedSources = new Map(this.data.groups.flatMap(group => group.channels.map(channel => [channel, new MdfSource(channel.name, () => Promise.resolve(this.get(channel)))])));
     }
 
     sources(): SignalSource[] {
@@ -104,15 +105,18 @@ export class DataGroupLoader {
             records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences});
         }
         let rowCount = 0;
+        let totalRows = this.data.totalRows ?? 0;
         await parseData(
             this.data.recordIdSize,
             await this.blocks(),
             records,
             (context, view) => {
                 for (const {sequence, loader} of context.sequences) {
-                    sequence.push(loader(view));
+                    const value = loader(view);
+                    sequence.push(value);
                 }
                 rowCount += 1;
+                return rowCount == totalRows;
             });
         console.log(`  Total Rows: ${rowCount}`);
     }
@@ -184,7 +188,7 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
     return new Function("view", getExpression()) as (view: DataView) => number;
 }
 
-async function parseData<T>(recordIdSize: number, blocks: AsyncIterableIterator<DataView<ArrayBuffer>>, records: ReadonlyMap<number, T & {length: number}>, rowHandler: (context: T, chunk: DataView) => void): Promise<void> {
+async function parseData<T>(recordIdSize: number, blocks: AsyncIterableIterator<DataView<ArrayBuffer>>, records: ReadonlyMap<number, T & {length: number}>, rowHandler: (context: T, chunk: DataView) => boolean): Promise<void> {
     let carry = new Uint8Array(recordIdSize + Math.max(...records.values().map(x => x.length)));
     let carryLength = 0;
 
@@ -242,7 +246,9 @@ async function parseData<T>(recordIdSize: number, blocks: AsyncIterableIterator<
                 break;
             }
             buffer = buffer.subarray(recordIdSize); // Consume the record ID
-            rowHandler(metadata, new DataView(buffer.buffer, buffer.byteOffset, metadata.length));
+            if (rowHandler(metadata, new DataView(buffer.buffer, buffer.byteOffset, metadata.length))) {
+                return;
+            }
             buffer = buffer.subarray(metadata.length); // Consume the record data
         }
         if (buffer.length > 0)

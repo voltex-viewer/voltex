@@ -1,6 +1,6 @@
 import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../BufferedFileReader';
+import { BufferedFileReader } from '../../BufferedFileReader';
 import { DataListBlock, resolveDataListOffset } from './dataListBlock';
 
 export interface HeaderListBlock<TMode extends 'linked' | 'instanced' = 'linked'> {

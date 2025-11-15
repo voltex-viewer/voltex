@@ -2,7 +2,7 @@ import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelBlock, resolveChannelOffset } from './channelBlock';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../BufferedFileReader';
+import { BufferedFileReader } from '../../BufferedFileReader';
 
 export interface ChannelGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     channelGroupNext: MaybeLinked<ChannelGroupBlock<TMode>, TMode>;
