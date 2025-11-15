@@ -846,7 +846,7 @@ function removeSignalSourceAndChildren(node: TreeNode): void {
     }
     
     // Remove the signal sources
-    context.signalSources.remove(...signalSourcesToRemove);
+    context.signalSources.remove(signalSourcesToRemove);
     
     context.requestRender();
 }

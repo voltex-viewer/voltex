@@ -145,7 +145,7 @@ export default (context: PluginContext): void => {
 
     const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, flatSignalSource, randomPoints, trafficLightSource];
     
-    context.signalSources.add(...sources);
+    context.signalSources.add(sources);
     context.createRows(...sources.map(source => ({ channels: [source.signal()] })));
 }
 

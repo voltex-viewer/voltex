@@ -113,8 +113,8 @@ export interface SignalSourceManager {
 
     changed(callback: (event: SignalsAvailableChangedEvent) => void): void;
 
-    add(...signals: SignalSource[]): void;
-    remove(...signals: SignalSource[]): void;
+    add(signals: SignalSource[]): void;
+    remove(signals: SignalSource[]): void;
 }
 
 export type RowsChangedCallback = (event: RowsChangedEvent) => void;

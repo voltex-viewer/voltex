@@ -78,12 +78,12 @@ export default (context: PluginContext): void => {
                 };
                 
                 flameGraphSources[depth] = { name: depthSource.name, source: depthSource };
-                context.signalSources.add(depthSource);
+                context.signalSources.add([depthSource]);
             }
         }
     };
     
-    context.signalSources.add(signalSource);
+    context.signalSources.add([signalSource]);
     
     // Hook into render cycle to capture frame data
     context.onBeforeRender(() => {

@@ -8,6 +8,7 @@ import type { RenderProfiler } from './RenderProfiler';
 import * as t from 'io-ts';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
 import { RowImpl } from './RowImpl';
+import { bigPush } from './bigPush';
 
 interface ActivePlugin {
     pluginFunction: PluginFunction;
@@ -16,8 +17,8 @@ interface ActivePlugin {
 }
 
 interface PluginSignalSourceManager extends SignalSourceManager {
-    add(...signals: SignalSource[]): void;
-    remove(...signals: SignalSource[]): void;
+    add(signals: SignalSource[]): void;
+    remove(signals: SignalSource[]): void;
 }
 
 interface PluginData {
@@ -228,7 +229,7 @@ export class PluginManager {
         const data = this.pluginData.get(plugin);
         
         if (data.signalSources.length > 0) {
-            this.signalSources.remove(...data.signalSources);
+            this.signalSources.remove(data.signalSources);
         }
         
         // Remove render objects from all rows before disposing
@@ -310,15 +311,15 @@ export class PluginManager {
             changed: (callback) => {
                 self.signalSources.changed(callback);
             },
-            add: (...signals: SignalSource[]) => {
+            add: (signals: SignalSource[]) => {
                 const data = self.pluginData.get(plugin);
                 if (data) {
-                    data.signalSources.push(...signals);
+                    bigPush(data.signalSources, signals);
                 }
                 
-                self.signalSources.add(...signals);
+                self.signalSources.add(signals);
             },
-            remove: (...signals: SignalSource[]) => {
+            remove: (signals: SignalSource[]) => {
                 const data = self.pluginData.get(plugin);
                 if (data) {
                     for (const signal of signals) {
@@ -332,7 +333,7 @@ export class PluginManager {
                     }
                 }
                 
-                self.signalSources.remove(...signals);
+                self.signalSources.remove(signals);
             }
         };
     }
@@ -449,6 +450,7 @@ export class PluginManager {
                             await handler.handler(file);
                             handled = true;
                         } catch (error) {
+                            console.error(error);
                             fileErrors.push(`Error in plugin ${plugin.metadata.name} while handling file ${file.name}: ${error.message}`);
                         }
                     }

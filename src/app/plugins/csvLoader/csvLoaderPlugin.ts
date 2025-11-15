@@ -116,7 +116,7 @@ export default (context: PluginContext): void => {
             }
 
             console.log(`Loaded ${sources.length} signal sources from ${file.name} in ${(performance.now() - start).toFixed(1)} ms`);
-            context.signalSources.add(...sources);
+            context.signalSources.add(sources);
         }
     });
 

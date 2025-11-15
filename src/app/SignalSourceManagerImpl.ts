@@ -1,4 +1,5 @@
 import type { SignalSource, SignalSourceManager, SignalsAvailableChangedEvent } from '@voltex-viewer/plugin-api';
+import { bigPush } from './bigPush';
 
 export class SignalSourceManagerImpl implements SignalSourceManager {
     private _available: SignalSource[] = [];
@@ -12,10 +13,10 @@ export class SignalSourceManagerImpl implements SignalSourceManager {
         this._callbacks.push(callback);
     }
 
-    add(...signals: SignalSource[]): void {
+    add(signals: SignalSource[]): void {
         if (signals.length === 0) return;
         
-        this._available.push(...signals);
+        bigPush(this._available, signals);
         
         const event: SignalsAvailableChangedEvent = {
             added: [...signals],
@@ -25,7 +26,7 @@ export class SignalSourceManagerImpl implements SignalSourceManager {
         this._notifyCallbacks(event);
     }
 
-    remove(...signals: SignalSource[]): void {
+    remove(signals: SignalSource[]): void {
         if (signals.length === 0) return;
         
         const removedSignals: SignalSource[] = [];
