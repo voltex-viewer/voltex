@@ -1,240 +1,32 @@
-import { InMemorySequence, Sequence, SequenceSignal, TextValue } from '@voltex-viewer/plugin-api';
-import { PluginContext, RenderMode, SignalSource, Signal } from '@voltex-viewer/plugin-api';
+import { Sequence, TextValue } from '@voltex-viewer/plugin-api';
+import { PluginContext, SignalSource, Signal } from '@voltex-viewer/plugin-api';
 import {
     Link, newLink, getLink, readBlock,
     deserializeId,
     Header, readHeader,
     DataGroupBlock, iterateDataGroupBlocks, getDataBlocks,
-    ChannelGroupBlock, iterateChannelGroupBlocks,
-    ChannelBlock, iterateChannelBlocks, DataType,
+    iterateChannelGroupBlocks,
+    ChannelBlock, iterateChannelBlocks,
     TextBlock, deserializeTextBlock, deserializeMetadataBlock, readTextBlock,
     ChannelConversionBlock, readConversionBlock, ConversionType,
     resolveHeaderOffset,
     DataTableBlock,
     DataListBlock
 } from './blocks';
+import * as blocks from './blocks'
 import { SerializeContext } from './blocks/serializer';
 import { BufferedFileReader } from './BufferedFileReader';
+import { AbstractChannel, AbstractDataGroup, AbstractGroup, ChannelType, DataGroupLoader, DataType } from './decoder';
 
-async function parseData<T>(dataGroup: DataGroupBlock, reader: BufferedFileReader, rowHandler: (context: T, chunk: DataView) => void, records: ReadonlyMap<number, T & {length: number}>): Promise<void> {
-    const recordSize = dataGroup.recordIdSize;
-
-    let carry = new Uint8Array(recordSize + Math.max(...records.values().map(x => x.length)));
-    let carryLength = 0;
-
-    function getMetadata(view: DataView) {
-        let recordId;
-        if (recordSize === 0) {
-            recordId = 0;
-        } else if (recordSize === 1) {
-            recordId = view.getUint8(0);
-        } else if (recordSize === 2) {
-            recordId = view.getUint16(0, true);
-        } else if (recordSize === 4) {
-            recordId = view.getUint32(0, true);
-        } else if (recordSize === 8) {
-            recordId = Number(view.getBigUint64(0, true));
-        } else {
-            throw new Error(`Unsupported record size: ${recordSize}`);
-        }
-        const metadata = records.get(recordId);
-        if (typeof(metadata) === "undefined") {
-            throw new Error(`Unknown record ID: ${recordId}`);
-        }
-        return metadata;
-    }
-
-    for await (const dataBlock of await getDataBlocks(dataGroup, reader)) {
-        const blockData = new Uint8Array(dataBlock.data.buffer, dataBlock.data.byteOffset, dataBlock.data.byteLength);
-        let blockDataOffset = 0;
-        // Check if there is any data carried from the last data block
-        if (carryLength > 0) {
-            if (carryLength < recordSize) {
-                const newData = blockData.subarray(0, Math.max(recordSize - carryLength, 0));
-                carry.set(newData, carryLength);
-                carryLength += newData.length;
-                blockDataOffset += newData.length;
-            }
-            if (carryLength >= recordSize) {
-                const metadata = getMetadata(new DataView(carry.buffer, 0, carryLength));
-                if (carryLength < recordSize + metadata.length) {
-                    const newData = blockData.subarray(blockDataOffset, blockDataOffset + recordSize + metadata.length - carryLength);
-                    carry.set(newData, carryLength);
-                    carryLength += newData.length;
-                    blockDataOffset += newData.length;
-                }
-                if (carryLength == recordSize + metadata.length) {
-                    rowHandler(metadata, new DataView(carry.buffer, recordSize, metadata.length));
-                    carryLength = 0;
-                }
-            }
-        }
-        let buffer = blockData.subarray(blockDataOffset);
-        while (buffer.length >= recordSize) {
-            const metadata = getMetadata(new DataView(buffer.buffer, buffer.byteOffset, buffer.length));
-            if (buffer.length < recordSize + metadata.length) {
-                break;
-            }
-            buffer = buffer.subarray(recordSize); // Consume the record ID
-            rowHandler(metadata, new DataView(buffer.buffer, buffer.byteOffset, metadata.length));
-            buffer = buffer.subarray(metadata.length); // Consume the record data
-        }
-        if (buffer.length > 0)
-        {
-            carry.set(buffer, carryLength);
-            carryLength += buffer.length;
-        }
-    }
-}
-
-function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bitCount: number) {
-    function getExpression() {
-        switch (dataType) {
-            case DataType.FloatLe:
-            case DataType.FloatBe: {
-                const littleEndian = dataType === DataType.FloatLe;
-                if (bitOffset != 0) {
-                    throw new Error(`Unsupported bit offset ${bitOffset} for FloatLe`);
-                }
-                if (bitCount === 32) {
-                    return `return view.getFloat32(${byteOffset}, ${littleEndian});`;
-                } else if (bitCount === 64) {
-                    return `return view.getFloat64(${byteOffset}, ${littleEndian});`;
-                } else {
-                    throw new Error(`Unsupported bit count ${bitCount} for FloatLe`);
-                }
-            }
-            case DataType.UintLe:
-            case DataType.UintBe:
-            case DataType.IntLe:
-            case DataType.IntBe: {
-                const littleEndian = (dataType === DataType.UintLe) || (dataType === DataType.IntLe);
-                const isSigned = (dataType === DataType.IntLe) || (dataType === DataType.IntBe);
-                // Simple case - no bit offset
-                if (bitOffset == 0) {
-                    const type = isSigned ? 'Int' : 'Uint';
-                    if (bitCount === 8) {
-                        return `return view.get${type}8(${byteOffset});`;
-                    } else if (bitCount === 16) {
-                        return `return view.get${type}16(${byteOffset}, ${littleEndian});`;
-                    } else if (bitCount === 32) {
-                        return `return view.get${type}32(${byteOffset}, ${littleEndian});`;
-                    } else if (bitCount === 64) {
-                        return `return Number(view.getBig${type}64(${byteOffset}, ${littleEndian}));`;
-                    }
-                }
-                // Complex case - with masking and/or shifting
-                const mask = (1 << bitCount) - 1;
-                const parts = [];
-                const end = Math.ceil((bitCount + bitOffset) / 8);
-                for (let i = 0; i < end; i++)
-                {
-                    const byte = littleEndian ? byteOffset + i : byteOffset + end - 1 - i;
-                    const shift = i * 8 - (bitOffset % 8);
-                    if (shift == 0) {
-                        parts.push(`view.getUint8(${byte})`);
-                    } else if (shift <= 0) {
-                        parts.push(`(view.getUint8(${byte}) >> ${-shift})`);
-                    } else {
-                        parts.push(`(view.getUint8(${byte}) << ${shift})`);
-                    }
-                }
-                if (isSigned) {
-                    return `const value = (${parts.join(" | ")}) & 0x${mask.toString(16)};` +
-                           `return value >= 0x${(1 << (bitCount - 1)).toString(16)} ? value - 0x${(1 << bitCount).toString(16)} : value;`;
-                } else {
-                    return `return (${parts.join(" | ")}) & 0x${mask.toString(16)};`;
-                }
-            }
-            default:
-                return "return 0;";
-        }
-    }
-    return new Function("view", getExpression()) as (view: DataView) => number;
-}
-
-class Mf4Source implements SignalSource {
-    constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock<'instanced'>, public textValues: TextValue[]) {
-    }
-
-    signal(): Promise<Signal> {
-        return Promise.resolve(this.loader.get(this));
-    }
-}
-
-class DataGroupLoader {
-    private signals: Map<ChannelBlock<'instanced'>, SequenceSignal> = new Map();
-    private loaded: boolean = false;
-    private groups: {group: ChannelGroupBlock, channels: {source: SignalSource, channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string, textValues: TextValue[]}[]}[];
-
-    constructor(private dataGroup: DataGroupBlock, groups: {group: ChannelGroupBlock, channels: {channel: ChannelBlock<'instanced'>, conversion: (value: number) => number | string, textValues: TextValue[]}[]}[], private reader: BufferedFileReader) {
-        this.groups = groups.map(({group, channels}) => ({
-            group,
-            channels: channels.map(({channel, conversion, textValues}) => ({
-                source: new Mf4Source([reader.file.name, channel.txName.data], this, channel, textValues),
-                channel,
-                conversion,
-                textValues
-            }))
-        }));
-    }
-
-    sources(): SignalSource[] {
-        return this.groups
-            .filter(group => group.channels.findIndex(channel => channel.channel.channelType === 2) !== -1)
-            .flatMap(({channels}) => channels.filter(({channel}) => channel.channelType === 0).map(({source}) => source));
-    }
-
-    get(source: Mf4Source): Signal {
-        this.load();
-        return this.signals.get(source.channel)!;
-    }
-
-    async load() {
-        if (this.loaded) {
-            return;
-        } else {
-            this.loaded = true;
-        }
-        let records = new Map<number, {length: number, sequences: {sequence: InMemorySequence, loader: ((buffer: DataView) => number)}[]}>();
-        for (const {group, channels} of this.groups) {
-            if (channels.length == 0) {
-                continue;
-            }
-            const recordId = this.dataGroup.recordIdSize == 0 ? 0 : Number(group.recordId);
-            if (records.has(recordId)) {
-                throw new Error(`Duplicate record ID found: ${recordId}`);
-            }
-            if (recordId >= (1n << BigInt(this.dataGroup.recordIdSize * 8))) {
-                console.warn(`Record ID ${recordId} exceeds maximum value for ${this.dataGroup.recordIdSize * 8}-bit unsigned integer`);
-            }
-            const sequences = [];
-            for (let i = 0; i < channels.length; i++) {
-                const {channel, source, conversion} = channels[i];
-                const sequence = new InMemorySequence(conversion == null ? undefined : conversion);
-                sequences.push({
-                    sequence,
-                    loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
-                });
-            }
-            const masterIndex = channels.findIndex(c => c.channel.channelType === 2);
-            if (masterIndex === -1) {
-                throw new Error(`No master channel found in group with record ID ${recordId}`);
-            }
-            const masterSequence = sequences[masterIndex].sequence;
-            for (let i = 0; i < channels.length; i++) {
-                this.signals.set(channels[i].channel, new SequenceSignal(channels[i].source, masterSequence, sequences[i].sequence, channels[i].textValues.length >= 2 ? RenderMode.Enum : RenderMode.Lines));
-            }
-            records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences});
-        }
-        let rowCount = 0;
-        await parseData(this.dataGroup, this.reader, (context, view) => {
-            for (const {sequence, loader} of context.sequences) {
-                sequence.push(loader(view));
-            }
-            rowCount += 1;
-        }, records);
-        console.log(`  Total Rows: ${rowCount}`);
+function mdfTypeToDataType(type: blocks.DataType): DataType {
+    switch (type) {
+        case blocks.DataType.UintLe: return DataType.UintLe;
+        case blocks.DataType.UintBe: return DataType.UintBe;
+        case blocks.DataType.IntLe: return DataType.IntLe;
+        case blocks.DataType.IntBe: return DataType.IntBe;
+        case blocks.DataType.FloatLe: return DataType.FloatLe;
+        case blocks.DataType.FloatBe: return DataType.FloatBe;
+        default: return DataType.Unknown;
     }
 }
 
@@ -542,31 +334,35 @@ export default (context: PluginContext): void => {
 
                     return block;
                 }
-                const groups = [];
+                const groups: AbstractGroup[] = [];
                 for await (const channelGroup of iterateChannelGroupBlocks(dataGroup.channelGroupFirst, reader)) {
-                    const channels = [];
+                    const channels: AbstractChannel[] = [];
                     for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, reader)) {
                         const conversionBlock = await readConversionBlockRecurse(channel.conversion);
                         const {conversion, textValues} = conversionToFunction(conversionBlock);
                         channels.push({
-                            channel: {
-                                ...channel,
-                                channelNext: null,
-                                component: null,
-                                txName: await readTextBlock(channel.txName, reader),
-                                siSource: null,
-                                conversion: conversionBlock,
-                                data: null,
-                                unit: null,
-                                comment: null,
-                            } as ChannelBlock<'instanced'>,
+                            name: [reader.file.name, (await readTextBlock(channel.txName, reader)).data],
+                            type: channel.channelType === 2 ? ChannelType.Time : channel.channelType == 0 ? ChannelType.Signal : ChannelType.Unknown,
+                            dataType: mdfTypeToDataType(channel.dataType),
+                            byteOffset: channel.byteOffset,
+                            bitOffset: channel.bitOffset,
+                            bitCount: channel.bitCount,
                             conversion,
                             textValues,
                         });
                     }
-                    groups.push({group: channelGroup, channels});
+                    groups.push({
+                        recordId: Number(channelGroup.recordId),
+                        dataBytes: channelGroup.dataBytes,
+                        invalidationBytes: channelGroup.invalidationBytes,
+                        channels,
+                    });
                 }
-                sources.push(...new DataGroupLoader(dataGroup, groups, reader).sources());
+                const data: AbstractDataGroup = {
+                    recordIdSize: dataGroup.recordIdSize,
+                    groups,
+                };
+                sources.push(...new DataGroupLoader(data, () => getDataBlocks(dataGroup, reader)).sources());
             }
 
             console.log(`Loaded ${sources.length} signal sources from ${file.name} in ${(performance.now() - start).toFixed(1)} ms`);
@@ -623,7 +419,7 @@ export default (context: PluginContext): void => {
                     comment: null,
                     channelType: index == 0 ? 2 : 0,
                     syncType: index == 0 ? 1 : 0,
-                    dataType: DataType.FloatLe,
+                    dataType: blocks.DataType.FloatLe,
                     bitOffset: 0,
                     byteOffset: index * 4,
                     bitCount: 32,

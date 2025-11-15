@@ -57,7 +57,7 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
         });
 }
 
-export async function getDataBlocks(dataGroup: DataGroupBlock, reader: BufferedFileReader): Promise<AsyncIterableIterator<DataTableBlock>> {
+export async function getDataBlocks(dataGroup: DataGroupBlock, reader: BufferedFileReader): Promise<AsyncIterableIterator<DataView<ArrayBuffer>>> {
     return (async function* () {
         let link = dataGroup.data;
         let block = await readBlock(link, reader, ["##DT", "##DZ", "##DL", "##HL"]);
@@ -66,11 +66,11 @@ export async function getDataBlocks(dataGroup: DataGroupBlock, reader: BufferedF
             block = await readBlock(link, reader, ["##DT", "##DZ", "##DL"]);
         }
         if (block.type === "##DT" || block.type === "##DZ") {
-            yield await deserializeDataTableBlock(block);
+            yield (await deserializeDataTableBlock(block)).data;
         } else if (block.type === "##DL") {
             for await (const list of iterateDataListBlocks(link, reader)) {
                 for (const item of list.data) {
-                    yield await readDataTableBlock(item, reader);
+                    yield (await readDataTableBlock(item, reader)).data;
                 }
             }
         } else {
