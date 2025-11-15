@@ -106,7 +106,7 @@ export class CustomPluginStorage {
         
         try {
             // Import the module dynamically
-            const module = await import(url);
+            const module = await import(/* @vite-ignore */ url);
             
             const pluginFunc = module.default;
             
