@@ -46,7 +46,7 @@ export class WaveformRenderObject {
             gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetLow'), timeOffsetLow);
             gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), state.pxPerSecond);
             
-            gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.source.renderHint == RenderMode.Discrete ? 1 : 0);
+            gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.renderHint == RenderMode.Discrete ? 1 : 0);
 
             // Apply row-specific y-scale and y-offset
             gl.uniform1f(gl.getUniformLocation(program, 'u_yScale'), this.row.yScale);
@@ -109,11 +109,10 @@ export class WaveformRenderObject {
         const endTime = (state.offset + bounds.width) / state.pxPerSecond;
 
         const padding = 5; // Padding around text
-        const font = '12px "Open Sans", sans-serif'; // Match the font used in drawText
 
         // Pre-calculate expensive measurements
-        const ellipsisWidth = utils.measureText('...', font).renderWidth;
-        const baselineMetrics = utils.measureText('Ag', font); // Use consistent reference text for baseline
+        const ellipsisWidth = utils.measureText('...').renderWidth;
+        const baselineMetrics = utils.measureText('Ag'); // Use consistent reference text for baseline
         const y = (bounds.height - baselineMetrics.renderHeight) / 2;
 
         // Binary search to find the indices of visible segments
@@ -152,7 +151,7 @@ export class WaveformRenderObject {
                 
             if (availableWidth > 0) {
                 // Measure the actual text width
-                const textMetrics = utils.measureText(enumText, font);
+                const textMetrics = utils.measureText(enumText);
                 const textWidth = textMetrics.renderWidth;
                 
                 // Handle text truncation if it doesn't fit
@@ -177,7 +176,7 @@ export class WaveformRenderObject {
                     
                     while (left <= right) {
                         const mid = Math.floor((left + right) / 2);
-                        const truncatedWidth = utils.measureText(enumText.substring(0, mid), font).renderWidth;
+                        const truncatedWidth = utils.measureText(enumText.substring(0, mid)).renderWidth;
                         
                         if (truncatedWidth <= availableForText) {
                             bestLength = mid;
@@ -203,7 +202,6 @@ export class WaveformRenderObject {
                     y,
                     { width: bounds.width, height: bounds.height },
                     {
-                        font,
                         fillStyle: '#ffffff',
                         strokeStyle: '#000000',
                         strokeWidth: 2

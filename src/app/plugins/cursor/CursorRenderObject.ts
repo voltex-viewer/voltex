@@ -179,8 +179,7 @@ export class CursorRenderObject {
 
         // Calculate blob dimensions first to know where to stop the line
         const label = `${this.cursorNumber}`;
-        const font = 'bold 12px "Open Sans"';
-        const { renderWidth: textWidth, renderHeight: textHeight } = utils.measureText(label, font);
+        const { renderWidth: textWidth, renderHeight: textHeight } = utils.measureText(label);
         const padding = 4;
         const blobWidth = textWidth + padding * 2;
         const blobHeight = textHeight + padding * 2;
@@ -226,7 +225,6 @@ export class CursorRenderObject {
         // Draw text with contrasting color
         const contrastColor = this.getContrastColor(this.color);
         utils.drawText(label, blobX + padding, blobY + padding, bounds, {
-            font: font,
             fillStyle: contrastColor
         });
 

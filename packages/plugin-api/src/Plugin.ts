@@ -268,6 +268,8 @@ export interface WebGLUtils {
 
     createProgram(vertexShader: WebGLShader, fragmentShader: WebGLShader): WebGLProgram;
 
+    getDefaultFont(fontWeight?: string, fontSize?: string): string;
+
     drawText(
         text: string,
         x: number,

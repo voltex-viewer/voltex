@@ -8,6 +8,7 @@ export class WebGLUtilsImpl {
     private textureCache: Map<string, { texture: WebGLTexture; width: number; height: number; usedThisFrame: boolean }> = new Map();
     private cacheKeysUsedThisFrame: Set<string> = new Set();
     private measureTextCache: Map<string, {metrics: TextMetrics, renderWidth: number, renderHeight: number}> = new Map();
+    private cachedBodyFont: string | null = null;
 
     constructor(private gl: WebGLRenderingContext) {
         const lineVertexShader = this.createShader('vertex-shader', `
@@ -138,8 +139,28 @@ export class WebGLUtilsImpl {
         return program;
     }
 
-    measureText(text: string, font: string = '12px sans-serif', padding: number = 0, strokeWidth: number = 0): {metrics: TextMetrics, renderWidth: number, renderHeight: number} {
-        const cacheKey = `${text}|${font}|${padding}|${strokeWidth}`;
+    getDefaultFont(fontWeight?: string, fontSize?: string): string {
+        if (!fontWeight && !fontSize) {
+            if (!this.cachedBodyFont) {
+                const computedStyle = window.getComputedStyle(document.body);
+                const defaultFontSize = computedStyle.fontSize || '12px';
+                const fontFamily = computedStyle.fontFamily || 'sans-serif';
+                this.cachedBodyFont = `${defaultFontSize} ${fontFamily}`;
+            }
+            return this.cachedBodyFont;
+        }
+        
+        const computedStyle = window.getComputedStyle(document.body);
+        const fontFamily = computedStyle.fontFamily || 'sans-serif';
+        const resolvedFontSize = fontSize || computedStyle.fontSize || '12px';
+        const resolvedFontWeight = fontWeight || '';
+        
+        return `${resolvedFontWeight} ${resolvedFontSize} ${fontFamily}`.trim();
+    }
+
+    measureText(text: string, font?: string, padding: number = 0, strokeWidth: number = 0): {metrics: TextMetrics, renderWidth: number, renderHeight: number} {
+        const resolvedFont = font || this.getDefaultFont();
+        const cacheKey = `${text}|${resolvedFont}|${padding}|${strokeWidth}`;
         
         // Check cache first
         const cachedResult = this.measureTextCache.get(cacheKey);
@@ -148,7 +169,7 @@ export class WebGLUtilsImpl {
         }
         
         this.textCtx.save();
-        this.textCtx.font = font;
+        this.textCtx.font = resolvedFont;
         const metrics = this.textCtx.measureText(text);
         this.textCtx.restore();
         
@@ -169,16 +190,17 @@ export class WebGLUtilsImpl {
 
     createTextTexture(
         text: string, 
-        font: string = '12px "Open Sans", sans-serif', 
+        font?: string, 
         fillStyle: string = '#ffffff',
         strokeStyle?: string,
         strokeWidth?: number,
         padding: number = 0,
     ): { texture: WebGLTexture; width: number; height: number } {
+        const resolvedFont = font || this.getDefaultFont();
         const dpr = window.devicePixelRatio || 1;
         
         // Measure text at base resolution, accounting for stroke width
-        const { renderWidth, renderHeight } = this.measureText(text, font, padding, strokeWidth || 0);
+        const { renderWidth, renderHeight } = this.measureText(text, resolvedFont, padding, strokeWidth || 0);
         const textWidth = renderWidth;
         const textHeight = renderHeight;
 
@@ -197,7 +219,7 @@ export class WebGLUtilsImpl {
         // Reset and scale context for high-DPI
         ctx.save();
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.font = font;
+        ctx.font = resolvedFont;
         ctx.fillStyle = fillStyle;
         ctx.textBaseline = 'top';
         ctx.textAlign = 'left';

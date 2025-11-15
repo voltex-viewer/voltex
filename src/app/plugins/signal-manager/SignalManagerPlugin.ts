@@ -47,7 +47,6 @@ export default (context: PluginContext): void => {
                 flex-direction: column;
                 height: 100%;
                 overflow: hidden;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             }
             .signal-manager-container {
                 display: flex;

@@ -45,7 +45,6 @@
     height: var(--menu-bar-height);
     background: #23272e; /* Match sidebar background */
     border-bottom: 1px solid #2c313a; /* Match sidebar border */
-    font-family: "Open Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     font-size: 13px;
     color: #bfc7d5; /* Match sidebar text color */
     user-select: none;
@@ -131,8 +130,9 @@
 }
 
 body {
-    box-sizing: border-box;
-    font-family: "Open Sans";
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
 }
 
 .vertical-sidebar {

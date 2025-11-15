@@ -91,8 +91,7 @@ export class HorizontalGridLabelRenderObject {
         const { unit, scale, decimalPlaces } = this.determineFormatting(values);
         
         // Measure nominal text height using reference string
-        const font = '12px "Open Sans"';
-        const { renderHeight } = utils.measureText('0123456789', font);
+        const { renderHeight } = utils.measureText('0123456789');
         const textCenterOffset = renderHeight / 2;
         
         // Collect background rectangles for all labels
@@ -101,7 +100,7 @@ export class HorizontalGridLabelRenderObject {
         
         for (const position of gridPositions) {
             const label = this.formatValue(position.value, unit, scale, decimalPlaces);
-            const { renderWidth } = utils.measureText(label, font);
+            const { renderWidth } = utils.measureText(label);
             
             const x = 5;
             const y = position.y - textCenterOffset;
@@ -156,7 +155,6 @@ export class HorizontalGridLabelRenderObject {
         // Draw all text labels on top of backgrounds
         for (const { label, x, y } of labelData) {
             utils.drawText(label, x, y, bounds, {
-                font: font,
                 fillStyle: '#cccccc'
             });
         }

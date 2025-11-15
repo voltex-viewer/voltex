@@ -22,7 +22,6 @@ export class CursorSidebar {
                     flex-direction: column;
                     height: 100%;
                     overflow: hidden;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 }
                 .cursor-table-container {
                     flex: 1;

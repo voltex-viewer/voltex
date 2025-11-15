@@ -14,7 +14,6 @@ export class ConfigUIGenerator {
         container.innerHTML = `
             <style>
                 .config-ui-root {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     color: #e5e7eb;
                 }
                 .config-ui-form {
@@ -327,7 +326,7 @@ export class ConfigUIGenerator {
             const button = document.createElement('button');
             button.type = 'button';
             button.textContent = currentValue || 'not set';
-            button.style.fontFamily = "'Courier New', monospace";
+            button.style.fontFamily = "'Consolas', 'Monaco', monospace";
             button.style.fontSize = '11px';
             button.style.textAlign = 'left';
             button.style.cursor = 'pointer';

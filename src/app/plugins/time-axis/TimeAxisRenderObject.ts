@@ -74,7 +74,7 @@ export class TimeAxisRenderObject {
                 
                 if (!isCurrentStickyLabel) { // Only show normal label if it's not the sticky one
                     utils.drawText(this.formatSplitTimeLabel(t, unitInfo.scale), x, 2, bounds, {
-                        font: 'bold 14px "Open Sans"',
+                        font: utils.getDefaultFont('bold', '13px'),
                         fillStyle: '#ffffff'
                     });
                 }
@@ -97,7 +97,7 @@ export class TimeAxisRenderObject {
                     const label = Math.abs(offsetValue) < 1 ? `+${offsetValue.toFixed(1)}${unitInfo.unit}` : `+${Math.round(offsetValue)}${unitInfo.unit}`;
                     
                     utils.drawText(label, subX - 3.5, rowHeight + gap + 1, bounds, {
-                        font: 'bold 12px "Open Sans"',
+                        font: utils.getDefaultFont('bold', '12px'),
                         fillStyle: '#ffffff'
                     });
                 }
@@ -107,7 +107,7 @@ export class TimeAxisRenderObject {
         // Draw sticky label if it should be shown
         if (stickyLabelInfo.shouldShow) {
             utils.drawText(stickyLabelInfo.label, 0, 2, bounds, {
-                font: 'bold 14px "Open Sans"',
+                font: utils.getDefaultFont('bold', '13px'),
                 fillStyle: '#ffffff'
             });
         }

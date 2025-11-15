@@ -56,9 +56,8 @@ export class WaveformTooltipRenderObject {
         const { render } = context;
         const { utils, gl } = render;
 
-        const font = '12px "Open Sans", sans-serif';
         const padding = 6;
-        const lineHeight = utils.measureText('0123456789.', font).renderHeight + padding;
+        const lineHeight = utils.measureText('0123456789.').renderHeight + padding;
         const colorIndicatorSize = 8;
         const colorIndicatorPadding = 4;
         
@@ -73,7 +72,7 @@ export class WaveformTooltipRenderObject {
         }
 
         // Calculate tooltip dimensions
-        const maxTextWidth = Math.max(...lines.map(line => utils.measureText(line.text, font).renderWidth));
+        const maxTextWidth = Math.max(...lines.map(line => utils.measureText(line.text).renderWidth));
         const tooltipWidth = maxTextWidth + colorIndicatorSize + colorIndicatorPadding + padding * 2;
         const tooltipHeight = lines.length * lineHeight + padding * 2;
 
@@ -105,7 +104,6 @@ export class WaveformTooltipRenderObject {
                 y,
                 { width: bounds.width, height: bounds.height },
                 {
-                    font,
                     fillStyle: '#ffffff'
                 }
             );
