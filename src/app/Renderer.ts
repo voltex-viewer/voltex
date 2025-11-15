@@ -12,6 +12,7 @@ import PluginManagerMetadata from './plugins/manager/plugin.json';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
 import { CommandManager } from "./CommandManager";
 import { PluginConfigManager } from "./PluginConfigManager";
+import { VerticalSidebar } from "./VerticalSidebar";
 
 interface InternalMouseEvent extends MouseEvent {
     readonly stopPropagationCalled: boolean;
@@ -41,7 +42,7 @@ export class Renderer {
     constructor(
         private state: WaveformState,
         canvas: HTMLCanvasElement,
-        private verticalSidebar?: import('./VerticalSidebar').VerticalSidebar,
+        private verticalSidebar: VerticalSidebar,
         private requestRender?: () => void
     ) {
         this.canvas = canvas;
@@ -79,8 +80,8 @@ export class Renderer {
             this.signalSources,
             this.rowContainer,
             this.rootRenderObject,
-            (entry) => this.verticalSidebar.addDynamicEntry(entry),
-            (entry) => this.verticalSidebar.removeDynamicEntry(entry),
+            (entry) => this.verticalSidebar.add(entry),
+            (entry) => this.verticalSidebar.remove(entry),
             this.requestRender,
             this.renderProfiler,
             configManager,

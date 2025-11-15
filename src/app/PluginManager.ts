@@ -9,6 +9,7 @@ import * as t from 'io-ts';
 import { RowContainerRenderObject } from './RowContainerRenderObject';
 import { RowImpl } from './RowImpl';
 import { bigPush } from './bigPush';
+import { SidebarEntryImpl } from './VerticalSidebar';
 
 interface ActivePlugin {
     pluginFunction: PluginFunction;
@@ -26,7 +27,7 @@ interface PluginData {
     beforeRenderCallbacks: (() => boolean)[];
     afterRenderCallbacks: (() => boolean)[];
     sidebarEntries: SidebarEntryArgs[];
-    sidebarEntryInstances: import('./VerticalSidebar').SidebarEntry[];
+    sidebarEntryInstances: SidebarEntryImpl[];
     renderObjects: RenderObjectImpl[];
     signalSources: SignalSource[];
     rowProxyCache: Map<RowImpl, Row>; // Cache proxy rows to maintain identity
@@ -48,8 +49,8 @@ export class PluginManager {
         private signalSources: SignalSourceManager,
         private rowManager: RowContainerRenderObject,
         private rootRenderObject: RenderObjectImpl,
-        private onSidebarEntryAdded: (entry: SidebarEntryArgs) => import('./VerticalSidebar').SidebarEntry,
-        private onSidebarEntryRemoved: (entry: import('./VerticalSidebar').SidebarEntry) => void,
+        private onSidebarEntryAdded: (entry: SidebarEntryArgs) => SidebarEntryImpl,
+        private onSidebarEntryRemoved: (entry: SidebarEntryImpl) => void,
         private requestRender: () => void,
         private renderProfiler: RenderProfiler,
         private configManager: PluginConfigManager,
@@ -282,7 +283,7 @@ export class PluginManager {
 
     private addSidebarEntry(plugin: ActivePlugin, entry: SidebarEntryArgs): import('@voltex-viewer/plugin-api').SidebarEntry {
         const data = this.pluginData.get(plugin);
-        let sidebarEntry: import('./VerticalSidebar').SidebarEntry | undefined;
+        let sidebarEntry: SidebarEntryImpl | undefined;
         
         if (data) {
             data.sidebarEntries.push(entry);

@@ -1,45 +1,45 @@
-// --- Sidebar Entry Classes ---
-export abstract class SidebarEntry {
-    icon: HTMLButtonElement;
-    panel: HTMLDivElement;
+import { SidebarEntryArgs } from "@voltex-viewer/plugin-api";
+
+export class SidebarEntryImpl {
+    readonly icon: HTMLButtonElement;
+    readonly panel: HTMLDivElement;
     
-    constructor(iconHtml: string, private sidebar: VerticalSidebar) {
+    constructor(iconHtml: string, content: string | HTMLElement, private sidebar: VerticalSidebar) {
         this.icon = document.createElement('button');
         this.icon.className = 'sidebar-icon';
         this.icon.innerHTML = iconHtml;
         this.panel = document.createElement('div');
         this.panel.className = 'sidebar-panel';
-        this.renderContent();
+
+        if (typeof content === 'string') {
+            this.panel.innerHTML = content;
+        } else {
+            this.panel.appendChild(content);
+        }
     }
-    abstract renderContent(): void;
     
     open(): void {
-        this.sidebar.openEntry(this);
+        this.sidebar.open(this);
     }
 }
 
 export class VerticalSidebar {
-    sidebar: HTMLDivElement;
-    entries: SidebarEntry[];
-    private panelContainer: HTMLDivElement;
-    private iconBar: HTMLDivElement;
-    private resizeHandle: HTMLDivElement;
-    private sidebarWidth: number = 320;
-    private minWidth: number = 200;
-    private maxWidth: number = 2000;
+    private readonly sidebar: HTMLDivElement;
+    private readonly entries: SidebarEntryImpl[] = [];
+    private readonly panelContainer: HTMLDivElement;
+    private readonly iconBar: HTMLDivElement;
+    private readonly resizeHandle: HTMLDivElement;
+    private readonly minWidth: number = 200;
+    private readonly maxWidth: number = 2000;
     private isResizing: boolean = false;
 
-    constructor(root: HTMLElement, private onStateChange: () => void) {
+    constructor(root: HTMLElement, private resizeCanvas: () => void) {
         this.sidebar = document.createElement('div');
         this.sidebar.className = 'vertical-sidebar';
-
-        // Instantiate default entries
-        this.entries = [];
 
         // Panel container
         this.panelContainer = document.createElement('div');
         this.panelContainer.className = 'sidebar-panel-container';
-        this.entries.forEach(entry => this.panelContainer.appendChild(entry.panel));
         this.sidebar.appendChild(this.panelContainer);
 
         // Resize handle
@@ -50,47 +50,67 @@ export class VerticalSidebar {
         // Icon bar
         this.iconBar = document.createElement('div');
         this.iconBar.className = 'sidebar-icons';
-        this.entries.forEach(entry => this.iconBar.appendChild(entry.icon));
         this.sidebar.appendChild(this.iconBar);
 
         root.appendChild(this.sidebar);
 
-        this.setupEventHandlers();
-        this.setupResizeHandlers();
+        this.resizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
+            e.preventDefault();
+            this.isResizing = true;
+            document.body.style.cursor = 'ew-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e: MouseEvent) => {
+            if (!this.isResizing) return;
+            
+            const rect = this.sidebar.getBoundingClientRect();
+            const newWidth = rect.right - e.clientX;
+            
+            if (newWidth >= this.minWidth && newWidth <= this.maxWidth) {
+                this.sidebar.style.setProperty('--sidebar-width', `${newWidth}px`);
+                this.panelContainer.style.setProperty('--panel-width', `${newWidth - 48}px`);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (this.isResizing) {
+                this.isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                this.resizeCanvas();
+            }
+        });
     }
 
-    addDynamicEntry(entry: import('@voltex-viewer/plugin-api').SidebarEntryArgs): SidebarEntry {
-        // Create a new SidebarEntry compatible object
-        const self = this;
-        const dynamicEntry = new class extends SidebarEntry {
-            constructor() {
-                super(entry.iconHtml, self);
+    add(args: SidebarEntryArgs): SidebarEntryImpl {
+        const entry = new SidebarEntryImpl(args.iconHtml, args.renderContent(), this);
+
+        this.entries.push(entry);
+        this.panelContainer.appendChild(entry.panel);
+        this.iconBar.appendChild(entry.icon);
+
+        entry.icon.addEventListener('click', () => {
+            const isActive = entry.icon.classList.contains('active');
+            this.entries.forEach(e => {
+                e.icon.classList.remove('active');
+                e.panel.classList.remove('active');
+            });
+            if (!isActive) {
+                entry.icon.classList.add('active');
+                this.sidebar.classList.add('expanded');
+                entry.panel.classList.add('active');
+            } else {
+                this.sidebar.classList.remove('expanded');
             }
-            renderContent() {
-                this.panel.innerHTML = '';
-                const content = entry.renderContent();
-                if (typeof content === 'string') {
-                    this.panel.innerHTML = content;
-                } else {
-                    this.panel.appendChild(content);
-                }
-            }
-        }();
-
-        // Call renderContent to populate the panel
-        dynamicEntry.renderContent();
-
-        this.entries.push(dynamicEntry);
-        this.panelContainer.appendChild(dynamicEntry.panel);
-        this.iconBar.appendChild(dynamicEntry.icon);
-
-        // Add event handler for the new entry
-        this.setupEventHandlerForEntry(dynamicEntry);
+            
+            this.resizeCanvas();
+        });
         
-        return dynamicEntry;
+        return entry;
     }
 
-    removeDynamicEntry(entry: SidebarEntry): void {
+    remove(entry: SidebarEntryImpl): void {
         const entryIndex = this.entries.findIndex(e => e === entry);
         if (entryIndex !== -1) {
             const entryToRemove = this.entries[entryIndex];
@@ -113,11 +133,7 @@ export class VerticalSidebar {
         }
     }
 
-    private setupEventHandlers(): void {
-        this.entries.forEach(entry => this.setupEventHandlerForEntry(entry));
-    }
-
-    openEntry(entry: SidebarEntry): void {
+    open(entry: SidebarEntryImpl): void {
         this.entries.forEach(e => {
             e.icon.classList.remove('active');
             e.panel.classList.remove('active');
@@ -126,67 +142,6 @@ export class VerticalSidebar {
         this.sidebar.classList.add('expanded');
         entry.panel.classList.add('active');
         
-        // Trigger state change callback after a short delay to allow CSS transitions
-        setTimeout(() => this.onStateChange(), 50);
-    }
-
-    private setupEventHandlerForEntry(entry: SidebarEntry): void {
-        entry.icon.addEventListener('click', () => {
-            const isActive = entry.icon.classList.contains('active');
-            this.entries.forEach(e => {
-                e.icon.classList.remove('active');
-                e.panel.classList.remove('active');
-            });
-            if (!isActive) {
-                entry.icon.classList.add('active');
-                this.sidebar.classList.add('expanded');
-                entry.panel.classList.add('active');
-            } else {
-                this.sidebar.classList.remove('expanded');
-            }
-            
-            // Trigger state change callback after a short delay to allow CSS transitions
-            setTimeout(() => this.onStateChange(), 50);
-        });
-    }
-
-    getSidebarElement() {
-        return this.sidebar;
-    }
-
-    private setupResizeHandlers(): void {
-        this.resizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
-            e.preventDefault();
-            this.isResizing = true;
-            document.body.style.cursor = 'ew-resize';
-            document.body.style.userSelect = 'none';
-        });
-
-        document.addEventListener('mousemove', (e: MouseEvent) => {
-            if (!this.isResizing) return;
-            
-            const rect = this.sidebar.getBoundingClientRect();
-            const newWidth = rect.right - e.clientX;
-            
-            if (newWidth >= this.minWidth && newWidth <= this.maxWidth) {
-                this.sidebarWidth = newWidth;
-                this.updateSidebarWidth();
-            }
-        });
-
-        document.addEventListener('mouseup', () => {
-            if (this.isResizing) {
-                this.isResizing = false;
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-                this.onStateChange();
-            }
-        });
-    }
-
-    private updateSidebarWidth(): void {
-        this.sidebar.style.setProperty('--sidebar-width', `${this.sidebarWidth}px`);
-        const panelWidth = this.sidebarWidth - 48;
-        this.panelContainer.style.setProperty('--panel-width', `${panelWidth}px`);
+        this.resizeCanvas();
     }
 }
