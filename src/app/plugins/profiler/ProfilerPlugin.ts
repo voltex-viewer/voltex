@@ -15,11 +15,11 @@ export default (context: PluginContext): void => {
     // Create signal source for frame time data
     const signalSource = {
         name: ['Profiler', 'Frame Time (ms)'],
-        renderHint: RenderMode.Lines,
-        signal: () => ({
+        signal: () => Promise.resolve({
             source: signalSource,
             time: new ProfilerTimeSequence(frameData),
             values: new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
+            renderHint: RenderMode.Enum,
         }),
     };
     
@@ -32,7 +32,6 @@ export default (context: PluginContext): void => {
             if (!flameGraphSources[depth]) {
                 const depthSource = {
                     name: ['Profiler', `Depth ${depth}`],
-                    renderHint: RenderMode.Enum,
                     signal: () => {
                         // Use the start time of the first measure entry (root of the stack)
                         let firstMeasurementTime = 0;
@@ -69,11 +68,12 @@ export default (context: PluginContext): void => {
                             }
                         }
                         
-                        return {
+                        return Promise.resolve({
                             source: depthSource,
                             time: new FlameGraphTimeSequence(timelineData),
-                            values: new FlameGraphValueSequence(timelineData, nextId, idToNameMap)
-                        };
+                            values: new FlameGraphValueSequence(timelineData, nextId, idToNameMap),
+                            renderHint: RenderMode.Enum,
+                        });
                     }
                 };
                 
@@ -228,7 +228,7 @@ export default (context: PluginContext): void => {
                 
                 const button = container.querySelector('#add-profiler-signal') as HTMLButtonElement;
                 if (button) {
-                    button.addEventListener('click', () => {
+                    button.addEventListener('click', async () => {
                         // Find the profiler signal source and add it to waveform
                         const profilerSource = context.signalSources.available.find(
                             source => source.name.length === 2 && 
@@ -236,7 +236,7 @@ export default (context: PluginContext): void => {
                                      source.name[1] === 'Frame Time (ms)'
                         );
                         if (profilerSource) {
-                            context.createRows({ channels: [profilerSource.signal()] });
+                            context.createRows({ channels: [await profilerSource.signal()] });
                             context.requestRender();
                         }
                     });
@@ -244,7 +244,7 @@ export default (context: PluginContext): void => {
                 
                 const flameGraphButton = container.querySelector('#add-flamegraph-signals') as HTMLButtonElement;
                 if (flameGraphButton) {
-                    flameGraphButton.addEventListener('click', () => {
+                    flameGraphButton.addEventListener('click', async () => {
                         // Find all flame graph depth sources and add them to waveform
                         const depthSources = context.signalSources.available.filter(
                             source => source.name.length === 2 && 
@@ -254,7 +254,7 @@ export default (context: PluginContext): void => {
                         
                         if (depthSources.length > 0) {
                             for (const source of depthSources) {
-                                context.createRows({ channels: [source.signal()], height: 30 });
+                                context.createRows({ channels: [await source.signal()], height: 30 });
                             }
                             context.requestRender();
                         }

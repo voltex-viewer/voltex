@@ -200,7 +200,7 @@ export default (context: PluginContext): void => {
             }
             
             if (bufferData.signalIndex < seqLen) {
-                const downsampleFn = sequence.source.renderHint === RenderMode.Enum 
+                const downsampleFn = sequence.renderHint === RenderMode.Enum 
                     ? enumSimplifier 
                     : simplifier[config.downsamplingMode];
 
@@ -262,10 +262,10 @@ export default (context: PluginContext): void => {
                     waveformPrograms,
                     channel,
                     row,
-                    channel.source.renderHint,
+                    channel.renderHint,
                     0,
                 );
-                if (channel.source.renderHint === RenderMode.Enum) {
+                if (channel.renderHint === RenderMode.Enum) {
                     new WaveformRenderObject(
                         row.mainArea,
                         config,
@@ -283,7 +283,7 @@ export default (context: PluginContext): void => {
                 }
                 
                 // If channel has Lines render hint, create dot overlay
-                if ([RenderMode.Lines, RenderMode.Discrete].includes(channel.source.renderHint)) {
+                if ([RenderMode.Lines, RenderMode.Discrete].includes(channel.renderHint)) {
                     // Create dot overlay buffers
                     const dotTimeBuffer = context.webgl.gl.createBuffer();
                     const dotValueBuffer = context.webgl.gl.createBuffer();

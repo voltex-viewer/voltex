@@ -157,12 +157,8 @@ class Mf4Source implements SignalSource {
     constructor(public readonly name: string[], private loader: DataGroupLoader, public channel: ChannelBlock<'instanced'>, public textValues: TextValue[]) {
     }
 
-    get renderHint(): RenderMode {
-        return this.textValues.length >= 2 ? RenderMode.Enum : RenderMode.Lines;
-    }
-
-    signal(): Signal {
-        return this.loader.get(this);
+    signal(): Promise<Signal> {
+        return Promise.resolve(this.loader.get(this));
     }
 }
 
@@ -227,7 +223,7 @@ class DataGroupLoader {
             }
             const masterSequence = sequences[masterIndex].sequence;
             for (let i = 0; i < channels.length; i++) {
-                this.signals.set(channels[i].channel, new SequenceSignal(channels[i].source, masterSequence, sequences[i].sequence));
+                this.signals.set(channels[i].channel, new SequenceSignal(channels[i].source, masterSequence, sequences[i].sequence, channels[i].textValues.length >= 2 ? RenderMode.Enum : RenderMode.Lines));
             }
             records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences});
         }

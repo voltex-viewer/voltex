@@ -9,7 +9,8 @@ class HighlightSignal implements Signal {
     constructor(
         public readonly source: Signal['source'],
         public readonly time: ArraySequence,
-        public readonly values: ArraySequence
+        public readonly values: ArraySequence,
+        public readonly renderHint: RenderMode,
     ) {
     }
 
@@ -68,10 +69,12 @@ export class WaveformRowHoverOverlayRenderObject {
             const bufferData = signalBuffers.get(signal);
             if (bufferData) {
                 // Create a highlight signal that will hold just the highlighted data
+                const render = signal.renderHint === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots;
                 const highlightSignal = new HighlightSignal(
                     signal.source,
                     new ArraySequence(),
-                    new ArraySequence()
+                    new ArraySequence(),
+                    render
                 );
                 this.highlightSignals.set(signal, highlightSignal);
 
@@ -112,7 +115,7 @@ export class WaveformRowHoverOverlayRenderObject {
                     waveformPrograms,
                     highlightSignal, // Use the highlight signal instead of the original
                     row,
-                    signal.source.renderHint === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots,
+                    render,
                     95
                 );
             }
@@ -210,7 +213,7 @@ export class WaveformRowHoverOverlayRenderObject {
         if (dataIndex >= maxUpdateIndex) return;
 
         let indices = [];
-        if (signal.source.renderHint === RenderMode.Enum) {
+        if (signal.renderHint === RenderMode.Enum) {
             if (dataIndex >= maxUpdateIndex - 1) return;
             
             indices.push(dataIndex, dataIndex + 1);
@@ -268,7 +271,7 @@ export class WaveformRowHoverOverlayRenderObject {
         
         let closestIndex = left;
         
-        if (signal.source.renderHint === RenderMode.Enum) {
+        if (signal.renderHint === RenderMode.Enum) {
             // For enum signals, always look leftwards (backwards in time)
             // Find the last data point that is <= the mouse time
             if (left < maxUpdateIndex) {

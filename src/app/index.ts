@@ -60,6 +60,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     renderer = new Renderer(state, mainCanvas, verticalSidebar, requestRender);
 
+    await renderer.loadPlugins();
+
     // Initial resize and event wiring
     renderer.resizeCanvases();
     window.addEventListener('resize', () => renderer.resizeCanvases());

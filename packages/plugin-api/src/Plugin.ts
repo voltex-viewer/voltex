@@ -94,8 +94,7 @@ export interface Row {
 
 export interface SignalSource {
     name: string[];
-    signal(): Signal;
-    renderHint: RenderMode;
+    signal(): Promise<Signal>;
 }
 
 export interface RowsChangedEvent {
@@ -216,7 +215,7 @@ export interface PluginMetadata {
     url?: string;
 }
 
-export type PluginFunction = (context: PluginContext) => void;
+export type PluginFunction = (context: PluginContext) => void | Promise<void>;
 
 export interface PluginModule {
     plugin: PluginFunction;
@@ -247,6 +246,7 @@ export interface Signal {
     source: SignalSource;
     time: Sequence;
     values: Sequence;
+    renderHint: RenderMode;
 }
 export interface RenderContext {
     canvas: HTMLCanvasElement;

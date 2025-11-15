@@ -97,7 +97,7 @@ function getGridSpacing(valueRange: number, rowHeight: number): number {
 export default (context: PluginContext): void => {
     context.onRowsChanged((event) => {
         for (const row of event.added) {
-            if (row.signals.length > 0 && row.signals.some(s => s.source.renderHint != RenderMode.Enum)) {
+            if (row.signals.length > 0 && row.signals.some(s => s.renderHint != RenderMode.Enum)) {
                 // Create a closed-over function that knows about this specific row
                 const calculateGridPositionsForRow = (bounds: { height: number }) => 
                     calculateGridLinePositions(row, bounds);

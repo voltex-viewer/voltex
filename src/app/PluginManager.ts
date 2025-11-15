@@ -87,10 +87,10 @@ export class PluginManager {
         this.pluginRegisteredCallbacks.push(callback);
     }
 
-    enablePlugin(pluginModule: PluginModule): ActivePlugin {
+    async enablePlugin(pluginModule: PluginModule): Promise<ActivePlugin> {
         const existingPlugin = this.plugins.find(p => p.metadata.name === pluginModule.metadata.name);
         if (existingPlugin) {
-            return existingPlugin;
+            return Promise.resolve(existingPlugin);
         }
         
         const plugin: ActivePlugin = {
@@ -198,7 +198,10 @@ export class PluginManager {
         });
         
         try {
-            pluginModule.plugin(context);
+            const result = pluginModule.plugin(context);
+            if (typeof(result) === "object") {
+                await result
+            }
         } catch (error) {
             console.error(`Error occurred while initializing plugin ${plugin.metadata.name}:`, error);
         }

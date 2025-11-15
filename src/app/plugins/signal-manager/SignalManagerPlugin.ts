@@ -1,4 +1,4 @@
-import { type PluginContext, type SignalSource, type SidebarEntry, RenderMode, type Row, type RowInsert } from '@voltex-viewer/plugin-api'
+import { type PluginContext, type SignalSource, type SidebarEntry, RenderMode, type Row, type RowInsert, Signal } from '@voltex-viewer/plugin-api'
 
 let context: PluginContext | undefined;
 let sidebarContainer: HTMLElement | undefined;
@@ -211,10 +211,10 @@ function renderContent(): HTMLElement {
         filterSignals(searchTerm);
     });
 
-    searchInput.addEventListener('keydown', (e) => {
+    searchInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            plotAllFilteredSignals();
+            await plotAllFilteredSignals();
         }
     });
 
@@ -427,7 +427,7 @@ function createDOMElement(node: TreeNode, depth: number): CachedDOMElement {
         }
     } else if (isLeaf && node.signalSource) {
         const clickFunction = () => {
-            addSignalToWaveform(node.signalSource!);
+            return addSignalToWaveform(node.signalSource!);
         };
         
         treeNodeDiv.addEventListener('click', clickFunction);
@@ -737,37 +737,39 @@ function collectFilteredSignals(node: TreeNode): SignalSource[] {
     return signals;
 }
 
-function plotAllFilteredSignals(): void {
+async function plotAllFilteredSignals() {
     if (!context) return;
     
     const tree = getSignalTree();
     const filteredSignals = lastSearchTerm.trim() ? collectFilteredSignals(tree) : [];
     
     if (filteredSignals.length === 0) return;
+
+    // First, load all the signals
+    const signals = await Promise.all(filteredSignals.map(x => x.signal()));
     
-    const lineSignals: SignalSource[] = [];
-    const otherSignals: SignalSource[] = [];
-    
-    for (const signalSource of filteredSignals) {
-        if ([RenderMode.Lines, RenderMode.Discrete].includes(signalSource.renderHint)) {
-            lineSignals.push(signalSource);
+    // Segregate signals into line signals and all other signals. This is because all the line signals will be plotted
+    // on the same axis, and all other types will be plotted on their own axis.
+    const lineSignals: Signal[] = [];
+    const otherSignals: Signal[] = [];
+    for (const signal of signals) {
+        if ([RenderMode.Lines, RenderMode.Discrete].includes(signal.renderHint)) {
+            lineSignals.push(signal);
         } else {
-            otherSignals.push(signalSource);
+            otherSignals.push(signal);
         }
     }
 
-    for (const otherSignal of otherSignals) {
-        context.createRows({ channels: [otherSignal.signal()] });
-    }
-    
+    context.createRows(...otherSignals.map(signal => ({ channels: [signal] })));
+
     if (lineSignals.length > 0) {
-        context.createRows({ channels: lineSignals.map(s => s.signal()) });
+        context.createRows({ channels: lineSignals });
     }
     
     context.requestRender();
 }
 
-function addSignalToWaveform(signalSource: SignalSource): void {
+async function addSignalToWaveform(signalSource: SignalSource) {
     function getExistingSignal() {
         for (const row of context.getRows()) {
             for (const signal of row.signals) {
@@ -779,7 +781,7 @@ function addSignalToWaveform(signalSource: SignalSource): void {
         }
         return null;
     }
-    context.createRows({ channels: [getExistingSignal() ?? signalSource.signal()] });
+    context.createRows({ channels: [getExistingSignal() ?? await signalSource.signal()] });
     context.requestRender();
 }
 

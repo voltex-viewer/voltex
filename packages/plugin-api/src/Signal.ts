@@ -1,4 +1,4 @@
-import type { Sequence, Signal, SignalSource } from './Plugin';
+import { RenderMode, Sequence, Signal, SignalSource } from './Plugin';
 
 export type ChannelPoint = [t: number, v: number];
 
@@ -82,7 +82,8 @@ export class SequenceSignal implements Signal {
     constructor(
         public source: SignalSource,
         public time: InMemorySequence,
-        public values: InMemorySequence) {
+        public values: InMemorySequence,
+        public renderHint: RenderMode) {
     }
 
     data(index: number): ChannelPoint {
@@ -103,7 +104,7 @@ export class InMemorySignal implements Signal {
     public readonly time: InMemorySequence;
     public readonly values: InMemorySequence;
     
-    constructor(source: SignalSource, data: ChannelPoint[]) {
+    constructor(source: SignalSource, data: ChannelPoint[], public renderHint: RenderMode) {
         this.source = source;
         this.time = new InMemorySequence();
         this.values = new InMemorySequence();
@@ -164,7 +165,7 @@ export class FunctionSignal implements Signal {
     public readonly time: Sequence;
     public readonly values: FunctionValueSequence;
     
-    constructor(source: SignalSource, time: Sequence, generator: (time: number) => number, minValue: number, maxValue: number) {
+    constructor(source: SignalSource, time: Sequence, generator: (time: number) => number, minValue: number, maxValue: number, public renderHint: RenderMode) {
         this.source = source;
         this._generator = generator;
         this.time = time;

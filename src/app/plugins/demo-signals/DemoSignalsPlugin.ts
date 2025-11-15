@@ -9,68 +9,68 @@ function seededRandom(seed: number) {
     };
 }
 
-export default (context: PluginContext): void => {
+export default async (context: PluginContext) => {
     const freq = 1;
     const time = new FunctionTimeSequence(1000, 1000);
 
     const squareWaveSource: SignalSource = {
         name: ['Demo Signals', 'Square Wave'],
-        signal: () => new FunctionSignal(
+        signal: () => Promise.resolve(new FunctionSignal(
             squareWaveSource,
             time,
             (t: number) => Math.sin(2 * Math.PI * freq * t) >= 0 ? 1 : 0,
             0,
-            1
-        ),
-        renderHint: RenderMode.Discrete,
+            1,
+            RenderMode.Discrete
+        )),
     };
     
     const triangleWaveSource: SignalSource = {
         name: ['Demo Signals', 'Triangle Wave'],
-        signal: () => new FunctionSignal(
+        signal: () => Promise.resolve(new FunctionSignal(
             triangleWaveSource,
             time,
             (t: number) => 1000 * (2 * Math.abs(2 * (t * freq - Math.floor(t * freq + 0.5))) - 1),
             -1000,
-            1000
-        ),
-        renderHint: RenderMode.Lines,
+            1000,
+            RenderMode.Lines,
+        )),
     };
     
     const sawtoothWaveSource: SignalSource = {
         name: ['Demo Signals', 'Sawtooth Wave'],
-        signal: () => new FunctionSignal(
+        signal: () => Promise.resolve(new FunctionSignal(
             sawtoothWaveSource,
             time,
             (t: number) => 2 * (t * freq - Math.floor(t * freq + 0.5)),
             -1,
-            1
-        ),
-        renderHint: RenderMode.Lines,
+            1,
+            RenderMode.Lines,
+        )),
     };
     
     const sineWaveSource: SignalSource = {
         name: ['Demo Signals', 'Sine Wave'],
-        signal: () => new FunctionSignal(
+        signal: () => Promise.resolve(new FunctionSignal(
             sineWaveSource,
             time,
             (t: number) => Math.sin(2 * Math.PI * freq * t),
             -1,
-            1
-        ),
-        renderHint: RenderMode.Lines,
+            1,
+            RenderMode.Lines,
+        )),
     };
     
     const flatSignalSource: SignalSource = {
         name: ['Demo Signals', 'Flat Signal'],
-        signal: () => new FunctionSignal(
+        signal: () => Promise.resolve(new FunctionSignal(
             flatSignalSource,
             time,
             (t: number) => 0,
             0,
-            0
-        ),
-        renderHint: RenderMode.Lines,
+            0,
+            RenderMode.Lines,
+        )),
     };
     
     const random = seededRandom(42);
@@ -87,11 +87,11 @@ export default (context: PluginContext): void => {
 
     const randomPoints: SignalSource = {
         name: ['Demo Signals', 'Random Points'],
-        signal: () => new InMemorySignal(
+        signal: () => Promise.resolve(new InMemorySignal(
             randomPoints,
-            Array.from({ length: randomTime.length }, (_, i) => [randomTime.valueAt(i), random() * 2 - 1] as [number, number])
-        ),
-        renderHint: RenderMode.Lines,
+            Array.from({ length: randomTime.length }, (_, i) => [randomTime.valueAt(i), random() * 2 - 1] as [number, number]),
+            RenderMode.Lines,
+        )),
     };
     
     const trafficLightSource: SignalSource = {
@@ -131,21 +131,20 @@ export default (context: PluginContext): void => {
                 }
             }
             
-            const signal = new SequenceSignal(trafficLightSource, timeSeq, valueSeq);
+            const signal = new SequenceSignal(trafficLightSource, timeSeq, valueSeq, RenderMode.Enum);
             (signal.values as any).textValues = [
                 { text: 'stop', value: 0 },
                 { text: 'wait', value: 1 },
                 { text: 'go', value: 2 },
             ];
             
-            return signal;
+            return Promise.resolve(signal);
         },
-        renderHint: RenderMode.Enum,
     };
 
     const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, flatSignalSource, randomPoints, trafficLightSource];
     
     context.signalSources.add(sources);
-    context.createRows(...sources.map(source => ({ channels: [source.signal()] })));
+    context.createRows(...await Promise.all(sources.map(async source => ({ channels: [await source.signal()] }))));
 }
 

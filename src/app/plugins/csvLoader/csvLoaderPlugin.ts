@@ -1,14 +1,10 @@
-import { InMemorySequence, SequenceSignal, SignalSource, PluginContext, RenderMode, Signal, Sequence } from '@voltex-viewer/plugin-api';
+import { InMemorySequence, SequenceSignal, SignalSource, PluginContext, RenderMode, Signal } from '@voltex-viewer/plugin-api';
 
 class CsvSource implements SignalSource {
-    constructor(public readonly name: string[], private _signal: Signal, private textValueCount: number) {}
+    constructor(public readonly name: string[], private _signal: Signal) {}
 
-    get renderHint(): RenderMode {
-        return this.textValueCount >= 2 ? RenderMode.Enum : RenderMode.Lines;
-    }
-
-    signal(): Signal {
-        return this._signal;
+    signal(): Promise<Signal> {
+        return Promise.resolve(this._signal);
     }
 }
 
@@ -98,9 +94,9 @@ export default (context: PluginContext): void => {
                         const numValue = typeof value === 'string' ? textToCode.get(value)! : value;
                         valuesSeq.push(numValue);
                     }
-                    
-                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq);
-                    const source = new CsvSource(name, signal, codeToText.size);
+
+                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq, codeToText.size >= 2 ? RenderMode.Enum : RenderMode.Lines);
+                    const source = new CsvSource(name, signal);
                     (signal as any).source = source;
                     sources.push(source);
                 } else {
@@ -108,8 +104,8 @@ export default (context: PluginContext): void => {
                     for (const value of seq.numericValues) {
                         valuesSeq.push(value);
                     }
-                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq);
-                    const source = new CsvSource(name, signal, 0);
+                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq, RenderMode.Lines);
+                    const source = new CsvSource(name, signal);
                     (signal as any).source = source;
                     sources.push(source);
                 }

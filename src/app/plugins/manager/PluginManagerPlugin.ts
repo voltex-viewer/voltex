@@ -65,22 +65,22 @@ export default (pluginContext: PluginContext): void => {
     context.addSidebarEntry(sidebarEntry);
 }
 
-export function setPluginManager(manager: PluginManager): void {
+export async function setPluginManager(manager: PluginManager): Promise<void> {
     pluginManager = manager;
     
     // Load custom plugins from OPFS, then restore states
-    loadCustomPlugins().then(() => {
-        // Register all available plugins with the plugin manager
-        const availablePlugins = getAvailablePlugins();
-        for (const plugin of availablePlugins) {
-            pluginManager.registerPluginType(plugin);
-        }
-        
-        // Apply saved plugin states from config (after custom plugins are loaded)
-        restorePluginStates();
-        
-        refreshPluginList();
-    });
+    await loadCustomPlugins();
+
+    // Register all available plugins with the plugin manager
+    const availablePlugins = getAvailablePlugins();
+    for (const plugin of availablePlugins) {
+        pluginManager.registerPluginType(plugin);
+    }
+    
+    // Apply saved plugin states from config (after custom plugins are loaded)
+    await restorePluginStates();
+    
+    refreshPluginList();
     
     // Register to be notified when new plugins are registered
     pluginManager.onPluginRegistered(() => {
@@ -165,7 +165,7 @@ async function handleVxpkgUpload(file: File): Promise<void> {
             customPluginNames.add(metadata.name);
             
             // Enable the plugin
-            pluginManager?.enablePlugin(pluginModule);
+            await pluginManager?.enablePlugin(pluginModule);
             savePluginState(metadata.name, true);
             
             refreshPluginList();
@@ -231,7 +231,7 @@ async function openPluginUpdate(pluginName: string): Promise<void> {
     }
 }
 
-function restorePluginStates(): void {
+async function restorePluginStates() {
     if (!pluginManager || !config) return;
     
     const availablePlugins = pluginManager.getAvailablePlugins();
@@ -247,7 +247,7 @@ function restorePluginStates(): void {
         const currentlyEnabled = pluginManager.getPlugins().some(p => p.metadata.name === pluginName);
         
         if (shouldBeEnabled && !currentlyEnabled) {
-            pluginManager.enablePlugin(pluginModule);
+            await pluginManager.enablePlugin(pluginModule);
         } else if (!shouldBeEnabled && currentlyEnabled) {
             const enabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
             if (enabledPlugin) {
@@ -479,7 +479,7 @@ function renderContent(): HTMLElement {
     return container;
 }
 
-function togglePlugin(pluginName: string, toggleElement: HTMLElement): void {
+async function togglePlugin(pluginName: string, toggleElement: HTMLElement) {
     if (!pluginManager) return;
     
     const currentEnabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
@@ -492,7 +492,7 @@ function togglePlugin(pluginName: string, toggleElement: HTMLElement): void {
     } else {
         const pluginModule = pluginManager.getAvailablePlugins().find(p => p.metadata.name === pluginName);
         if (pluginModule) {
-            pluginManager.enablePlugin(pluginModule);
+            await pluginManager.enablePlugin(pluginModule);
             toggleElement.classList.add('enabled');
             savePluginState(pluginName, true);
         }
@@ -559,7 +559,7 @@ function renderPluginList(): void {
         const toggleSwitch = pluginItem.querySelector('.toggle-switch') as HTMLElement;
         if (toggleSwitch) {
             toggleSwitch.addEventListener('click', () => {
-                togglePlugin(pluginModule.metadata.name, toggleSwitch);
+                return togglePlugin(pluginModule.metadata.name, toggleSwitch);
             });
         }
 
@@ -638,7 +638,7 @@ function showConfigView(pluginName: string): void {
     
     // Add toggle functionality
     configToggle.onclick = () => {
-        togglePlugin(pluginName, configToggle);
+        return togglePlugin(pluginName, configToggle);
     };
     
     // Hide list view and show config view

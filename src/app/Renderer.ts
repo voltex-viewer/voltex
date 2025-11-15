@@ -88,15 +88,17 @@ export class Renderer {
         );
         
         this.resizeCanvases(); // Setup the root size
-
-        // Register and enable default plugins (only Plugin Manager)
-        this.pluginManager.registerPluginType(PluginManagerPlugin);
-        this.pluginManager.enablePlugin(PluginManagerPlugin);
-        setPluginManager(this.pluginManager);
         
         // Set up mouse event handlers on the canvas
         this.setupMouseEventHandlers();
         this.setupKeyboardEventHandlers();
+    }
+
+    async loadPlugins() {
+        // Register and enable default plugins (only Plugin Manager)
+        this.pluginManager.registerPluginType(PluginManagerPlugin);
+        await this.pluginManager.enablePlugin(PluginManagerPlugin);
+        await setPluginManager(this.pluginManager);
     }
 
     private setupMouseEventHandlers(): void {
