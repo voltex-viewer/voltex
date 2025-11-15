@@ -1,4 +1,7 @@
-import { InMemorySequence, SequenceSignal, Signal, SignalSource, TextValue, RenderMode } from "@voltex-viewer/plugin-api";
+import { InMemorySequence, InMemoryBigInt64Sequence, InMemoryBigUint64Sequence, SequenceSignal, Signal, SignalSource, TextValue, RenderMode } from "@voltex-viewer/plugin-api";
+
+// Maximum number of integer bits that can be represented exactly in a js number
+const MAX_SAFE_BITS: number = 53;
 
 class MdfSource implements SignalSource {
     constructor(public readonly name: string[], public signal: () => Promise<Signal>) {
@@ -71,7 +74,7 @@ export class DataGroupLoader {
         } else {
             this.loaded = true;
         }
-        let records = new Map<number, {length: number, sequences: {sequence: InMemorySequence, loader: ((buffer: DataView) => number)}[]}>();
+        let records = new Map<number, {length: number, sequences: {sequence: InMemorySequence | InMemoryBigInt64Sequence | InMemoryBigUint64Sequence, loader: ((buffer: DataView) => number | bigint)}[]}>();
         for (const group of this.data.groups) {
             if (group.channels.length == 0) {
                 continue;
@@ -86,7 +89,17 @@ export class DataGroupLoader {
             const sequences = [];
             for (let i = 0; i < group.channels.length; i++) {
                 const channel = group.channels[i];
-                const sequence = new InMemorySequence(channel.conversion == null ? undefined : channel.conversion);
+                // Javascript number cannot represent integers with > 53 bits exactly, so use a BigInt sequence for
+                // this. The bigint values will be rendered with a default hex conversion as most of the time this is
+                // probably what we want. There will also be data loss if we don't cast to a string.
+                let sequence;
+                if (channel.bitCount > MAX_SAFE_BITS && [DataType.IntBe, DataType.IntLe].includes(channel.dataType)) {
+                    sequence = new InMemoryBigInt64Sequence(channel.conversion == null ? x => ("0x" + x.toString(16)).replace("0x-", "-0x") : x => channel.conversion(Number(x)));
+                } else if (channel.bitCount > MAX_SAFE_BITS && [DataType.UintBe, DataType.UintLe].includes(channel.dataType)) {
+                    sequence = new InMemoryBigUint64Sequence(channel.conversion == null ? x => "0x" + x.toString(16) : x => channel.conversion(Number(x)));
+                } else {
+                    sequence = new InMemorySequence(channel.conversion == null ? undefined : channel.conversion);
+                }
                 sequences.push({
                     sequence,
                     loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
@@ -113,7 +126,7 @@ export class DataGroupLoader {
             (context, view) => {
                 for (const {sequence, loader} of context.sequences) {
                     const value = loader(view);
-                    sequence.push(value);
+                    (sequence.push as (x: number | bigint) => void)(value);
                 }
                 rowCount += 1;
                 return rowCount == totalRows;
@@ -155,7 +168,7 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                     } else if (bitCount === 32) {
                         return `return view.get${type}32(${byteOffset}, ${littleEndian});`;
                     } else if (bitCount === 64) {
-                        return `return Number(view.getBig${type}64(${byteOffset}, ${littleEndian}));`;
+                        return `return view.getBig${type}64(${byteOffset}, ${littleEndian});`;
                     }
                 }
                 // Complex case - with masking and/or shifting
@@ -174,11 +187,20 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                         parts.push(`(view.getUint8(${byte}) << ${shift})`);
                     }
                 }
-                if (isSigned) {
-                    return `const value = (${parts.join(" | ")}) & 0x${mask.toString(16)};` +
-                           `return value >= 0x${(1 << (bitCount - 1)).toString(16)} ? value - 0x${(1 << bitCount).toString(16)} : value;`;
+                if (bitCount <= MAX_SAFE_BITS) {
+                    if (isSigned) {
+                        return `const value = (${parts.join(" | ")}) & 0x${mask.toString(16)};` +
+                            `return value >= 0x${(1 << (bitCount - 1)).toString(16)} ? value - 0x${(1 << bitCount).toString(16)} : value;`;
+                    } else {
+                        return `return (${parts.join(" | ")}) & 0x${mask.toString(16)};`;
+                    }
                 } else {
-                    return `return (${parts.join(" | ")}) & 0x${mask.toString(16)};`;
+                    if (isSigned) {
+                        return `const value = (${parts.map(v => `BigInt(${v})`).join(" | ")}) & 0x${mask.toString(16)}n;` +
+                            `return value >= 0x${(1 << (bitCount - 1)).toString(16)}n ? value - 0x${(1 << bitCount).toString(16)}n : value;`;
+                    } else {
+                        return `return (${parts.map(v => `BigInt(${v})`).join(" | ")}) & 0x${mask.toString(16)}n;`;
+                    }
                 }
             }
             default:

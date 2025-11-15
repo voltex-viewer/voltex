@@ -78,24 +78,142 @@ export class InMemorySequence implements Sequence {
     }
 }
 
-export class SequenceSignal implements Signal {
-    constructor(
-        public source: SignalSource,
-        public time: InMemorySequence,
-        public values: InMemorySequence,
-        public renderHint: RenderMode) {
+export class InMemoryBigInt64Sequence implements Sequence {
+    private _min: number;
+    private _max: number;
+    private _data: BigInt64Array;
+    private _length: number;
+    private _conversion?: (value: number) => number | string
+
+    constructor(private _bigConversion?: (value: bigint) => number | string) {
+        this._conversion = typeof this._bigConversion !== "undefined" ? x => this._bigConversion!(BigInt(x)) : undefined;
+        this._min = Infinity;
+        this._max = -Infinity;
+        this._data = new BigInt64Array(1024);
+        this._length = 0;
     }
 
-    data(index: number): ChannelPoint {
-        return [this.time.valueAt(index), this.values.valueAt(index)];
+    push(...values: bigint[]) {
+        for (const value of values) {
+            const numberValue = convertToNumber(Number(value), this._conversion);
+            if (numberValue < this._min) {
+                this._min = numberValue;
+            }
+            if (numberValue > this._max) {
+                this._max = numberValue;
+            }
+            if (this.length === this._data.length) {
+                const newData = new BigInt64Array(Math.max(this._data.length * 2, 1024));
+                newData.set(this._data);
+                this._data = newData;
+            }
+            this._data[this._length] = value;
+            this._length++;
+        }
     }
 
-    convertedData(index: number): [t: number, v: number | string] {
-        return [this.time.valueAt(index), this.values.convertedValueAt(index)];
+    get min(): number {
+        return this._min == Infinity ? 0 : this._min;
+    }
+
+    get max(): number {
+        return this._max == -Infinity ? 0 : this._max;
     }
 
     get length(): number {
-        return Math.min(this.time.length, this.values.length);
+        return this._length;
+    }
+
+    valueAt(index: number): number {
+        return convertToNumber(Number(this._data[index]), this._conversion);
+    }
+
+    convertedValueAt(index: number): number | string {
+        const value = this._data[index];
+        if (this._bigConversion !== undefined) {
+            const result = this._bigConversion(value);
+            if (typeof result !== 'undefined') {
+                return result;
+            } else {
+                return Number(value);
+            }
+        } else {
+            return Number(value);
+        }
+    }
+}
+
+export class InMemoryBigUint64Sequence implements Sequence {
+    private _min: number;
+    private _max: number;
+    private _data: BigUint64Array;
+    private _length: number;
+    private _conversion?: (value: number) => number | string
+
+    constructor(private _bigConversion?: (value: bigint) => number | string) {
+        this._conversion = typeof this._bigConversion !== "undefined" ? x => this._bigConversion!(BigInt(x)) : undefined;
+        this._min = Infinity;
+        this._max = -Infinity;
+        this._data = new BigUint64Array(1024);
+        this._length = 0;
+    }
+
+    push(...values: bigint[]) {
+        for (const value of values) {
+            const numberValue = convertToNumber(Number(value), this._conversion);
+            if (numberValue < this._min) {
+                this._min = numberValue;
+            }
+            if (numberValue > this._max) {
+                this._max = numberValue;
+            }
+            if (this.length === this._data.length) {
+                const newData = new BigUint64Array(Math.max(this._data.length * 2, 1024));
+                newData.set(this._data);
+                this._data = newData;
+            }
+            this._data[this._length] = value;
+            this._length++;
+        }
+    }
+
+    get min(): number {
+        return this._min == Infinity ? 0 : this._min;
+    }
+
+    get max(): number {
+        return this._max == -Infinity ? 0 : this._max;
+    }
+
+    get length(): number {
+        return this._length;
+    }
+
+    valueAt(index: number): number {
+        return convertToNumber(Number(this._data[index]), this._conversion);
+    }
+
+    convertedValueAt(index: number): number | string {
+        const value = this._data[index];
+        if (this._bigConversion !== undefined) {
+            const result = this._bigConversion(value);
+            if (typeof result !== 'undefined') {
+                return result;
+            } else {
+                return Number(value);
+            }
+        } else {
+            return Number(value);
+        }
+    }
+}
+
+export class SequenceSignal implements Signal {
+    constructor(
+        public source: SignalSource,
+        public time: Sequence,
+        public values: Sequence,
+        public renderHint: RenderMode) {
     }
 }
 
