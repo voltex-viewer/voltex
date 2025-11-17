@@ -25,17 +25,7 @@ class TreeEntry {
     }
 }
 
-interface CachedDOMElement {
-    element: HTMLElement;
-    node: TreeEntry;
-    isVisible: boolean;
-    eventListeners: (() => void)[];
-    labelElement: HTMLElement | null;
-    toggleElement: HTMLElement | null;
-}
-
 export default (context: PluginContext): void => {
-    const domCache: CachedDOMElement[] = [];
     const signals: TreeEntry[] = [];
 
     const sidebarContainer = document.createElement('div');
@@ -285,19 +275,14 @@ export default (context: PluginContext): void => {
                 currentNode = currentNode.children.get(pathPart)!;
             }
         }
-        // Clean up event listeners
-        for (const cached of domCache.values()) {
-            cached.eventListeners.forEach(cleanup => cleanup());
-        }
+        
         signals.length = 0;
-        domCache.length = 0;
         let toVisit: [TreeNode, number, TreeEntry | null][] = Array.from(root.children.entries()).sort((a, b) => naturalCompare(b[0], a[0])).map(v => [v[1], 0, null] as [TreeNode, number, TreeEntry | null]);
         while (toVisit.length > 0) {
             const [node, depth, parent] = toVisit.pop()!;
             const entry = new TreeEntry(node.fullPath, node.signalSource);
             entry.parent = parent;
             signals.push(entry);
-            domCache.push(createDomElement(entry, depth));
             toVisit.push(...Array.from(node.children.entries()).sort((a, b) => naturalCompare(b[0], a[0])).map(v => [v[1], depth + 1, entry] as [TreeNode, number, TreeEntry | null]));
         }
 
@@ -345,7 +330,7 @@ export default (context: PluginContext): void => {
         return 0;
     }
 
-    function createDomElement(node: TreeEntry, depth: number): CachedDOMElement {
+    function createDomElement(node: TreeEntry, depth: number): HTMLElement {
         const nodeElement = document.createElement('div');
         nodeElement.className = 'signal-item';
         nodeElement.setAttribute('data-signal-path', node.fullPath.join('|').toLowerCase());
@@ -384,27 +369,27 @@ export default (context: PluginContext): void => {
         // Create label element
         const labelSpan = document.createElement('span');
         labelSpan.className = 'tree-label';
-        labelSpan.textContent = node.name;
+        
+        // Apply search highlighting if needed
+        if (lastSearchTerm.trim() && node.searchMatches) {
+            labelSpan.innerHTML = highlightSearchMatch(node.name, lastSearchTerm);
+        } else {
+            labelSpan.textContent = node.name;
+        }
         
         treeNodeDiv.appendChild(toggleSpan);
         treeNodeDiv.appendChild(labelSpan);
 
-        // Set up event listeners and track cleanup functions
-        const eventListeners: (() => void)[] = [];
-        
         // Add remove button for top-level nodes with children
         if (isTopLevel && hasChildren) {
             const removeBtn = document.createElement('span');
             removeBtn.className = 'tree-remove-btn';
             removeBtn.title = 'Remove all signals from this source';
 
-            const removeBtnFunction = (e: MouseEvent) => {
+            removeBtn.addEventListener('click', (e: MouseEvent) => {
                 e.stopPropagation();
                 removeSignalSourceAndChildren(node);
-            };
-            
-            removeBtn.addEventListener('click', removeBtnFunction);
-            eventListeners.push(() => removeBtn.removeEventListener('click', removeBtnFunction));
+            });
             
             const removeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             removeSvg.setAttribute('width', '16');
@@ -423,7 +408,7 @@ export default (context: PluginContext): void => {
         nodeElement.appendChild(treeNodeDiv);
         
         if (hasChildren) {
-            const toggleFunction = (e: MouseEvent) => {
+            treeNodeDiv.addEventListener('click', (e: MouseEvent) => {
                 if ((e.target as HTMLElement).closest('.tree-remove-btn')) {
                     return;
                 }
@@ -435,92 +420,37 @@ export default (context: PluginContext): void => {
                 node.expanded = !node.expanded;
                 toggleSpan.classList.toggle('expanded', node.expanded);
                 
-                const nodeIndex = signals.indexOf(node);
-                if (nodeIndex === -1) return;
-                
-                const nodeDepth = node.depth;
-                for (let i = nodeIndex + 1; i < signals.length && signals[i].depth > nodeDepth; i++) {
-                    domCache[i].isVisible = node.expanded;
-                }
-                
                 updateVirtualScroll();
-            };
-            
-            treeNodeDiv.addEventListener('click', toggleFunction);
-            eventListeners.push(() => treeNodeDiv.removeEventListener('click', toggleFunction));
+            });
         } else if (isLeaf && node.signalSource) {
-            const clickFunction = () => {
+            treeNodeDiv.addEventListener('click', () => {
                 return addSignalToWaveform(node.signalSource!);
-            };
-            
-            treeNodeDiv.addEventListener('click', clickFunction);
-            eventListeners.push(() => treeNodeDiv.removeEventListener('click', clickFunction));
+            });
         }
         
-        return {
-            element: nodeElement,
-            node: node,
-            isVisible: true,
-            eventListeners: eventListeners,
-            labelElement: labelSpan,
-            toggleElement: hasChildren ? toggleSpan : null
-        };
+        return nodeElement;
     }
 
     function renderSignalTree(): void {
-        for (let i = 0; i < signals.length; i++) {
-            domCache[i].toggleElement?.classList.toggle('expanded', signals[i].expanded);
-        }
         updateVirtualScroll();
     }
 
-    function updateVirtualScroll(): void {
-        const scrollTop = scrollContainer.scrollTop;
-        const containerHeight = scrollContainer.clientHeight;
+    function getVisibleNodes(): { node: TreeEntry, index: number, depth: number }[] {
+        const visible: { node: TreeEntry, index: number, depth: number }[] = [];
         
-        const visibleCount = domCache.filter(c => c.isVisible).length;
-        
-        // Handle empty state
-        if (visibleCount === 0) {
-            treeSpacer.style.height = '0px';
-            treeContainer.innerHTML = '<div style="color: #6b7280; padding: 16px; text-align: center;">No signals found</div>';
-            return;
-        }
-        
-        const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
-        const endIndex = Math.min(
-            visibleCount,
-            Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + BUFFER_SIZE
-        );
-        
-        const totalHeight = visibleCount * ITEM_HEIGHT;
-        treeSpacer.style.height = `${totalHeight}px`;
-        
-        treeContainer.innerHTML = '';
-        
-        let visibleIndex = 0;
-        for (let i = 0; i < domCache.length; i++) {
-            const cachedElement = domCache[i];
-            
-            if (!cachedElement.isVisible) continue;
-            
-            if (visibleIndex >= startIndex && visibleIndex < endIndex) {
-                cachedElement.element.style.top = `${visibleIndex * ITEM_HEIGHT}px`;
-                treeContainer.appendChild(cachedElement.element);
+        if (lastSearchTerm.trim()) {
+            // In search mode, show all searchVisible nodes
+            for (let i = 0; i < signals.length; i++) {
+                if (signals[i].searchVisible) {
+                    visible.push({ node: signals[i], index: i, depth: signals[i].depth });
+                }
             }
-            
-            visibleIndex++;
-        }
-    }
-
-    function filterSignals(searchTerm: string): void {
-        if (!searchTerm.trim()) {
-            // No search term - clear all highlighting and reset visibility
+        } else {
+            // Normal mode - respect expand/collapse state
             const ancestorStack: boolean[] = [];
             
             for (let i = 0; i < signals.length; i++) {
                 const node = signals[i];
-                const cachedElement = domCache[i];
                 
                 // Adjust stack size to current depth
                 ancestorStack.length = node.depth;
@@ -528,52 +458,61 @@ export default (context: PluginContext): void => {
                 // Check if all ancestors are expanded
                 const isVisible = ancestorStack.every(expanded => expanded);
                 
-                cachedElement.isVisible = isVisible;
+                if (isVisible) {
+                    visible.push({ node, index: i, depth: node.depth });
+                }
                 
                 // Push this node's expansion state for its children
                 ancestorStack.push(node.expanded);
-                
-                const labelElement = cachedElement.element.querySelector('.tree-label');
-                if (labelElement) {
-                    labelElement.textContent = cachedElement.node.name;
-                }
             }
-            // Show the normal tree
+        }
+        
+        return visible;
+    }
+
+    function updateVirtualScroll(): void {
+        const scrollTop = scrollContainer.scrollTop;
+        const containerHeight = scrollContainer.clientHeight;
+        
+        const visibleNodes = getVisibleNodes();
+        
+        // Handle empty state
+        if (visibleNodes.length === 0) {
+            treeSpacer.style.height = '0px';
+            treeContainer.innerHTML = '<div style="color: #6b7280; padding: 16px; text-align: center;">No signals found</div>';
+            return;
+        }
+        
+        const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE);
+        const endIndex = Math.min(
+            visibleNodes.length,
+            Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + BUFFER_SIZE
+        );
+        
+        const totalHeight = visibleNodes.length * ITEM_HEIGHT;
+        treeSpacer.style.height = `${totalHeight}px`;
+        
+        treeContainer.innerHTML = '';
+        
+        for (let visibleIndex = startIndex; visibleIndex < endIndex; visibleIndex++) {
+            const { node, index, depth } = visibleNodes[visibleIndex];
+            
+            const element = createDomElement(node, depth);
+            element.style.top = `${visibleIndex * ITEM_HEIGHT}px`;
+            treeContainer.appendChild(element);
+        }
+    }
+
+    function filterSignals(searchTerm: string): void {
+        if (!searchTerm.trim()) {
+            // No search term - normal tree view
             renderSignalTree();
         } else {
             // Build the tree but mark nodes for visibility based on search
             markTreeNodesForSearch(searchTerm);
             
-            // Update cached elements with search highlighting and visibility
-            updateCachedElementsForSearch(searchTerm);
-            
             // Re-render using virtual scrolling
             updateVirtualScroll();
-        }
-    }
-
-    function updateCachedElementsForSearch(searchTerm: string): void {
-        for (let i = 0; i < signals.length; i++) {
-            const childNode = signals[i];
-            const cachedElement = domCache[i];
-            
-            cachedElement.isVisible = childNode.searchVisible;
-            
-            // Update label with highlighting if it matches - use cached reference
-            const labelElement = cachedElement.labelElement;
-            if (labelElement) {
-                if (childNode.searchMatches) {
-                    labelElement.innerHTML = highlightSearchMatch(childNode.name, searchTerm);
-                } else {
-                    labelElement.textContent = childNode.name;
-                }
-            }
-            
-            // Update toggle state - use cached reference
-            const toggleElement = cachedElement.toggleElement;
-            if (toggleElement) {
-                toggleElement.classList.add('expanded');
-            }
         }
     }
 
