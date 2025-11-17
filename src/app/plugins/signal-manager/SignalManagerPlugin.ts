@@ -306,6 +306,8 @@ export default (context: PluginContext): void => {
         // Open the sidebar when new signal sources are added
         if (event.added.length > 0 && sidebarEntry) {
             sidebarEntry.open();
+            // Recalculate virtual scroll after sidebar opens and DOM settles
+            updateVirtualScroll();
         }
     });
 
