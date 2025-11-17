@@ -24,6 +24,9 @@ export type WorkerResponse = {
     signals: SignalMetadata[];
     fileName: string;
 } | {
+    type: 'fileLoadingProgress';
+    channelCount: number;
+} | {
     type: 'signalLoadingStarted';
     signalId: number;
     timeBuffer: SharedArrayBuffer;

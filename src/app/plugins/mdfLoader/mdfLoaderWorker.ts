@@ -73,6 +73,8 @@ async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
     let signalId = 0;
     let dataGroupIndex = 0;
     console.log(header);
+    
+    let lastProgressUpdate = 0;
     for await (const dgBlock of v3.iterateDataGroupBlocks(header.firstDataGroup, reader)) {
         const dataGroupKey = `${reader.file.name}:dg${dataGroupIndex++}`;
         const groups = [];
@@ -159,10 +161,18 @@ async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                         timeSequenceType: abstractTimeChannel ? getNumberType(abstractTimeChannel) : NumberType.Float64,
                         valuesSequenceType: getNumberType(abstractChannel),
                     });
+                    
+                    const now = performance.now();
+                    if (now - lastProgressUpdate > 100) {
+                        self.postMessage({ type: 'fileLoadingProgress', channelCount: signals.length } as WorkerResponse);
+                        lastProgressUpdate = now;
+                    }
                 }
             }
         }
     }
+
+    self.postMessage({ type: 'fileLoadingProgress', channelCount: signals.length } as WorkerResponse);
 
     return signals;
 }
@@ -175,6 +185,7 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
     let signals: SignalMetadata[] = [];
     let signalId = 0;
     let dataGroupIndex = 0;
+    let lastProgressUpdate = 0;
 
     for await (const dgBlock of iterateDataGroupBlocks(header.firstDataGroup, reader)) {
         const dataGroupKey = `${reader.file.name}:dg${dataGroupIndex++}`;
@@ -297,10 +308,19 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                         timeSequenceType: abstractTimeChannel ? getNumberType(abstractTimeChannel) : NumberType.Float64,
                         valuesSequenceType: getNumberType(abstractChannel),
                     });
+                    
+                    const now = performance.now();
+                    if (now - lastProgressUpdate > 100) {
+                        self.postMessage({ type: 'fileLoadingProgress', channelCount: signals.length } as WorkerResponse);
+                        lastProgressUpdate = now;
+                    }
                 }
             }
         }
     }
+
+    self.postMessage({ type: 'fileLoadingProgress', channelCount: signals.length } as WorkerResponse);
+
     return signals;
 }
 

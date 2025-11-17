@@ -1,4 +1,4 @@
-import { PluginContext, SignalSource, Sequence, Signal } from '@voltex-viewer/plugin-api';
+import { PluginContext, SignalSource, Sequence, Signal, RenderObject } from '@voltex-viewer/plugin-api';
 import { resolveHeaderOffset, Header, DataTableBlock, DataListBlock, DataGroupBlock, ChannelBlock, } from './blocks/v4';
 import * as v4 from './blocks/v4';
 import { SerializeContext } from './blocks/v4/serializer';
@@ -6,6 +6,7 @@ import { deserializeConversion } from './serializableConversion';
 import { SharedBufferBackedSequence } from './SharedBufferBackedSequence';
 import { NumberType } from './decoder';
 import type { WorkerMessage, WorkerResponse } from './workerTypes';
+import { loadingOverlayRenderObject } from './LoadingOverlayRenderObject';
 
 type AnySequence = SharedBufferBackedSequence<Float64Array> | SharedBufferBackedSequence<BigInt64Array> | SharedBufferBackedSequence<BigUint64Array>;
 
@@ -15,6 +16,8 @@ export default (context: PluginContext): void => {
         timeSequence: AnySequence;
         valuesSequence: AnySequence;
     }>();
+    let loadingOverlay: RenderObject | null = null;
+    let loadingOverlayObj: ReturnType<typeof loadingOverlayRenderObject> | null = null;
     let worker: Worker | null = new Worker(new URL('./mdfLoaderWorker.ts', import.meta.url), { type: 'module' });
     worker.addEventListener('message', (event: MessageEvent<WorkerResponse>) => {
         const data = event.data;
@@ -22,10 +25,27 @@ export default (context: PluginContext): void => {
         switch (data.type) {
             case 'error':
                 console.error('Worker error:', data.error);
+                if (loadingOverlay) {
+                    context.rootRenderObject.removeChild(loadingOverlay);
+                    loadingOverlay = null;
+                    loadingOverlayObj = null;
+                }
                 return;
             
             case 'fileLoaded':
-                return; // Handled by file open handler
+                if (loadingOverlay) {
+                    context.rootRenderObject.removeChild(loadingOverlay);
+                    loadingOverlay = null;
+                    loadingOverlayObj = null;
+                }
+                return;
+            
+            case 'fileLoadingProgress':
+                if (loadingOverlayObj) {
+                    loadingOverlayObj.updateChannelCount(data.channelCount);
+                    context.requestRender();
+                }
+                return;
             
             case 'signalLoadingStarted':
                 return; // Handled by per-signal promise
@@ -80,6 +100,13 @@ export default (context: PluginContext): void => {
         description: 'MDF/MF4 Measurement Files',
         mimeType: '*/*',
         handler: async (file: File) => {
+            // Show loading overlay after a delay to avoid flashing for quick loads
+            const showOverlayTimeout = setTimeout(() => {
+                loadingOverlayObj = loadingOverlayRenderObject();
+                loadingOverlay = context.rootRenderObject.addChild(loadingOverlayObj);
+                context.requestRender();
+            }, 200);
+            
             const message: WorkerMessage = {
                 type: 'loadFile',
                 file,
@@ -87,90 +114,100 @@ export default (context: PluginContext): void => {
             
             worker.postMessage(message);
             
-            const response = await new Promise<WorkerResponse>((resolve, reject) => {
-                const handler = (event: MessageEvent<WorkerResponse>) => {
-                    worker.removeEventListener('message', handler);
-                    if (event.data.type === 'error') {
-                        reject(new Error(event.data.error));
-                    } else {
-                        resolve(event.data);
-                    }
-                };
-                worker.addEventListener('message', handler);
-            });
-            
-            if (response.type !== 'fileLoaded') {
-                throw new Error('Unexpected response type');
-            }
-            
-            const sources: SignalSource[] = response.signals.map(metadata => ({
-                name: metadata.name,
-                signal: async () => {
-                    const loadMessage: WorkerMessage = {
-                        type: 'loadSignal',
-                        signalId: metadata.signalId
-                    };
-                    
-                    // Wait for the initial response with buffers
-                    const startResponse = await new Promise<Extract<WorkerResponse, { type: 'signalLoadingStarted' }>>((resolve, reject) => {
-                        const handler = (event: MessageEvent<WorkerResponse>) => {
-                            if (event.data.type === 'error') {
-                                worker.removeEventListener('message', handler);
-                                reject(new Error(event.data.error));
-                            } else if (event.data.type === 'signalLoadingStarted' && event.data.signalId === metadata.signalId) {
-                                worker.removeEventListener('message', handler);
-                                resolve(event.data);
-                            }
-                        };
-                        worker.addEventListener('message', handler);
-                        
-                        // Post message after handler is set up
-                        worker.postMessage(loadMessage);
-                    });
-                    
-                    const conversion = deserializeConversion(metadata.conversion);
-                    const source: SignalSource = sources.find(s => s.name === metadata.name)!;
-                    
-                    const timeConstructor = metadata.timeSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.timeSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
-                    const valuesConstructor = metadata.valuesSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.valuesSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
-                    
-                    // Apply default conversions for bigint types if no custom conversion provided
-                    let valuesConversion: any = conversion;
-                    if (!valuesConversion) {
-                        if (metadata.valuesSequenceType === NumberType.BigInt64) {
-                            valuesConversion = (x: bigint) => ("0x" + x.toString(16)).replace("0x-", "-0x");
-                        } else if (metadata.valuesSequenceType === NumberType.BigUint64) {
-                            valuesConversion = (x: bigint) => "0x" + x.toString(16);
+            try {
+                const response = await new Promise<WorkerResponse>((resolve, reject) => {
+                    const handler = (event: MessageEvent<WorkerResponse>) => {
+                        if (event.data.type === 'error') {
+                            worker.removeEventListener('message', handler);
+                            reject(new Error(event.data.error));
+                        } else if (event.data.type === 'fileLoaded') {
+                            worker.removeEventListener('message', handler);
+                            resolve(event.data);
                         }
-                    } else if (metadata.valuesSequenceType !== NumberType.Float64) {
-                        // Wrap existing conversion to handle bigint to number conversion
-                        const originalConversion = valuesConversion;
-                        valuesConversion = (x: bigint) => originalConversion(Number(x));
-                    }
-                    
-                    const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor) as AnySequence;
-                    time.updateLength(startResponse.length);
-                    const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, valuesConversion) as AnySequence;
-                    values.updateLength(startResponse.length);
-                    
-                    // Register with the persistent handler
-                    activeSignalLoaders.set(metadata.signalId, {
-                        timeSequence: time,
-                        valuesSequence: values
-                    });
-                    
-                    return {
-                        time,
-                        values,
-                        conversion: conversion || (() => 0),
-                        renderMode: metadata.renderMode,
-                        source,
-                        renderHint: metadata.renderMode
                     };
+                    worker.addEventListener('message', handler);
+                });
+                
+                if (response.type !== 'fileLoaded') {
+                    throw new Error('Unexpected response type');
                 }
-            }));
-            
-            context.signalSources.add(sources);
+                
+                const sources: SignalSource[] = response.signals.map(metadata => ({
+                    name: metadata.name,
+                    signal: async () => {
+                        const loadMessage: WorkerMessage = {
+                            type: 'loadSignal',
+                            signalId: metadata.signalId
+                        };
+                        
+                        // Wait for the initial response with buffers
+                        const startResponse = await new Promise<Extract<WorkerResponse, { type: 'signalLoadingStarted' }>>((resolve, reject) => {
+                            const handler = (event: MessageEvent<WorkerResponse>) => {
+                                if (event.data.type === 'error') {
+                                    worker.removeEventListener('message', handler);
+                                    reject(new Error(event.data.error));
+                                } else if (event.data.type === 'signalLoadingStarted' && event.data.signalId === metadata.signalId) {
+                                    worker.removeEventListener('message', handler);
+                                    resolve(event.data);
+                                }
+                            };
+                            worker.addEventListener('message', handler);
+                            
+                            // Post message after handler is set up
+                            worker.postMessage(loadMessage);
+                        });
+                        
+                        const conversion = deserializeConversion(metadata.conversion);
+                        const source: SignalSource = sources.find(s => s.name === metadata.name)!;
+                        
+                        const timeConstructor = metadata.timeSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.timeSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
+                        const valuesConstructor = metadata.valuesSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.valuesSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
+                        
+                        // Apply default conversions for bigint types if no custom conversion provided
+                        let valuesConversion: any = conversion;
+                        if (!valuesConversion) {
+                            if (metadata.valuesSequenceType === NumberType.BigInt64) {
+                                valuesConversion = (x: bigint) => ("0x" + x.toString(16)).replace("0x-", "-0x");
+                            } else if (metadata.valuesSequenceType === NumberType.BigUint64) {
+                                valuesConversion = (x: bigint) => "0x" + x.toString(16);
+                            }
+                        } else if (metadata.valuesSequenceType !== NumberType.Float64) {
+                            // Wrap existing conversion to handle bigint to number conversion
+                            const originalConversion = valuesConversion;
+                            valuesConversion = (x: bigint) => originalConversion(Number(x));
+                        }
+                        
+                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor) as AnySequence;
+                        time.updateLength(startResponse.length);
+                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, valuesConversion) as AnySequence;
+                        values.updateLength(startResponse.length);
+                        
+                        // Register with the persistent handler
+                        activeSignalLoaders.set(metadata.signalId, {
+                            timeSequence: time,
+                            valuesSequence: values
+                        });
+                        
+                        return {
+                            time,
+                            values,
+                            conversion: conversion || (() => 0),
+                            renderMode: metadata.renderMode,
+                            source,
+                            renderHint: metadata.renderMode
+                        };
+                    }
+                }));
+                
+                context.signalSources.add(sources);
+            } finally {
+                clearTimeout(showOverlayTimeout);
+                if (loadingOverlay) {
+                    context.rootRenderObject.removeChild(loadingOverlay);
+                    loadingOverlay = null;
+                    loadingOverlayObj = null;
+                }
+            }
         }
     });
 
