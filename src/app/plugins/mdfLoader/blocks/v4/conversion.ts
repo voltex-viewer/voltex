@@ -1,86 +1,105 @@
 import { TextValue } from "@voltex-viewer/plugin-api";
 import { ChannelConversionBlock, ConversionType } from ".";
+import { SerializableConversion, SerializableConversionData } from "../../serializableConversion";
 
-export function conversionToFunction(conversion: ChannelConversionBlock<'instanced'> | null): {conversion: null | ((value: number) => number | string), textValues: TextValue[]} {
+export function serializeConversion(conversion: ChannelConversionBlock<'instanced'> | null): SerializableConversionData {
     const textValues: TextValue[] = [];
-    function convert(conversion: ChannelConversionBlock<'instanced'>): null | ((value: number) => number | string) {
+    
+    function serialize(conversion: ChannelConversionBlock<'instanced'> | null): SerializableConversion | null {
         if (conversion === null) {
             return null;
         }
+        
         switch (conversion.type) {
             case ConversionType.OneToOne:
-                return (value) => value;
+                return {
+                    fnBody: 'return value;',
+                    context: {}
+                };
+            
             case ConversionType.Linear:
-                const [intercept, slope] = conversion.values;
-                return value => {
-                    return slope * value + intercept;
+                return {
+                    fnBody: 'return slope * value + intercept;',
+                    context: {
+                        intercept: conversion.values[0],
+                        slope: conversion.values[1]
+                    }
                 };
+            
             case ConversionType.Rational:
-                const [numerator_x2, numerator_x1, numerator_x0, denominator_x2, denominator_x1, denominator_x0] = conversion.values;
-                return value => {
-                    return (numerator_x2 * value ** 2 + numerator_x1 * value + numerator_x0) / (denominator_x2 * value ** 2 + denominator_x1 * value + denominator_x0);
+                return {
+                    fnBody: 'return (c[0] * value * value + c[1] * value + c[2]) / (c[3] * value * value + c[4] * value + c[5]);',
+                    context: {
+                        c: conversion.values
+                    }
                 };
-            case ConversionType.Algebraic:
+            
+            case ConversionType.Algebraic: {
                 const formula = conversion.refs[0];
-                return new Function('X', `return ${formula.data.replaceAll('x', 'X').replaceAll('^', '**')};`) as (value: number) => number;
-            case ConversionType.ValueToValueTableWithInterpolation:
-            case ConversionType.ValueToValueTableWithoutInterpolation:
+                return {
+                    fnBody: `return ${formula.data.replaceAll(/\b(?:X|x)1?\b/g, 'value').replaceAll('^', '**')};`,
+                    context: {}
+                };
+            }
+            
+            case ConversionType.ValueToValueTableWithInterpolation: {
                 const pairs = [];
                 for (let i = 0; i < conversion.values.length; i += 2) {
                     pairs.push([conversion.values[i], conversion.values[i + 1]]);
                 }
                 pairs.sort((a, b) => a[0] - b[0]);
-                const keys = pairs.map(pair => pair[0]);
-                const values = pairs.map(pair => pair[1]);
-
-                if (conversion.type === ConversionType.ValueToValueTableWithInterpolation) {
-                    return value => {
-                        if (value <= keys[0]) return values[0];
-                        if (value >= keys[keys.length - 1]) return values[values.length - 1];
-                        
-                        let left = 0;
-                        let right = keys.length - 1;
-                        
-                        while (left < right - 1) {
-                            const mid = (left + right) >>> 1;
-                            if (keys[mid] <= value) {
-                                left = mid;
-                            } else {
-                                right = mid;
-                            }
+                return {
+                    fnBody: `if (value <= keys[0]) return values[0];
+                    if (value >= keys[keys.length - 1]) return values[values.length - 1];
+                    let left = 0;
+                    let right = keys.length - 1;
+                    while (left < right - 1) {
+                        const mid = (left + right) >>> 1;
+                        if (keys[mid] <= value) {
+                            left = mid;
+                        } else {
+                            right = mid;
                         }
-                        
-                        const t = (value - keys[left]) / (keys[right] - keys[left]);
-                        return values[left] + t * (values[right] - values[left]);
-                    };
-                } else {
-                    return value => {
-                        if (value <= keys[0]) return values[0];
-                        if (value >= keys[keys.length - 1]) return values[values.length - 1];
-                        
-                        let left = 0;
-                        let right = keys.length - 1;
-                        
-                        while (left < right - 1) {
-                            const mid = (left + right) >>> 1;
-                            if (keys[mid] <= value) {
-                                left = mid;
-                            } else {
-                                right = mid;
-                            }
-                        }
-                        
-                        const leftDist = value - keys[left];
-                        const rightDist = keys[right] - value;
-                        
-                        return leftDist <= rightDist ? values[left] : values[right];
-                    };
+                    }
+                    const t = (value - keys[left]) / (keys[right] - keys[left]);
+                    return values[left] + t * (values[right] - values[left]);`,
+                    context: {
+                        keys: pairs.map(pair => pair[0]),
+                        values: pairs.map(pair => pair[1])
+                    }
+                };
+            }
+            
+            case ConversionType.ValueToValueTableWithoutInterpolation: {
+                const pairs = [];
+                for (let i = 0; i < conversion.values.length; i += 2) {
+                    pairs.push([conversion.values[i], conversion.values[i + 1]]);
                 }
-
+                pairs.sort((a, b) => a[0] - b[0]);
+                return {
+                    fnBody: `if (value <= keys[0]) return values[0];
+                    if (value >= keys[keys.length - 1]) return values[values.length - 1];
+                    let left = 0;
+                    let right = keys.length - 1;
+                    while (left < right - 1) {
+                        const mid = (left + right) >>> 1;
+                        if (keys[mid] <= value) {
+                            left = mid;
+                        } else {
+                            right = mid;
+                        }
+                    }
+                    const leftDist = value - keys[left];
+                    const rightDist = keys[right] - value;
+                    return leftDist <= rightDist ? values[left] : values[right];`,
+                    context: {
+                        keys: pairs.map(pair => pair[0]),
+                        values: pairs.map(pair => pair[1])
+                    }
+                };
+            }
+            
             case ConversionType.ValueRangeToValueTable: {
-                if ((conversion.values.length % 3) !== 1) {
-                    throw new Error(`Invalid number of values for ValueRangeToValueTable: ${conversion.values.length}`);
-                }
                 const groups = [];
                 for (let i = 0; i < conversion.values.length - 2; i += 3) {
                     groups.push([conversion.values[i], conversion.values[i + 1], conversion.values[i + 2]]);
@@ -90,20 +109,21 @@ export function conversionToFunction(conversion: ChannelConversionBlock<'instanc
                 const keys_min = groups.map(group => group[0]);
                 const keys_max = groups.map(group => group[1]);
                 const values = groups.map(group => group[2]);
+                
                 if (keys_min.length <= 8) {
-                    return value => {
-                        for (let i = 0; i < keys_min.length; i++) {
+                    return {
+                        fnBody: `for (let i = 0; i < keys_min.length; i++) {
                             if (value >= keys_min[i] && value <= keys_max[i]) {
                                 return values[i];
                             }
                         }
-                        return defaultValue;
+                        return defaultValue;`,
+                        context: { keys_min, keys_max, values, defaultValue }
                     };
                 } else {
-                    return value => {
-                        let left = 0;
+                    return {
+                        fnBody: `let left = 0;
                         let right = keys_min.length - 1;
-                        
                         while (left <= right) {
                             const mid = (left + right) >>> 1;
                             if (value >= keys_min[mid] && value <= keys_max[mid]) {
@@ -114,116 +134,146 @@ export function conversionToFunction(conversion: ChannelConversionBlock<'instanc
                                 left = mid + 1;
                             }
                         }
-                        return defaultValue;
+                        return defaultValue;`,
+                        context: { keys_min, keys_max, values, defaultValue }
                     };
                 }
             }
-
+            
             case ConversionType.ValueToTextOrScale: {
-                if (conversion.values.length + 1 !== conversion.refs.length) {
-                    throw new Error(`Mismatched lengths for ValueToTextOrScale`);
-                }
-                const conversionMap = new Map<number, string | ((value: number) => number | string)>();
+                const mapEntries: Array<[number, string | SerializableConversion]> = [];
                 for (let i = 0; i < conversion.values.length; i++) {
                     const ref = conversion.refs[i];
                     if ('type' in ref) {
-                        conversionMap.set(conversion.values[i], convert(ref));
+                        const serialized = serialize(ref);
+                        if (serialized) mapEntries.push([conversion.values[i], serialized]);
                     } else {
-                        conversionMap.set(conversion.values[i], ref.data);
+                        mapEntries.push([conversion.values[i], ref.data]);
                         textValues.push({text: ref.data, value: conversion.values[i]});
                     }
                 }
                 const defaultRef = conversion.refs[conversion.refs.length - 1];
-                let defaultValue: string | ((value: number) => number | string) | undefined;
+                let defaultValue: string | SerializableConversion | undefined;
                 if (defaultRef === null) {
                     defaultValue = undefined;
                 } else if ('type' in defaultRef) {
-                    defaultValue = convert(defaultRef);
+                    defaultValue = serialize(defaultRef) || undefined;
                 } else {
                     defaultValue = defaultRef.data;
                     textValues.push({text: defaultRef.data});
                 }
-                if (typeof(defaultValue) === "function") {
-                    return value => {
-                        const result = conversionMap.get(value);
-                        switch (typeof(result)) {
-                            case "function":
-                                return result(value);
-                            case "undefined":
-                                return defaultValue(value);
-                            default:
-                                return result;
-                        }
-                    };
-                } else {
-                    return value => {
-                        const result = conversionMap.get(value);
-                        switch (typeof(result)) {
-                            case "function":
-                                return result(value);
-                            case "undefined":
-                                return defaultValue;
-                            default:
-                                return result;
-                        }
-                    };
-                }
+                
+                return {
+                    fnBody: `const result = conversionMap.get(value);
+                    if (result !== undefined) {
+                        if (typeof result === 'string') return result;
+                        if (typeof result === 'number') return result;
+                        return result.fn(value, ...result.args);
+                    }
+                    if (defaultValue !== undefined) {
+                        if (typeof defaultValue === 'string') return defaultValue;
+                        if (typeof defaultValue === 'number') return defaultValue;
+                        return defaultValue.fn(value, ...defaultValue.args);
+                    }
+                    return value;`,
+                    context: {
+                        conversionMap: new Map(mapEntries.map(([k, v]): [number, any] => {
+                            if (typeof v === 'string') {
+                                return [k, v];
+                            } else {
+                                const contextKeys = Object.keys(v.context);
+                                const contextValues = Object.values(v.context);
+                                const fn = new Function('value', ...contextKeys, v.fnBody);
+                                return [k, { fn, args: contextValues }];
+                            }
+                        })),
+                        defaultValue: typeof defaultValue === 'string' || defaultValue === undefined
+                            ? defaultValue
+                            : (() => {
+                                const contextKeys = Object.keys(defaultValue.context);
+                                const contextValues = Object.values(defaultValue.context);
+                                const fn = new Function('value', ...contextKeys, defaultValue.fnBody);
+                                return { fn, args: contextValues };
+                            })()
+                    }
+                };
             }
-
+            
             case ConversionType.ValueRangeToTextOrScale: {
+                const ranges = [];
                 const count = conversion.values.length / 2;
-                if (count + 1 !== conversion.refs.length || conversion.values.length % 2 !== 0) {
-                    throw new Error(`Mismatched lengths for ValueRangeToTextOrScale`);
-                }
-                const conversionMap: { lower: number; upper: number; result: string | ((value: number) => number | string) }[] = [];
                 for (let i = 0; i < count; i++) {
                     const ref = conversion.refs[i];
-                    let result;
+                    let result: string | { fn: Function, args: any[] };
                     if ('type' in ref) {
-                        result = convert(ref);
+                        const serialized = serialize(ref);
+                        if (serialized) {
+                            const contextKeys = Object.keys(serialized.context);
+                            const contextValues = Object.values(serialized.context);
+                            const fn = new Function('value', ...contextKeys, serialized.fnBody);
+                            result = { fn, args: contextValues };
+                        } else {
+                            result = { fn: () => 0, args: [] };
+                        }
                     } else {
                         result = ref.data;
                         textValues.push({text: ref.data});
                     }
-                    conversionMap.push({
+                    ranges.push({
                         lower: conversion.values[i * 2],
                         upper: conversion.values[i * 2 + 1],
                         result
                     });
                 }
-                // Technically the ranges should already be sorted, but we can be permissive here
-                conversionMap.sort((a, b) => a.lower - b.lower);
+                ranges.sort((a, b) => a.lower - b.lower);
                 const defaultRef = conversion.refs[conversion.refs.length - 1];
-                let defaultValue: string | ((value: number) => number | string) | undefined;
+                let defaultValue: string | { fn: Function, args: any[] } | undefined;
                 if (defaultRef === null) {
                     defaultValue = undefined;
                 } else if ('type' in defaultRef) {
-                    defaultValue = convert(defaultRef);
+                    const serialized = serialize(defaultRef);
+                    if (serialized) {
+                        const contextKeys = Object.keys(serialized.context);
+                        const contextValues = Object.values(serialized.context);
+                        const fn = new Function('value', ...contextKeys, serialized.fnBody);
+                        defaultValue = { fn, args: contextValues };
+                    }
                 } else {
                     defaultValue = defaultRef.data;
                     textValues.push({text: defaultRef.data});
                 }
-                return value => {
-                    const result = conversionMap.find(entry => entry.lower <= value && entry.upper >= value)?.result;
-                    switch (typeof(result)) {
-                        case "function":
-                            return result(value);
-                        case "undefined":
-                            return typeof(defaultValue) === "function" ? defaultValue(value) : defaultValue;
-                        default:
-                            return result;
+                
+                return {
+                    fnBody: `for (const range of ranges) {
+                        if (value >= range.lower && value <= range.upper) {
+                            const result = range.result;
+                            if (typeof result === 'string') return result;
+                            if (typeof result === 'number') return result;
+                            return result.fn(value, ...result.args);
+                        }
                     }
+                    if (defaultValue !== undefined) {
+                        if (typeof defaultValue === 'string') return defaultValue;
+                        if (typeof defaultValue === 'number') return defaultValue;
+                        return defaultValue.fn(value, ...defaultValue.args);
+                    }
+                    return value;`,
+                    context: { ranges, defaultValue }
                 };
             }
-
+            
             case ConversionType.TextToValue:
             case ConversionType.TextToText:
             default:
-                return _ => 0;
+                return {
+                    fnBody: 'return 0;',
+                    context: {}
+                };
         }
     }
+    
     return {
-        conversion: convert(conversion),
+        conversion: serialize(conversion),
         textValues,
     };
 }

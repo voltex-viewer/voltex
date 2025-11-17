@@ -1,11 +1,23 @@
-import { InMemorySequence, InMemoryBigInt64Sequence, InMemoryBigUint64Sequence, SequenceSignal, Signal, SignalSource, TextValue, RenderMode } from "@voltex-viewer/plugin-api";
-
 // Maximum number of integer bits that can be represented exactly in a js number
 const MAX_SAFE_BITS: number = 53;
 
-class MdfSource implements SignalSource {
-    constructor(public readonly name: string[], public signal: () => Promise<Signal>) {
+export enum NumberType {
+    Float64 = 0,
+    BigInt64 = 1,
+    BigUint64 = 2,
+}
+
+export function getNumberType(channel: AbstractChannel): NumberType {
+    // Javascript number cannot represent integers with > 53 bits exactly, so use a BigInt sequence for this
+    if (channel.bitCount > MAX_SAFE_BITS) {
+        if (channel.dataType === DataType.IntLe || channel.dataType === DataType.IntBe) {
+            return NumberType.BigInt64;
+        } else if (channel.dataType === DataType.UintLe || channel.dataType === DataType.UintBe) {
+            return NumberType.BigUint64;
+        }
     }
+    
+    return NumberType.Float64;
 }
 
 export enum ChannelType {
@@ -44,37 +56,14 @@ export interface AbstractChannel {
     byteOffset: number;
     bitOffset: number;
     bitCount: number;
-    conversion: (value: number) => number | string;
-    textValues: TextValue[];
 }
 
 export class DataGroupLoader {
-    private signals: Map<AbstractChannel, SequenceSignal> = new Map();
-    private loaded: boolean = false;
-    private mappedSources: Map<AbstractChannel, SignalSource>;
+    constructor(private data: AbstractDataGroup, private blocks: () => Promise<AsyncIterableIterator<DataView<ArrayBuffer>>>) {}
 
-    constructor(private data: AbstractDataGroup, private blocks: () => Promise<AsyncIterableIterator<DataView<ArrayBuffer>>>) {
-        this.mappedSources = new Map(this.data.groups.flatMap(group => group.channels.map(channel => [channel, new MdfSource(channel.name, () => Promise.resolve(this.get(channel)))])));
-    }
-
-    sources(): SignalSource[] {
-        return Array.from(this.mappedSources)
-            .filter(([channel, ]) => channel.type == ChannelType.Signal)
-            .map(([_, source]) => source);
-    }
-
-    get(channel: AbstractChannel): Signal {
-        this.load();
-        return this.signals.get(channel)!;
-    }
-
-    async load() {
-        if (this.loaded) {
-            return;
-        } else {
-            this.loaded = true;
-        }
-        let records = new Map<number, {length: number, sequences: {sequence: InMemorySequence | InMemoryBigInt64Sequence | InMemoryBigUint64Sequence, loader: ((buffer: DataView) => number | bigint)}[]}>();
+    async loadInto(sequences: Map<AbstractChannel, { push(value: number | bigint): void }>): Promise<void> {
+        let records = new Map<number, {length: number, sequences: {sequence: { push(value: number | bigint): void }, loader: ((buffer: DataView) => number | bigint)}[]}>();
+        
         for (const group of this.data.groups) {
             if (group.channels.length == 0) {
                 continue;
@@ -86,37 +75,21 @@ export class DataGroupLoader {
             if (recordId >= (1n << BigInt(this.data.recordIdSize * 8))) {
                 console.warn(`Record ID ${recordId} exceeds maximum value for ${this.data.recordIdSize * 8}-bit unsigned integer`);
             }
-            const sequences = [];
-            for (let i = 0; i < group.channels.length; i++) {
-                const channel = group.channels[i];
-                // Javascript number cannot represent integers with > 53 bits exactly, so use a BigInt sequence for
-                // this. The bigint values will be rendered with a default hex conversion as most of the time this is
-                // probably what we want. There will also be data loss if we don't cast to a string.
-                let sequence;
-                if (channel.bitCount > MAX_SAFE_BITS && [DataType.IntBe, DataType.IntLe].includes(channel.dataType)) {
-                    sequence = new InMemoryBigInt64Sequence(channel.conversion == null ? x => ("0x" + x.toString(16)).replace("0x-", "-0x") : x => channel.conversion(Number(x)));
-                } else if (channel.bitCount > MAX_SAFE_BITS && [DataType.UintBe, DataType.UintLe].includes(channel.dataType)) {
-                    sequence = new InMemoryBigUint64Sequence(channel.conversion == null ? x => "0x" + x.toString(16) : x => channel.conversion(Number(x)));
-                } else {
-                    sequence = new InMemorySequence(channel.conversion == null ? undefined : channel.conversion);
+            
+            const channelSequences = [];
+            for (const channel of group.channels) {
+                const sequence = sequences.get(channel);
+                if (!sequence) {
+                    throw new Error(`No sequence provided for channel ${channel.name.join('.')}`);
                 }
-                sequences.push({
+                channelSequences.push({
                     sequence,
                     loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
                 });
             }
-            const masterIndex = group.channels.findIndex(c => c.type == ChannelType.Time);
-            if (masterIndex === -1) {
-                throw new Error(`No master channel found in group with record ID ${recordId}`);
-            }
-            const masterSequence = sequences[masterIndex].sequence;
-            for (let i = 0; i < group.channels.length; i++) {
-                const channel = group.channels[i];
-                const sequence = sequences[i].sequence;
-                this.signals.set(channel, new SequenceSignal(this.mappedSources.get(channel)!, masterSequence, sequence, channel.textValues.length >= 2 ? RenderMode.Enum : RenderMode.Lines));
-            }
-            records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences});
+            records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences: channelSequences});
         }
+        
         let rowCount = 0;
         let totalRows = this.data.totalRows ?? 0;
         await parseData(
@@ -126,7 +99,7 @@ export class DataGroupLoader {
             (context, view) => {
                 for (const {sequence, loader} of context.sequences) {
                     const value = loader(view);
-                    (sequence.push as (x: number | bigint) => void)(value);
+                    sequence.push(value);
                 }
                 rowCount += 1;
                 return rowCount == totalRows;
@@ -172,7 +145,6 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                     }
                 }
                 // Complex case - with masking and/or shifting
-                const mask = (1 << bitCount) - 1;
                 const parts = [];
                 const end = Math.ceil((bitCount + bitOffset) / 8);
                 for (let i = 0; i < end; i++)
@@ -188,6 +160,7 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                     }
                 }
                 if (bitCount <= MAX_SAFE_BITS) {
+                    const mask = (1 << bitCount) - 1;
                     if (isSigned) {
                         return `const value = (${parts.join(" | ")}) & 0x${mask.toString(16)};` +
                             `return value >= 0x${(1 << (bitCount - 1)).toString(16)} ? value - 0x${(1 << bitCount).toString(16)} : value;`;
@@ -195,9 +168,10 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                         return `return (${parts.join(" | ")}) & 0x${mask.toString(16)};`;
                     }
                 } else {
+                    const mask = (1n << BigInt(bitCount)) - 1n;
                     if (isSigned) {
                         return `const value = (${parts.map(v => `BigInt(${v})`).join(" | ")}) & 0x${mask.toString(16)}n;` +
-                            `return value >= 0x${(1 << (bitCount - 1)).toString(16)}n ? value - 0x${(1 << bitCount).toString(16)}n : value;`;
+                            `return value >= 0x${(1n << (BigInt(bitCount) - 1n)).toString(16)}n ? value - 0x${(1n << BigInt(bitCount)).toString(16)}n : value;`;
                     } else {
                         return `return (${parts.map(v => `BigInt(${v})`).join(" | ")}) & 0x${mask.toString(16)}n;`;
                     }
