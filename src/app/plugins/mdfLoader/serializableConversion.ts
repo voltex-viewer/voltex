@@ -1,6 +1,4 @@
 import { TextValue } from "@voltex-viewer/plugin-api";
-import * as v4 from "./blocks/v4";
-import * as v3 from "./blocks/v3";
 
 export interface SerializableConversion {
     fnBody: string;
