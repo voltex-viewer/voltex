@@ -362,6 +362,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
             
             self.postMessage(response);
         } catch (error) {
+            console.error(error);
             const response: WorkerResponse = {
                 type: 'error',
                 error: error instanceof Error ? error.message : String(error),
