@@ -4,42 +4,38 @@ import { SerializableConversion, SerializableConversionData } from "../../serial
 
 export function serializeConversion(conversion: ChannelConversionBlock<'instanced'> | null): SerializableConversionData {
     const textValues: TextValue[] = [];
+    const context: Record<string, any> = {};
+    let varCounter = 0;
     
-    function serialize(conversion: ChannelConversionBlock<'instanced'> | null): SerializableConversion | null {
+    function addToContext(value: any): string {
+        const varName = `v${varCounter++}`;
+        context[varName] = value;
+        return varName;
+    }
+    
+    function serialize(conversion: ChannelConversionBlock<'instanced'> | null): string | null {
         if (conversion === null) {
             return null;
         }
         
         switch (conversion.type) {
             case ConversionType.OneToOne:
-                return {
-                    fnBody: 'return value;',
-                    context: {}
-                };
+                return 'value';
             
-            case ConversionType.Linear:
-                return {
-                    fnBody: 'return slope * value + intercept;',
-                    context: {
-                        intercept: conversion.values[0],
-                        slope: conversion.values[1]
-                    }
-                };
+            case ConversionType.Linear: {
+                const intercept = addToContext(conversion.values[0]);
+                const slope = addToContext(conversion.values[1]);
+                return `${slope} * value + ${intercept}`;
+            }
             
-            case ConversionType.Rational:
-                return {
-                    fnBody: 'return (c[0] * value * value + c[1] * value + c[2]) / (c[3] * value * value + c[4] * value + c[5]);',
-                    context: {
-                        c: conversion.values
-                    }
-                };
+            case ConversionType.Rational: {
+                const c = addToContext(conversion.values);
+                return `(${c}[0] * value * value + ${c}[1] * value + ${c}[2]) / (${c}[3] * value * value + ${c}[4] * value + ${c}[5])`;
+            }
             
             case ConversionType.Algebraic: {
                 const formula = conversion.refs[0];
-                return {
-                    fnBody: `return ${formula.data.replaceAll(/\b(?:X|x)1?\b/g, 'value').replaceAll('^', '**')};`,
-                    context: {}
-                };
+                return formula.data.replaceAll(/\b(?:X|x)1?\b/g, 'value').replaceAll('^', '**');
             }
             
             case ConversionType.ValueToValueTableWithInterpolation: {
@@ -48,26 +44,24 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                     pairs.push([conversion.values[i], conversion.values[i + 1]]);
                 }
                 pairs.sort((a, b) => a[0] - b[0]);
-                return {
-                    fnBody: `if (value <= keys[0]) return values[0];
-                    if (value >= keys[keys.length - 1]) return values[values.length - 1];
+                const keys = addToContext(pairs.map(pair => pair[0]));
+                const values = addToContext(pairs.map(pair => pair[1]));
+                return `(function() {
+                    if (value <= ${keys}[0]) return ${values}[0];
+                    if (value >= ${keys}[${keys}.length - 1]) return ${values}[${values}.length - 1];
                     let left = 0;
-                    let right = keys.length - 1;
+                    let right = ${keys}.length - 1;
                     while (left < right - 1) {
                         const mid = (left + right) >>> 1;
-                        if (keys[mid] <= value) {
+                        if (${keys}[mid] <= value) {
                             left = mid;
                         } else {
                             right = mid;
                         }
                     }
-                    const t = (value - keys[left]) / (keys[right] - keys[left]);
-                    return values[left] + t * (values[right] - values[left]);`,
-                    context: {
-                        keys: pairs.map(pair => pair[0]),
-                        values: pairs.map(pair => pair[1])
-                    }
-                };
+                    const t = (value - ${keys}[left]) / (${keys}[right] - ${keys}[left]);
+                    return ${values}[left] + t * (${values}[right] - ${values}[left]);
+                })()`;
             }
             
             case ConversionType.ValueToValueTableWithoutInterpolation: {
@@ -76,27 +70,25 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                     pairs.push([conversion.values[i], conversion.values[i + 1]]);
                 }
                 pairs.sort((a, b) => a[0] - b[0]);
-                return {
-                    fnBody: `if (value <= keys[0]) return values[0];
-                    if (value >= keys[keys.length - 1]) return values[values.length - 1];
+                const keys = addToContext(pairs.map(pair => pair[0]));
+                const values = addToContext(pairs.map(pair => pair[1]));
+                return `(function() {
+                    if (value <= ${keys}[0]) return ${values}[0];
+                    if (value >= ${keys}[${keys}.length - 1]) return ${values}[${values}.length - 1];
                     let left = 0;
-                    let right = keys.length - 1;
+                    let right = ${keys}.length - 1;
                     while (left < right - 1) {
                         const mid = (left + right) >>> 1;
-                        if (keys[mid] <= value) {
+                        if (${keys}[mid] <= value) {
                             left = mid;
                         } else {
                             right = mid;
                         }
                     }
-                    const leftDist = value - keys[left];
-                    const rightDist = keys[right] - value;
-                    return leftDist <= rightDist ? values[left] : values[right];`,
-                    context: {
-                        keys: pairs.map(pair => pair[0]),
-                        values: pairs.map(pair => pair[1])
-                    }
-                };
+                    const leftDist = value - ${keys}[left];
+                    const rightDist = ${keys}[right] - value;
+                    return leftDist <= rightDist ? ${values}[left] : ${values}[right];
+                })()`;
             }
             
             case ConversionType.ValueRangeToValueTable: {
@@ -104,176 +96,124 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                 for (let i = 0; i < conversion.values.length - 2; i += 3) {
                     groups.push([conversion.values[i], conversion.values[i + 1], conversion.values[i + 2]]);
                 }
-                const defaultValue = conversion.values[conversion.values.length - 1];
+                const defaultVal = conversion.values[conversion.values.length - 1];
                 groups.sort((a, b) => a[0] - b[0]);
-                const keys_min = groups.map(group => group[0]);
-                const keys_max = groups.map(group => group[1]);
-                const values = groups.map(group => group[2]);
+                const keys_min = addToContext(groups.map(group => group[0]));
+                const keys_max = addToContext(groups.map(group => group[1]));
+                const values = addToContext(groups.map(group => group[2]));
+                const defaultValue = addToContext(defaultVal);
                 
-                if (keys_min.length <= 8) {
-                    return {
-                        fnBody: `for (let i = 0; i < keys_min.length; i++) {
-                            if (value >= keys_min[i] && value <= keys_max[i]) {
-                                return values[i];
+                if (groups.length <= 8) {
+                    return `(function() {
+                        for (let i = 0; i < ${keys_min}.length; i++) {
+                            if (value >= ${keys_min}[i] && value <= ${keys_max}[i]) {
+                                return ${values}[i];
                             }
                         }
-                        return defaultValue;`,
-                        context: { keys_min, keys_max, values, defaultValue }
-                    };
+                        return ${defaultValue};
+                    })()`;
                 } else {
-                    return {
-                        fnBody: `let left = 0;
-                        let right = keys_min.length - 1;
+                    return `(function() {
+                        let left = 0;
+                        let right = ${keys_min}.length - 1;
                         while (left <= right) {
                             const mid = (left + right) >>> 1;
-                            if (value >= keys_min[mid] && value <= keys_max[mid]) {
-                                return values[mid];
-                            } else if (value < keys_min[mid]) {
+                            if (value >= ${keys_min}[mid] && value <= ${keys_max}[mid]) {
+                                return ${values}[mid];
+                            } else if (value < ${keys_min}[mid]) {
                                 right = mid - 1;
                             } else {
                                 left = mid + 1;
                             }
                         }
-                        return defaultValue;`,
-                        context: { keys_min, keys_max, values, defaultValue }
-                    };
+                        return ${defaultValue};
+                    })()`;
                 }
             }
             
             case ConversionType.ValueToTextOrScale: {
-                const mapEntries: Array<[number, string | SerializableConversion]> = [];
+                const cases: string[] = [];
                 for (let i = 0; i < conversion.values.length; i++) {
                     const ref = conversion.refs[i];
                     if ('type' in ref) {
                         const serialized = serialize(ref);
-                        if (serialized) mapEntries.push([conversion.values[i], serialized]);
+                        if (serialized) {
+                            cases.push(`if (value === ${conversion.values[i]}) return ${serialized};`);
+                        }
                     } else {
-                        mapEntries.push([conversion.values[i], ref.data]);
+                        const text = addToContext(ref.data);
+                        cases.push(`if (value === ${conversion.values[i]}) return ${text};`);
                         textValues.push({text: ref.data, value: conversion.values[i]});
                     }
                 }
                 const defaultRef = conversion.refs[conversion.refs.length - 1];
-                let defaultValue: string | SerializableConversion | undefined;
+                let defaultCase: string;
                 if (defaultRef === null) {
-                    defaultValue = undefined;
+                    defaultCase = 'return value;';
                 } else if ('type' in defaultRef) {
-                    defaultValue = serialize(defaultRef) || undefined;
+                    const serialized = serialize(defaultRef);
+                    defaultCase = serialized ? `return ${serialized};` : 'return value;';
                 } else {
-                    defaultValue = defaultRef.data;
+                    const text = addToContext(defaultRef.data);
+                    defaultCase = `return ${text};`;
                     textValues.push({text: defaultRef.data});
                 }
                 
-                return {
-                    fnBody: `const result = conversionMap.get(value);
-                    if (result !== undefined) {
-                        if (typeof result === 'string') return result;
-                        if (typeof result === 'number') return result;
-                        return result.fn(value, ...result.args);
-                    }
-                    if (defaultValue !== undefined) {
-                        if (typeof defaultValue === 'string') return defaultValue;
-                        if (typeof defaultValue === 'number') return defaultValue;
-                        return defaultValue.fn(value, ...defaultValue.args);
-                    }
-                    return value;`,
-                    context: {
-                        conversionMap: new Map(mapEntries.map(([k, v]): [number, any] => {
-                            if (typeof v === 'string') {
-                                return [k, v];
-                            } else {
-                                const contextKeys = Object.keys(v.context);
-                                const contextValues = Object.values(v.context);
-                                const fn = new Function('value', ...contextKeys, v.fnBody);
-                                return [k, { fn, args: contextValues }];
-                            }
-                        })),
-                        defaultValue: typeof defaultValue === 'string' || defaultValue === undefined
-                            ? defaultValue
-                            : (() => {
-                                const contextKeys = Object.keys(defaultValue.context);
-                                const contextValues = Object.values(defaultValue.context);
-                                const fn = new Function('value', ...contextKeys, defaultValue.fnBody);
-                                return { fn, args: contextValues };
-                            })()
-                    }
-                };
+                return `(function() { ${cases.join('\n')} ${defaultCase} })()`;
             }
             
             case ConversionType.ValueRangeToTextOrScale: {
-                const ranges = [];
+                const rangeChecks: string[] = [];
                 const count = conversion.values.length / 2;
+                const rangeData: Array<{lower: number, upper: number, result: string}> = [];
                 for (let i = 0; i < count; i++) {
                     const ref = conversion.refs[i];
-                    let result: string | { fn: Function, args: any[] };
+                    let result: string;
                     if ('type' in ref) {
                         const serialized = serialize(ref);
-                        if (serialized) {
-                            const contextKeys = Object.keys(serialized.context);
-                            const contextValues = Object.values(serialized.context);
-                            const fn = new Function('value', ...contextKeys, serialized.fnBody);
-                            result = { fn, args: contextValues };
-                        } else {
-                            result = { fn: () => 0, args: [] };
-                        }
+                        result = serialized || '0';
                     } else {
-                        result = ref.data;
+                        const text = addToContext(ref.data);
+                        result = text;
                         textValues.push({text: ref.data});
                     }
-                    ranges.push({
+                    rangeData.push({
                         lower: conversion.values[i * 2],
                         upper: conversion.values[i * 2 + 1],
                         result
                     });
                 }
-                ranges.sort((a, b) => a.lower - b.lower);
+                rangeData.sort((a, b) => a.lower - b.lower);
+                for (const range of rangeData) {
+                    rangeChecks.push(`if (value >= ${range.lower} && value <= ${range.upper}) return ${range.result};`);
+                }
                 const defaultRef = conversion.refs[conversion.refs.length - 1];
-                let defaultValue: string | { fn: Function, args: any[] } | undefined;
+                let defaultCase: string;
                 if (defaultRef === null) {
-                    defaultValue = undefined;
+                    defaultCase = 'return value;';
                 } else if ('type' in defaultRef) {
                     const serialized = serialize(defaultRef);
-                    if (serialized) {
-                        const contextKeys = Object.keys(serialized.context);
-                        const contextValues = Object.values(serialized.context);
-                        const fn = new Function('value', ...contextKeys, serialized.fnBody);
-                        defaultValue = { fn, args: contextValues };
-                    }
+                    defaultCase = serialized ? `return ${serialized};` : 'return value;';
                 } else {
-                    defaultValue = defaultRef.data;
+                    const text = addToContext(defaultRef.data);
+                    defaultCase = `return ${text};`;
                     textValues.push({text: defaultRef.data});
                 }
-                
-                return {
-                    fnBody: `for (const range of ranges) {
-                        if (value >= range.lower && value <= range.upper) {
-                            const result = range.result;
-                            if (typeof result === 'string') return result;
-                            if (typeof result === 'number') return result;
-                            return result.fn(value, ...result.args);
-                        }
-                    }
-                    if (defaultValue !== undefined) {
-                        if (typeof defaultValue === 'string') return defaultValue;
-                        if (typeof defaultValue === 'number') return defaultValue;
-                        return defaultValue.fn(value, ...defaultValue.args);
-                    }
-                    return value;`,
-                    context: { ranges, defaultValue }
-                };
+
+                return `(function() { ${rangeChecks.join('\n')} ${defaultCase} })()`;
             }
             
             case ConversionType.TextToValue:
             case ConversionType.TextToText:
             default:
-                return {
-                    fnBody: 'return 0;',
-                    context: {}
-                };
+                return '0';
         }
     }
     
+    const fnBody = serialize(conversion);
+    
     return {
-        conversion: serialize(conversion),
+        conversion: fnBody ? { fnBody: `return ${fnBody};`, context } : null,
         textValues,
     };
 }
