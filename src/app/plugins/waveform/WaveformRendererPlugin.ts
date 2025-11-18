@@ -32,7 +32,7 @@ export default (context: PluginContext): void => {
             targetFps: 120,
             formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2)))))",
             hoverEnabled: true,
-            downsamplingMode: 'normal' as const,
+            downsamplingMode: 'lossless' as const,
         });
 
 
