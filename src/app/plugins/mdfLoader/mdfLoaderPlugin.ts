@@ -163,18 +163,15 @@ export default (context: PluginContext): void => {
                         const timeConstructor = metadata.timeSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.timeSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
                         const valuesConstructor = metadata.valuesSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.valuesSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
                         
-                        // Apply default conversions for bigint types if no custom conversion provided
                         let valuesConversion: any = conversion;
-                        if (!valuesConversion) {
-                            if (metadata.valuesSequenceType === NumberType.BigInt64) {
-                                valuesConversion = (x: bigint) => ("0x" + x.toString(16)).replace("0x-", "-0x");
-                            } else if (metadata.valuesSequenceType === NumberType.BigUint64) {
-                                valuesConversion = (x: bigint) => "0x" + x.toString(16);
+                        if (metadata.valuesSequenceType === NumberType.BigInt64 || metadata.valuesSequenceType === NumberType.BigUint64) {
+                            if (valuesConversion) {
+                                // Wrap existing conversion to handle bigint to number conversion
+                                valuesConversion = (x: bigint) => conversion(Number(x));
+                            } else {
+                                // Apply default conversions for bigint types if no custom conversion provided - going to number would lose precision
+                                valuesConversion = (x: bigint) => x.toString();
                             }
-                        } else if (metadata.valuesSequenceType !== NumberType.Float64) {
-                            // Wrap existing conversion to handle bigint to number conversion
-                            const originalConversion = valuesConversion;
-                            valuesConversion = (x: bigint) => originalConversion(Number(x));
                         }
                         
                         const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor) as AnySequence;
