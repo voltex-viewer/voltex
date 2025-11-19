@@ -17,6 +17,7 @@ import type { AbstractChannel, AbstractDataGroup } from './decoder';
 import { RenderMode } from '@voltex-viewer/plugin-api';
 import { SharedBufferSequence, SharedBufferBigInt64Sequence, SharedBufferBigUint64Sequence } from './SharedBufferSequence';
 import type { WorkerMessage, WorkerResponse, SignalMetadata } from './workerTypes';
+import { SerializableConversionData } from './serializableConversion';
 
 interface LoadedSignalData {
     dataGroup: AbstractDataGroup;
@@ -26,6 +27,8 @@ interface LoadedSignalData {
     littleEndian: boolean;
     dgBlockLink: any;
     dataGroupKey: string;
+    conversionLink: bigint | number;
+    timeConversionLink: bigint | number;
 }
 
 interface CachedDataGroup {
@@ -35,6 +38,18 @@ interface CachedDataGroup {
 
 let signalDataMap: Map<number, LoadedSignalData> = new Map();
 let dataGroupCache: Map<string, CachedDataGroup> = new Map();
+
+async function instanceMdf3ConversionBlock(conversionBlockLinked: v3.ChannelConversionBlock<'linked'>, reader: BufferedFileReader): Promise<v3.ChannelConversionBlock<'instanced'>> {
+    if (conversionBlockLinked.type === v3.ConversionType.TextRangeTable) {
+        return {
+            ...conversionBlockLinked,
+            default: v3.getLink(conversionBlockLinked.default) === 0 ? null : await v3.readTextBlock(conversionBlockLinked.default, reader),
+            table: await Promise.all(conversionBlockLinked.table.map(async x => [x[0], x[1], await v3.readTextBlock(x[2], reader)])),
+        };
+    } else {
+        return conversionBlockLinked;
+    }
+}
 
 function mdf3TypeToDataType(type: v3.DataType, littleEndian: boolean): DataType {
     switch (type) {
@@ -83,18 +98,6 @@ async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
             totalRows += channelGroup.numberOfRecords;
             const channels = [];
             for await (const channel of v3.iterateChannelBlocks(channelGroup.channelFirst, reader)) {
-                const conversionBlockLinked = await v3.readChannelConversionBlock(channel.conversion, reader);
-                let conversionBlockInstanced: v3.ChannelConversionBlock<'instanced'> | undefined;
-                if (conversionBlockLinked.type === v3.ConversionType.TextRangeTable) {
-                    conversionBlockInstanced = {
-                        ...conversionBlockLinked,
-                        default: v3.getLink(conversionBlockLinked.default) === 0 ? null : await v3.readTextBlock(conversionBlockLinked.default, reader),
-                        table: await Promise.all(conversionBlockLinked.table.map(async (x: any) => [x[0], x[1], await v3.readTextBlock(x[2], reader)])),
-                    };
-                } else {
-                    conversionBlockInstanced = conversionBlockLinked;
-                }
-                const conversionData = v3.serializeConversion(conversionBlockInstanced as any);
                 channels.push({
                     name: [reader.file.name, v3.getLink(channel.longName) !== 0 ? (await readTextBlock(channel.longName, reader)).data : channel.name],
                     type: channel.channelType === 0 ? ChannelType.Signal : channel.channelType == 1 ? ChannelType.Time : ChannelType.Unknown,
@@ -102,8 +105,7 @@ async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                     byteOffset: channel.byteOffset + Math.floor(channel.bitOffset / 8),
                     bitOffset: channel.bitOffset % 8,
                     bitCount: channel.bitCount,
-                    conversion: conversionData,
-                    renderMode: conversionData.textValues.length >= 2 ? RenderMode.Enum : RenderMode.Lines,
+                    conversionLink: v3.getLink(channel.conversion),
                 });
             }
             groups.push({
@@ -150,14 +152,13 @@ async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                         version: reader.version,
                         littleEndian: reader.littleEndian,
                         dgBlockLink: dgBlock,
-                        dataGroupKey
+                        dataGroupKey,
+                        conversionLink: channel.conversionLink,
+                        timeConversionLink: timeChannel?.conversionLink ?? 0,
                     });
                     
                     signals.push({
                         name: channel.name,
-                        timeConversion: timeChannel?.conversion ?? { conversion: null, textValues: [] },
-                        valueConversion: channel.conversion,
-                        renderMode: channel.renderMode,
                         signalId: signalId++,
                         timeSequenceType: abstractTimeChannel ? getNumberType(abstractTimeChannel) : NumberType.Float64,
                         valuesSequenceType: getNumberType(abstractChannel),
@@ -190,60 +191,10 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
 
     for await (const dgBlock of iterateDataGroupBlocks(header.firstDataGroup, reader)) {
         const dataGroupKey = `${reader.file.name}:dg${dataGroupIndex++}`;
-        const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock<'instanced'>>();
-        async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<ChannelConversionBlock<'instanced'> | null> {
-            if (getLink(link) === 0n) {
-                return null;
-            }
-            if (conversionMap.has(link)) {
-                return conversionMap.get(link)!;
-            }
-            const srcBlock = await readConversionBlock(link, reader);
-            const block = {
-                ...srcBlock,
-                txName: null,
-                mdUnit: null,
-                mdComment: null,
-                inverse: null,
-                refs: [],
-            } as ChannelConversionBlock<'instanced'>;
-            conversionMap.set(link, block);
-            for (const ref of srcBlock.refs) {
-                if (getLink(ref) === 0n) {
-                    (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(null);
-                } else {
-                    const refBlock = await readBlock(ref, reader);
-                    
-                    if (refBlock.type === "##CC") {
-                        (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(await readConversionBlockRecurse(ref));
-                    } else if (refBlock.type === "##TX") {
-                        (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(deserializeTextBlock(refBlock));
-                    } else {
-                        throw new Error(`Invalid block type in channel conversion block: "${block.type}"`);
-                    }
-                }
-            }
-            
-            if (getLink(srcBlock.mdUnit) !== 0n) {
-                const unit = await readBlock(srcBlock.mdUnit, reader);
-
-                if (unit.type === "##TX") {
-                    block.mdUnit = deserializeTextBlock(unit);
-                } else if (unit.type == "##MD") {
-                    block.mdUnit = deserializeMetadataBlock(unit);
-                } else {
-                    throw new Error(`Invalid block type in channel conversion block: "${unit.type}"`);
-                }
-            }
-
-            return block;
-        }
         const groups = [];
         for await (const channelGroup of iterateChannelGroupBlocks(dgBlock.channelGroupFirst, reader)) {
             const channels = [];
             for await (const channel of iterateChannelBlocks(channelGroup.channelFirst, reader)) {
-                const conversionBlock = await readConversionBlockRecurse(channel.conversion);
-                const conversionData = v4.serializeConversion(conversionBlock);
                 channels.push({
                     name: [reader.file.name, (await readTextBlock(channel.txName, reader)).data],
                     type: channel.channelType === 2 ? ChannelType.Time : channel.channelType == 0 ? ChannelType.Signal : ChannelType.Unknown,
@@ -251,8 +202,7 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                     byteOffset: channel.byteOffset,
                     bitOffset: channel.bitOffset,
                     bitCount: channel.bitCount,
-                    conversion: conversionData,
-                    renderMode: conversionData.textValues.length >= 2 ? RenderMode.Enum : RenderMode.Lines,
+                    conversionLink: channel.conversion,
                 });
             }
             groups.push({
@@ -298,14 +248,13 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                         version: reader.version,
                         littleEndian: reader.littleEndian,
                         dgBlockLink: dgBlock,
-                        dataGroupKey
+                        dataGroupKey,
+                        conversionLink: getLink(channel.conversionLink),
+                        timeConversionLink: timeChannel ? getLink(timeChannel.conversionLink) : 0n,
                     });
                     
                     signals.push({
                         name: channel.name,
-                        timeConversion: timeChannel?.conversion ?? { conversion: null, textValues: [] },
-                        valueConversion: channel.conversion,
-                        renderMode: channel.renderMode,
                         signalId: signalId++,
                         timeSequenceType: abstractTimeChannel ? getNumberType(abstractTimeChannel) : NumberType.Float64,
                         valuesSequenceType: getNumberType(abstractChannel),
@@ -378,7 +327,101 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 throw new Error(`Signal ${message.signalId} not found`);
             }
             
-            const { dataGroup, channel, file, version, littleEndian, dgBlockLink, dataGroupKey } = signalData;
+            const { dataGroup, channel, file, version, littleEndian, dgBlockLink, dataGroupKey, conversionLink, timeConversionLink } = signalData;
+            
+            let conversionData: SerializableConversionData;
+            let timeConversionData: SerializableConversionData;
+            
+            // Create reader for loading conversion data
+            const reader = new BufferedFileReader(file);
+            reader.version = version;
+            reader.littleEndian = littleEndian;
+            
+            // Load conversion data based on version
+            if (version >= 300 && version < 400) {
+                if (typeof conversionLink !== 'number' || typeof timeConversionLink !== 'number') {
+                    throw new Error(`Invalid conversion link for MDF3 signal`);
+                }
+                if (conversionLink !== 0) {
+                    const conversionBlockLinked = await v3.readChannelConversionBlock(v3.newLink(conversionLink), reader);
+                    const conversionBlockInstanced = await instanceMdf3ConversionBlock(conversionBlockLinked, reader);
+                    conversionData = v3.serializeConversion(conversionBlockInstanced);
+                } else {
+                    conversionData = {
+                        conversion: null,
+                        textValues: []
+                    };
+                }
+                
+                if (timeConversionLink !== 0) {
+                    const timeConversionBlockLinked = await v3.readChannelConversionBlock(v3.newLink(timeConversionLink), reader);
+                    const timeConversionBlockInstanced = await instanceMdf3ConversionBlock(timeConversionBlockLinked, reader);
+                    timeConversionData = v3.serializeConversion(timeConversionBlockInstanced);
+                } else {
+                    timeConversionData = {
+                        conversion: null,
+                        textValues: []
+                    };
+                }
+            } else if (version >= 400 && version < 500) {
+                const conversionMap = new Map<Link<ChannelConversionBlock>, ChannelConversionBlock<'instanced'>>();
+                async function readConversionBlockRecurse(link: Link<ChannelConversionBlock>): Promise<ChannelConversionBlock<'instanced'> | null> {
+                    if (getLink(link) === 0n) {
+                        return null;
+                    }
+                    if (conversionMap.has(link)) {
+                        return conversionMap.get(link)!;
+                    }
+                    const srcBlock = await readConversionBlock(link, reader);
+                    const block = {
+                        ...srcBlock,
+                        txName: null,
+                        mdUnit: null,
+                        mdComment: null,
+                        inverse: null,
+                        refs: [],
+                    } as ChannelConversionBlock<'instanced'>;
+                    conversionMap.set(link, block);
+                    for (const ref of srcBlock.refs) {
+                        if (getLink(ref) === 0n) {
+                            (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(null);
+                        } else {
+                            const refBlock = await readBlock(ref, reader);
+                            
+                            if (refBlock.type === "##CC") {
+                                (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(await readConversionBlockRecurse(ref));
+                            } else if (refBlock.type === "##TX") {
+                                (block.refs as (ChannelConversionBlock<'instanced'> | TextBlock | null)[]).push(deserializeTextBlock(refBlock));
+                            } else {
+                                throw new Error(`Invalid block type in channel conversion block: "${block.type}"`);
+                            }
+                        }
+                    }
+                    
+                    if (getLink(srcBlock.mdUnit) !== 0n) {
+                        const unit = await readBlock(srcBlock.mdUnit, reader);
+
+                        if (unit.type === "##TX") {
+                            block.mdUnit = deserializeTextBlock(unit);
+                        } else if (unit.type == "##MD") {
+                            block.mdUnit = deserializeMetadataBlock(unit);
+                        } else {
+                            throw new Error(`Invalid block type in channel conversion block: "${unit.type}"`);
+                        }
+                    }
+
+                    return block;
+                }
+
+                if (typeof conversionLink !== 'bigint' || typeof timeConversionLink !== 'bigint') {
+                    throw new Error(`Invalid conversion link for MDF4 signal`);
+                }
+
+                conversionData = v4.serializeConversion(await readConversionBlockRecurse(newLink(conversionLink)));
+                timeConversionData = v4.serializeConversion(await readConversionBlockRecurse(newLink(timeConversionLink)));
+            } else {
+                throw new Error(`Unsupported version: ${version}`);
+            }
             
             // Check if this data group is already cached or being loaded
             let cached = dataGroupCache.get(dataGroupKey);
@@ -460,7 +503,10 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 signalId: message.signalId,
                 timeBuffer: timeSeq.getBuffer(),
                 valuesBuffer: valuesSeq.getBuffer(),
-                length: Math.min(timeSeq.length(), valuesSeq.length())
+                length: Math.min(timeSeq.length(), valuesSeq.length()),
+                timeConversion: timeConversionData,
+                valuesConversion: conversionData,
+                renderMode: (conversionData?.textValues.length ?? 0) >= 2 ? RenderMode.Enum : RenderMode.Lines,
             };
             self.postMessage(startResponse);
 

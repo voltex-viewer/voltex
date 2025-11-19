@@ -4,9 +4,6 @@ import type { NumberType } from './decoder';
 
 export interface SignalMetadata {
     name: string[];
-    timeConversion: SerializableConversionData;
-    valueConversion: SerializableConversionData;
-    renderMode: RenderMode;
     signalId: number;
     timeSequenceType: NumberType;
     valuesSequenceType: NumberType;
@@ -33,6 +30,9 @@ export type WorkerResponse = {
     timeBuffer: SharedArrayBuffer;
     valuesBuffer: SharedArrayBuffer;
     length: number;
+    timeConversion: SerializableConversionData;
+    valuesConversion: SerializableConversionData;
+    renderMode: RenderMode;
 } | {
     type: 'signalLoadingProgress';
     signalId: number;

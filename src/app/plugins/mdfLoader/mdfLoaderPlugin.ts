@@ -158,7 +158,6 @@ export default (context: PluginContext): void => {
                             worker.postMessage(loadMessage);
                         });
                         
-                        const conversion = deserializeConversion(metadata.valueConversion);
                         const source: SignalSource = sources.find(s => s.name === metadata.name)!;
                         
                         const timeConstructor = metadata.timeSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.timeSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
@@ -176,9 +175,9 @@ export default (context: PluginContext): void => {
                             }
                         }
                         
-                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(metadata.timeConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
+                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(startResponse.timeConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
                         time.updateLength(startResponse.length);
-                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(metadata.valueConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
+                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(startResponse.valuesConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
                         values.updateLength(startResponse.length);
                         
                         // Register with the persistent handler
@@ -190,10 +189,9 @@ export default (context: PluginContext): void => {
                         return {
                             time,
                             values,
-                            conversion: conversion || (() => 0),
-                            renderMode: metadata.renderMode,
+                            renderMode: startResponse.renderMode,
                             source,
-                            renderHint: metadata.renderMode
+                            renderHint: startResponse.renderMode
                         };
                     }
                 }));
