@@ -155,7 +155,8 @@ async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                     
                     signals.push({
                         name: channel.name,
-                        conversion: channel.conversion,
+                        timeConversion: timeChannel.conversion,
+                        valueConversion: channel.conversion,
                         renderMode: channel.renderMode,
                         signalId: signalId++,
                         timeSequenceType: abstractTimeChannel ? getNumberType(abstractTimeChannel) : NumberType.Float64,
@@ -302,7 +303,8 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                     
                     signals.push({
                         name: channel.name,
-                        conversion: channel.conversion,
+                        timeConversion: timeChannel.conversion,
+                        valueConversion: channel.conversion,
                         renderMode: channel.renderMode,
                         signalId: signalId++,
                         timeSequenceType: abstractTimeChannel ? getNumberType(abstractTimeChannel) : NumberType.Float64,

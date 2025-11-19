@@ -4,7 +4,8 @@ import type { NumberType } from './decoder';
 
 export interface SignalMetadata {
     name: string[];
-    conversion: SerializableConversionData;
+    timeConversion: SerializableConversionData;
+    valueConversion: SerializableConversionData;
     renderMode: RenderMode;
     signalId: number;
     timeSequenceType: NumberType;

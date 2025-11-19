@@ -157,26 +157,27 @@ export default (context: PluginContext): void => {
                             worker.postMessage(loadMessage);
                         });
                         
-                        const conversion = deserializeConversion(metadata.conversion);
+                        const conversion = deserializeConversion(metadata.valueConversion);
                         const source: SignalSource = sources.find(s => s.name === metadata.name)!;
                         
                         const timeConstructor = metadata.timeSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.timeSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
                         const valuesConstructor = metadata.valuesSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.valuesSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
                         
-                        let valuesConversion: any = conversion;
-                        if (metadata.valuesSequenceType === NumberType.BigInt64 || metadata.valuesSequenceType === NumberType.BigUint64) {
-                            if (valuesConversion) {
-                                // Wrap existing conversion to handle bigint to number conversion
-                                valuesConversion = (x: bigint) => conversion(Number(x));
+                        // Apply default conversions for bigint types if no custom conversion provided
+
+                        function wrapConversion(type: NumberType, conversion?: (x: number) => string | number): undefined | ((x: bigint) => string | number) | ((x: number) => string | number) {
+                            if (type === NumberType.Float64) {
+                                return conversion;
+                            } else if (conversion) {
+                                return (x: bigint) => conversion(Number(x));
                             } else {
-                                // Apply default conversions for bigint types if no custom conversion provided - going to number would lose precision
-                                valuesConversion = (x: bigint) => x.toString();
+                                return (x: bigint) => x.toString();
                             }
                         }
                         
-                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor) as AnySequence;
+                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(metadata.timeConversion))) as AnySequence;
                         time.updateLength(startResponse.length);
-                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, valuesConversion) as AnySequence;
+                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(metadata.valueConversion))) as AnySequence;
                         values.updateLength(startResponse.length);
                         
                         // Register with the persistent handler
