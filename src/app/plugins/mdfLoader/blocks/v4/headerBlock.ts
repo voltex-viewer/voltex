@@ -5,8 +5,8 @@ import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../../BufferedFileReader';
 
 export interface Header<TMode extends 'linked' | 'instanced' = 'linked'> {
-    firstDataGroup: MaybeLinked<DataGroupBlock<TMode>, TMode>;
-    fileHistory: MaybeLinked<FileHistoryBlock<TMode>, TMode>;
+    firstDataGroup: MaybeLinked<DataGroupBlock<TMode> | null, TMode>;
+    fileHistory: MaybeLinked<FileHistoryBlock<TMode> | null, TMode>;
     channelHierarchy: MaybeLinked<unknown, TMode>;
     attachment: MaybeLinked<unknown, TMode>;
     event: MaybeLinked<unknown, TMode>;

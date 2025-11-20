@@ -58,7 +58,7 @@ export function resolveDataGroupOffset(context: SerializeContext, block: DataGro
         },
         serializeDataGroupBlock,
         block => {
-            resolveChannelGroupOffset(context, this.channelGroupFirst);
+            resolveChannelGroupOffset(context, block.channelGroupFirst);
             resolveDataGroupOffset(context, block.dataGroupNext);
         });
 }

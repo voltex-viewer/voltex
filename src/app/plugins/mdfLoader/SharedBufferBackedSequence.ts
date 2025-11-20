@@ -21,7 +21,9 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
         this.arrayConstructor = arrayConstructor;
         this.array = new arrayConstructor(buffer as any) as T;
         this._length = 0;
-        this.conversion = conversion;
+        if (conversion) {
+            this.conversion = conversion;
+        }
         this.toNumber = (arrayConstructor === Float64Array 
             ? (v: any) => v 
             : (v: any) => Number(v)) as (value: ArrayValue<T>) => number;

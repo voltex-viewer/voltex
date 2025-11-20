@@ -84,10 +84,10 @@ export interface TextToText<TMode extends 'linked' | 'instanced' = 'linked'> {
 }
 
 export interface ChannelConversionBlockBase<TMode extends 'linked' | 'instanced' = 'linked'> {
-    txName: MaybeLinked<TextBlock, TMode>;
-    mdUnit: MaybeLinked<TextBlock | MetadataBlock, TMode>; // TextBlock or MetadataBlock
+    txName: MaybeLinked<TextBlock | null, TMode>;
+    mdUnit: MaybeLinked<TextBlock | MetadataBlock | null, TMode>;
     mdComment: MaybeLinked<unknown, TMode>; // TextBlock or MetadataBlock
-    inverse: MaybeLinked<ChannelConversionBlock<TMode>, TMode>;
+    inverse: MaybeLinked<ChannelConversionBlock<TMode> | null, TMode>;
     precision: number;
     flags: number;
     physicalRangeMinimum: number;
@@ -147,7 +147,7 @@ export function serializeConversionBlock(view: DataView, context: SerializeConte
     }
 }
 
-export function resolveChannelConversionOffset(context: SerializeContext, block: ChannelConversionBlock<'instanced'>) {
+export function resolveChannelConversionOffset(context: SerializeContext, block: ChannelConversionBlock<'instanced'> | null) {
     return context.resolve(
         block, 
         {

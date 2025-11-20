@@ -14,7 +14,7 @@ export class SerializeContext {
     }
 
 
-    public resolve<T>(object: T, metadata: GenericBlockHeader, serialize: SerializeFunction<T>, create?: (object: T) => void): number {
+    public resolve<T>(object: T | null, metadata: GenericBlockHeader, serialize: SerializeFunction<T>, create?: (object: T) => void): number {
         const existingOffset = this.blocks.get(object);
         if (existingOffset !== undefined)
         {
@@ -22,12 +22,12 @@ export class SerializeContext {
         }
         
         const offset = this.offset;
-        this.blocks.set(object, [offset, metadata, serialize]);
+        this.blocks.set(object, [offset, metadata, serialize as SerializeFunction<unknown>]);
         const totalLength = metadata.length + 8; // header (8 bytes) + data
         const roundedLength = (totalLength + 3) & ~3; // align to 4-byte boundary
         this.offset += roundedLength;
         if (typeof(create) !== "undefined") {
-            create(object);
+            create(object!);
         }
         return offset;
     }

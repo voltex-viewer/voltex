@@ -136,7 +136,7 @@ export class PluginManager {
                 // Map proxy rows back to actual rows for removal
                 const actualRowsToRemove = rowsToRemove.map(proxyRow => 
                     data.proxyToActualRowMap.get(proxyRow)
-                );
+                ).filter((row): row is RowImpl => row !== undefined);
                 const addedRows = this.rowManager.spliceRows(actualRowsToRemove, rowsToAdd);
                 return addedRows.map(row => this.createProxyRow(plugin, row));
             },
@@ -144,8 +144,8 @@ export class PluginManager {
                 const allRows = this.rowManager.getAllRows();
                 return allRows.map(row => this.createProxyRow(plugin, row));
             },
-            loadConfig: <T>(schema: t.Type<T>, defaultConfig: T): T => {
-                return this.configManager.loadConfig<T>(plugin.metadata.name, schema, defaultConfig);
+            loadConfig: <A, O = A, I = unknown>(schema: t.Type<A, O, I>, defaultConfig: O): A => {
+                return this.configManager.loadConfig<A, O, I>(plugin.metadata.name, schema, defaultConfig);
             },
             getEnvironment: (): 'electron' | 'browser' => {
                 // Check if we're in a browser environment first
@@ -231,6 +231,10 @@ export class PluginManager {
         }
         
         const data = this.pluginData.get(plugin);
+        
+        if (!data) {
+            return;
+        }
         
         if (data.signalSources.length > 0) {
             this.signalSources.remove(data.signalSources);
@@ -345,7 +349,9 @@ export class PluginManager {
     onBeforeRender(profiler: ReadOnlyRenderProfiler): boolean {
         let needsMoreRender = false;
         for (const plugin of this.plugins) {
-            for (const callback of this.pluginData.get(plugin).beforeRenderCallbacks) {
+            const data = this.pluginData.get(plugin);
+            if (!data) continue;
+            for (const callback of data.beforeRenderCallbacks) {
                 profiler.startMeasure(`beforeRender-${plugin.metadata.name}`);
                 if (callback()) {
                     needsMoreRender = true;
@@ -359,7 +365,9 @@ export class PluginManager {
     onAfterRender(profiler: ReadOnlyRenderProfiler): boolean {
         let needsMoreRender = false;
         for (const plugin of this.plugins) {
-            for (const callback of this.pluginData.get(plugin).afterRenderCallbacks) {
+            const data = this.pluginData.get(plugin);
+            if (!data) continue;
+            for (const callback of data.afterRenderCallbacks) {
                 profiler.startMeasure(`afterRender-${plugin.metadata.name}`);
                 if (callback()) {
                     needsMoreRender = true;
@@ -448,14 +456,17 @@ export class PluginManager {
             const fileErrors: string[] = [];
             let handled = false;
             for (const plugin of this.plugins) {
-                for (const handler of this.pluginData.get(plugin).fileExtensionHandlers) {
+                const data = this.pluginData.get(plugin);
+                if (!data) continue;
+                for (const handler of data.fileExtensionHandlers) {
                     if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
                         try {
                             await handler.handler(file);
                             handled = true;
                         } catch (error) {
                             console.error(error);
-                            fileErrors.push(`Error in plugin ${plugin.metadata.name} while handling file ${file.name}: ${error.message}`);
+                            const errorMessage = error instanceof Error ? error.message : String(error);
+                            fileErrors.push(`Error in plugin ${plugin.metadata.name} while handling file ${file.name}: ${errorMessage}`);
                         }
                     }
                 }
@@ -473,12 +484,14 @@ export class PluginManager {
     }
 
     getFileOpenTypes(): FilePickerAcceptType[] {
-        const individualTypes = this.plugins.flatMap(plugin =>
-            this.pluginData.get(plugin).fileExtensionHandlers.map(handler => ({
+        const individualTypes = this.plugins.flatMap(plugin => {
+            const data = this.pluginData.get(plugin);
+            if (!data) return [];
+            return data.fileExtensionHandlers.map(handler => ({
                 description: handler.description,
                 accept: { [handler.mimeType]: handler.extensions }
-            }))
-        );
+            }));
+        });
 
         if (individualTypes.length === 0) {
             return [];
@@ -504,7 +517,9 @@ export class PluginManager {
         fileExtension = `.${fileExtension}`;
 
         for (const plugin of this.plugins) {
-            for (const handler of this.pluginData.get(plugin).fileSaveHandlers) {
+            const data = this.pluginData.get(plugin);
+            if (!data) continue;
+            for (const handler of data.fileSaveHandlers) {
                 if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
                     await handler.handler(file);
                     return true;
@@ -516,12 +531,14 @@ export class PluginManager {
     }
 
     getFileSaveTypes(): FilePickerAcceptType[] {
-        return this.plugins.flatMap(plugin =>
-            this.pluginData.get(plugin).fileSaveHandlers.map(handler => ({
+        return this.plugins.flatMap(plugin => {
+            const data = this.pluginData.get(plugin);
+            if (!data) return [];
+            return data.fileSaveHandlers.map(handler => ({
                 description: handler.description,
                 accept: { [handler.mimeType]: handler.extensions }
-            }))
-        );
+            }));
+        });
     }
 
     executeKeybinding(keybinding: string): boolean {

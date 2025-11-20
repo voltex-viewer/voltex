@@ -18,7 +18,7 @@ export class RenderObjectImpl implements RenderObject, MouseEventHandlers {
     onMouseLeave?: (event: MouseEvent) => void;
     onWheel?: (event: WheelEvent) => void;
 
-    constructor(parent: RenderObjectImpl, args: RenderObjectArgs) {
+    constructor(parent: RenderObjectImpl | null, args: RenderObjectArgs) {
         this.zIndex = args.zIndex ?? 0;
         this.viewport = args.viewport ?? false;
         this._parent = parent;
@@ -26,15 +26,15 @@ export class RenderObjectImpl implements RenderObject, MouseEventHandlers {
         this.width = args.width ?? percent(100);
         this.x = args.x ?? px(0);
         this.y = args.y ?? px(0);
-        this.render = args.render;
-        this.dispose = args.dispose;
-        this.onClick = args.onClick;
-        this.onMouseDown = args.onMouseDown;
-        this.onMouseUp = args.onMouseUp;
-        this.onMouseMove = args.onMouseMove;
-        this.onMouseEnter = args.onMouseEnter;
-        this.onMouseLeave = args.onMouseLeave;
-        this.onWheel = args.onWheel;
+        if (args.render) this.render = args.render;
+        if (args.dispose) this.dispose = args.dispose;
+        if (args.onClick) this.onClick = args.onClick;
+        if (args.onMouseDown) this.onMouseDown = args.onMouseDown;
+        if (args.onMouseUp) this.onMouseUp = args.onMouseUp;
+        if (args.onMouseMove) this.onMouseMove = args.onMouseMove;
+        if (args.onMouseEnter) this.onMouseEnter = args.onMouseEnter;
+        if (args.onMouseLeave) this.onMouseLeave = args.onMouseLeave;
+        if (args.onWheel) this.onWheel = args.onWheel;
     }
 
     public readonly render?: (context: RenderContext, bounds: RenderBounds) => boolean;

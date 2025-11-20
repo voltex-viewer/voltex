@@ -46,7 +46,7 @@ function getEncodedLength(data: string): number {
     return new TextEncoder().encode(data).byteLength + 1;
 }
 
-export function resolveTextBlockOffset(context: SerializeContext, block: TextBlock) {
+export function resolveTextBlockOffset(context: SerializeContext, block: TextBlock | null) {
     return context.resolve(
         block, 
         {
@@ -57,12 +57,12 @@ export function resolveTextBlockOffset(context: SerializeContext, block: TextBlo
         serializeTextBlock);
 }
 
-export function resolveMetadataOffset(context: SerializeContext, block: MetadataBlock) {
+export function resolveMetadataOffset(context: SerializeContext, block: MetadataBlock | null) {
     return context.resolve(
         block, 
         {
             type: "##MD",
-            length: BigInt(getEncodedLength(block.data)), // +1 for null terminator, +24 for header
+            length: block === null ? 0n : BigInt(getEncodedLength(block.data)), // +1 for null terminator, +24 for header
             linkCount: 0n,
         },
         serializeMetadataBlock);

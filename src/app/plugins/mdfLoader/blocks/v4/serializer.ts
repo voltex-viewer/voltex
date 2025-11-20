@@ -14,7 +14,7 @@ export class SerializeContext {
     }
 
 
-    public resolve<T>(object: T, metadata: GenericBlockHeader, serialize: SerializeFunction<T>, create?: (object: T) => void): bigint {
+    public resolve<T>(object: T | null, metadata: GenericBlockHeader, serialize: SerializeFunction<T>, create?: (object: T) => void): bigint {
         const existingOffset = this.blocks.get(object);
         if (existingOffset !== undefined)
         {
@@ -22,12 +22,12 @@ export class SerializeContext {
         }
         
         const offset = this.offset;
-        this.blocks.set(object, [offset, metadata, serialize]);
+        this.blocks.set(object, [offset, metadata, serialize as SerializeFunction<unknown>]);
         const totalLength = metadata.length + 24n; // header (24 bytes) + data
         const roundedLength = (totalLength + 7n) & ~7n; // align to 8-byte boundary
         this.offset += roundedLength;
         if (typeof(create) !== "undefined") {
-            create(object);
+            create(object!);
         }
         return offset;
     }
@@ -40,6 +40,7 @@ export class SerializeContext {
             program: "Voltex  ",
             versionLong: "4.10   ",
             version: 410,
+            littleEndian: true,
         });
         const sortedList = Array.from(this.blocks.entries()).sort(([, [offsetA]], [, [offsetB]]) => Number(offsetA - offsetB));
         let fileOffset = BigInt(bufferOffset);

@@ -664,7 +664,7 @@ export default (context: PluginContext): void => {
             }
         }
         
-        const signalSourcesToRemove = signals.slice(removeStart, removeEnd).filter(s => typeof s.signalSource !== "undefined").map(s => s.signalSource);
+        const signalSourcesToRemove = signals.slice(removeStart, removeEnd).filter(s => typeof s.signalSource !== "undefined").map(s => s.signalSource!);
         
         if (signalSourcesToRemove.length === 0) return;
         

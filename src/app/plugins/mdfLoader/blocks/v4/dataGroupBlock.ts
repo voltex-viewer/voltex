@@ -7,9 +7,9 @@ import { BufferedFileReader } from '../../BufferedFileReader';
 import { deserializeHeaderListBlock, HeaderListBlock, resolveHeaderListOffset } from './headerListBlock';
 
 export interface DataGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
-    dataGroupNext: MaybeLinked<DataGroupBlock<TMode>, TMode>;
-    channelGroupFirst: MaybeLinked<ChannelGroupBlock<TMode>, TMode>;
-    data: MaybeLinked<DataTableBlock | DataListBlock<TMode> | HeaderListBlock<TMode>, TMode>;
+    dataGroupNext: MaybeLinked<DataGroupBlock<TMode> | null, TMode>;
+    channelGroupFirst: MaybeLinked<ChannelGroupBlock<TMode> | null, TMode>;
+    data: MaybeLinked<DataTableBlock | DataListBlock<TMode> | HeaderListBlock<TMode> | null, TMode>;
     comment: MaybeLinked<unknown, TMode>;
     recordIdSize: number;
 }
@@ -33,7 +33,7 @@ export function serializeDataGroupBlock(view: DataView, context: SerializeContex
     view.setUint8(32, dataGroup.recordIdSize);
 }
 
-export function resolveDataGroupOffset(context: SerializeContext, block: DataGroupBlock<'instanced'>) {
+export function resolveDataGroupOffset(context: SerializeContext, block: DataGroupBlock<'instanced'> | null) {
     return context.resolve(
         block, 
         {

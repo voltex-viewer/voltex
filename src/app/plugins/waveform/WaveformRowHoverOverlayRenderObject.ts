@@ -1,4 +1,4 @@
-import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds } from '@voltex-viewer/plugin-api';
+import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent } from '@voltex-viewer/plugin-api';
 import { type WaveformConfig } from './WaveformConfig';
 import type { SignalTooltipData, TooltipData } from './WaveformTooltipRenderObject';
 import type { BufferData } from './WaveformRendererPlugin';
@@ -42,7 +42,7 @@ export class WaveformRowHoverOverlayRenderObject {
         parent.addChild({
             zIndex: zIndex,
             render: this.render.bind(this),
-            onMouseMove: ((event: MouseEvent) => {
+            onMouseMove: ((event: PluginMouseEvent) => {
                 this.mouse = {
                     offsetX: event.offsetX,
                     clientX: event.clientX,
@@ -50,7 +50,7 @@ export class WaveformRowHoverOverlayRenderObject {
                 }
                 this.context.requestRender();
             }),
-            onMouseEnter: ((event: MouseEvent) => {
+            onMouseEnter: ((event: PluginMouseEvent) => {
                 this.mouse = {
                     offsetX: event.offsetX,
                     clientX: event.clientX,
@@ -209,6 +209,7 @@ export class WaveformRowHoverOverlayRenderObject {
         const bufferData = this.signalBuffers.get(signal);
         const { gl } = context.render;
         
+        if (!bufferData) return;
         const maxUpdateIndex = bufferData.signalIndex;
         if (dataIndex >= maxUpdateIndex) return;
 
@@ -223,8 +224,9 @@ export class WaveformRowHoverOverlayRenderObject {
 
         let timeSourceData = indices.map(i => signal.time.valueAt(i));
         let valueSourceData = indices.map(i => signal.values.valueAt(i));
-        let convertedSourceData = signal.values.convertedValueAt ? indices.map(i => signal.values.convertedValueAt(i)) : undefined;
+        let convertedSourceData = signal.values.convertedValueAt ? indices.map(i => signal.values.convertedValueAt!(i)) : undefined;
         // Update the highlight signal's data
+        if (!highlightSignal) return;
         highlightSignal.updateData(timeSourceData, valueSourceData, convertedSourceData);
 
         // Get the highlight buffer data directly from our stored references
@@ -311,7 +313,7 @@ export class WaveformRowHoverOverlayRenderObject {
 
 class ArraySequence implements Sequence {
     private data: number[];
-    convertedValueAt?(index: number): number | string | undefined;
+    convertedValueAt?(index: number): number | string;
 
     constructor() {
         this.data = [];
@@ -340,7 +342,7 @@ class ArraySequence implements Sequence {
         if (typeof convertedData !== 'undefined') {
             this.convertedValueAt = (index: number) => convertedData[index];
         } else {
-            this.convertedValueAt = undefined;
+            delete this.convertedValueAt;
         }
     }
 }

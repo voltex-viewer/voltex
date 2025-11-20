@@ -3,7 +3,7 @@ import type { FrameInfo, ReadOnlyRenderProfiler, MeasureInfo } from '@voltex-vie
 export class RenderProfiler implements ReadOnlyRenderProfiler {
     private filteredFrameRenderTime = 0; // Exponential moving average
     private _lastFrame: FrameInfo | null = null;
-    private measureStack: MeasureInfo[][] = [];
+    private measureStack: (Omit<MeasureInfo, 'endTime'> & { endTime: number | undefined })[][] = [];
     private currentDepth = 0;
     private now: () => number;
 
@@ -88,7 +88,7 @@ export class RenderProfiler implements ReadOnlyRenderProfiler {
             startTime: renderMeasure.startTime,
             endTime: renderMeasure.endTime,
             frameTime,
-            measures: this.measureStack,
+            measures: this.measureStack as MeasureInfo[][],
         };
         
         // Update filtered frame render time with exponential moving average

@@ -32,14 +32,14 @@ export function parseDataType(value: number): DataType {
 }
 
 export interface ChannelBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
-    channelNext: MaybeLinked<ChannelBlock<TMode>, TMode>;
+    channelNext: MaybeLinked<ChannelBlock<TMode> | null, TMode>;
     component: MaybeLinked<unknown, TMode>;
-    txName: MaybeLinked<TextBlock, TMode>;
+    txName: MaybeLinked<TextBlock | null, TMode>;
     siSource: MaybeLinked<unknown, TMode>;
-    conversion: MaybeLinked<ChannelConversionBlock<TMode>, TMode>;
+    conversion: MaybeLinked<ChannelConversionBlock<TMode> | null, TMode>;
     data: MaybeLinked<unknown, TMode>;
-    unit: MaybeLinked<TextBlock, TMode>;
-    comment: MaybeLinked<TextBlock, TMode>;
+    unit: MaybeLinked<TextBlock | null, TMode>;
+    comment: MaybeLinked<TextBlock | null, TMode>;
     channelType: number;
     syncType: number;
     dataType: DataType;
@@ -117,7 +117,7 @@ export function serializeChannelBlock(view: DataView, context: SerializeContext,
     view.setFloat64(128, block.limitExtendedMaximum, true);
 }
 
-export function resolveChannelOffset(context: SerializeContext, block: ChannelBlock<'instanced'>) {
+export function resolveChannelOffset(context: SerializeContext, block: ChannelBlock<'instanced'> | null) {
     return context.resolve(
         block, 
         {

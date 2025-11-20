@@ -4,7 +4,7 @@ import { fpsRenderObject } from './FpsRenderObject';
 export default (context: PluginContext): void => {
     let fpsRow: Row | null = null;
     context.onRowsChanged((event) => {
-        if (event.removed.includes(fpsRow)){
+        if (fpsRow !== null && event.removed.includes(fpsRow)) {
             fpsRow = null;
         }
         if (!fpsRow && event.added.length > 0) {

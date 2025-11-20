@@ -103,7 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 const files = await Promise.all(fileHandles.map(fh => fh.getFile()));
                                 await renderer.pluginManager.loadFiles(...files);
                             } catch (error) {
-                                if (error.name === 'AbortError') {
+                                if (error instanceof Error && error.name === 'AbortError') {
                                     // User cancelled the file picker
                                     return;
                                 }
@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     throw Error(`No plugin found to handle file`);
                                 }
                             } catch (error) {
-                                if (error.name === 'AbortError') {
+                                if (error instanceof Error && error.name === 'AbortError') {
                                     // User cancelled the file picker
                                     return;
                                 }

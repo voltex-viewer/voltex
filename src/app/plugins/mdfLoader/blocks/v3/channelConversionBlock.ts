@@ -77,7 +77,7 @@ export interface TextTableConversion {
 export interface TextRangeTableConversion<TMode extends 'linked' | 'instanced' = 'linked'> {
     size: number;
     type: ConversionType.TextRangeTable,
-    default: MaybeLinked<TextBlock, TMode>,
+    default: MaybeLinked<TextBlock | null, TMode>,
     table: [number, number, MaybeLinked<TextBlock, TMode>][],
 }
 

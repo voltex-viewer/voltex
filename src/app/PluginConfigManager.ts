@@ -4,8 +4,8 @@ import { pipe } from 'fp-ts/function';
 
 export interface PluginConfigSchema<T = any> {
     name: string;
-    schema: t.Type<T>;
-    defaultConfig: T;
+    schema: t.Type<T, any, unknown>;
+    defaultConfig: any;
     config: T;
 }
 
@@ -26,7 +26,7 @@ export class PluginConfigManager {
         this.changeCallbacks.push(callback);
     }
 
-    loadConfig<T>(pluginName: string, schema: t.Type<T>, defaultConfig: T): T {
+    loadConfig<A, O = A, I = unknown>(pluginName: string, schema: t.Type<A, O, I>, defaultConfig: O): A {
         const isFirstLoad = !this.configs.has(pluginName);
         
         // Try to get stored config first
@@ -34,12 +34,19 @@ export class PluginConfigManager {
         const currentConfig = storedConfig || defaultConfig;
         
         // Validate the current config against the new schema
-        const validationResult = schema.decode(currentConfig);
-        const validConfig = isRight(validationResult) ? validationResult.right : defaultConfig;
+        const validationResult = schema.decode(currentConfig as I);
+        let validConfig: A;
+        
+        if (isRight(validationResult)) {
+            validConfig = validationResult.right;
+        } else {
+            const defaultValidation = schema.decode(defaultConfig as unknown as I);
+            validConfig = isRight(defaultValidation) ? defaultValidation.right : defaultConfig as unknown as A;
+        }
 
-        const configSchema = {
+        const configSchema: PluginConfigSchema<A> = {
             name: pluginName,
-            schema,
+            schema: schema as t.Type<A, any, unknown>,
             defaultConfig,
             config: validConfig
         };
@@ -60,7 +67,7 @@ export class PluginConfigManager {
             });
         }
 
-        return configSchema.config;
+        return validConfig;
     }
 
     getConfig<T>(pluginName: string): T | undefined {

@@ -18,6 +18,7 @@ export default (context: PluginContext): void => {
     }>();
     let loadingOverlay: RenderObject | null = null;
     let loadingOverlayObj: ReturnType<typeof loadingOverlayRenderObject> | null = null;
+    // @ts-expect-error - import.meta.url is provided by Vite
     let worker: Worker | null = new Worker(new URL('./mdfLoaderWorker.ts', import.meta.url), { type: 'module' });
     worker.addEventListener('message', (event: MessageEvent<WorkerResponse>) => {
         const data = event.data;
@@ -165,7 +166,7 @@ export default (context: PluginContext): void => {
                         
                         // Apply default conversions for bigint types if no custom conversion provided
 
-                        function wrapConversion(type: NumberType, conversion?: (x: number) => string | number): undefined | ((x: bigint) => string | number) | ((x: number) => string | number) {
+                        function wrapConversion(type: NumberType, conversion: ((x: number) => string | number) | undefined): undefined | ((x: bigint) => string | number) | ((x: number) => string | number) {
                             if (type === NumberType.Float64) {
                                 return conversion;
                             } else if (conversion) {
@@ -175,9 +176,9 @@ export default (context: PluginContext): void => {
                             }
                         }
                         
-                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(metadata.timeConversion))) as AnySequence;
+                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(metadata.timeConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
                         time.updateLength(startResponse.length);
-                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(metadata.valueConversion))) as AnySequence;
+                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(metadata.valueConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
                         values.updateLength(startResponse.length);
                         
                         // Register with the persistent handler

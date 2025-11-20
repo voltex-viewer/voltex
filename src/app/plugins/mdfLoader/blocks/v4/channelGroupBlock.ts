@@ -5,9 +5,9 @@ import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../../BufferedFileReader';
 
 export interface ChannelGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
-    channelGroupNext: MaybeLinked<ChannelGroupBlock<TMode>, TMode>;
-    channelFirst: MaybeLinked<ChannelBlock<TMode>, TMode>;
-    acquisitionName: MaybeLinked<TextBlock, TMode>;
+    channelGroupNext: MaybeLinked<ChannelGroupBlock<TMode> | null, TMode>;
+    channelFirst: MaybeLinked<ChannelBlock<TMode> | null, TMode>;
+    acquisitionName: MaybeLinked<TextBlock | null, TMode>;
     acquisitionSource: MaybeLinked<unknown, TMode>;
     sampleReductionFirst: MaybeLinked<unknown, TMode>;
     comment: MaybeLinked<unknown, TMode>;
@@ -53,7 +53,7 @@ export function serializeChannelGroupBlock(view: DataView, context: SerializeCon
     view.setUint32(76, block.invalidationBytes, true);
 }
 
-export function resolveChannelGroupOffset(context: SerializeContext, block: ChannelGroupBlock<'instanced'>) {
+export function resolveChannelGroupOffset(context: SerializeContext, block: ChannelGroupBlock<'instanced'> | null) {
     return context.resolve(
         block, 
         {

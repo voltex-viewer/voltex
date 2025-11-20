@@ -155,7 +155,7 @@ async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                     
                     signals.push({
                         name: channel.name,
-                        timeConversion: timeChannel.conversion,
+                        timeConversion: timeChannel?.conversion ?? { conversion: null, textValues: [] },
                         valueConversion: channel.conversion,
                         renderMode: channel.renderMode,
                         signalId: signalId++,
@@ -303,7 +303,7 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
                     
                     signals.push({
                         name: channel.name,
-                        timeConversion: timeChannel.conversion,
+                        timeConversion: timeChannel?.conversion ?? { conversion: null, textValues: [] },
                         valueConversion: channel.conversion,
                         renderMode: channel.renderMode,
                         signalId: signalId++,
@@ -479,8 +479,8 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                         const progressResponse: WorkerResponse = {
                             type: 'signalLoadingProgress',
                             signalId: message.signalId,
-                            timeBuffer: currentTimeBuffer !== prevTimeBuffer ? currentTimeBuffer : undefined,
-                            valuesBuffer: currentValuesBuffer !== prevValuesBuffer ? currentValuesBuffer : undefined,
+                            ...(currentTimeBuffer !== prevTimeBuffer && { timeBuffer: currentTimeBuffer }),
+                            ...(currentValuesBuffer !== prevValuesBuffer && { valuesBuffer: currentValuesBuffer }),
                             length: currentLength
                         };
                         

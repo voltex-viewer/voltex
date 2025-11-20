@@ -43,7 +43,7 @@ export class Renderer {
         private state: WaveformState,
         canvas: HTMLCanvasElement,
         private verticalSidebar: VerticalSidebar,
-        private requestRender?: () => void
+        private requestRender: () => void
     ) {
         this.canvas = canvas;
         
@@ -287,7 +287,7 @@ export class Renderer {
         };
     }
 
-    private dispatchMouseEvent(eventType: keyof MouseEventHandlers, event: InternalMouseEvent, skipCapturingObject: boolean = false): void {
+    private dispatchMouseEvent(eventType: keyof MouseEventHandlers, event: InternalMouseEvent & Partial<{ deltaY: number; deltaX: number; deltaZ: number }>, skipCapturingObject: boolean = false): void {
         const capturedObject = this.mouseCaptureMap.get(0)?.renderObject; // Only left button
         
         const dispatchMouseEventRecursive = (
@@ -309,30 +309,30 @@ export class Renderer {
             }
 
             if (isPointInBounds(event.clientX, event.clientY, bounds)) {
-                const handler = renderObject[eventType];
-                if (handler) {
-                    const offsetEvent = {
-                        ...event,
-                        offsetX: event.clientX - bounds.x,
-                        offsetY: event.clientY - bounds.y
-                    };
-                    
-                    const captureConfig = handler.call(renderObject, offsetEvent);
-                    
-                    // Handle capture on mousedown or mouseMove
-                    if ((eventType === 'onMouseDown' || eventType === 'onMouseMove') && captureConfig && event.button === 0) {
-                        if (captureConfig.captureMouse) {
-                            this.mouseCaptureMap.set(event.button, {
-                                renderObject: renderObject,
-                                bounds: bounds,
-                                config: captureConfig
-                            });
+                const offsetEvent = {
+                    ...event,
+                    offsetX: event.clientX - bounds.x,
+                    offsetY: event.clientY - bounds.y
+                };
+                
+                if (eventType === 'onWheel') {
+                    const handler = renderObject.onWheel;
+                    handler?.call(renderObject, offsetEvent as typeof offsetEvent & { deltaY: number; deltaX: number; deltaZ: number });
+                } else {
+                    const handler = renderObject[eventType];
+                    if (handler) {
+                        const captureConfig = handler.call(renderObject, offsetEvent);
+                        
+                        // Handle capture on mousedown or mouseMove
+                        if ((eventType === 'onMouseDown' || eventType === 'onMouseMove') && captureConfig && event.button === 0) {
+                            if (captureConfig.captureMouse) {
+                                this.mouseCaptureMap.set(event.button, {
+                                    renderObject: renderObject,
+                                    bounds: bounds,
+                                    config: captureConfig
+                                });
+                            }
                         }
-                    }
-                    
-                    // Handle preventDefault
-                    if (captureConfig?.preventDefault) {
-                        // Already handled in createMouseEvent/createGlobalMouseEvent
                     }
                 }
             }
@@ -386,6 +386,9 @@ export class Renderer {
     resizeCanvases(): void {
         // Get size from the canvas parent container instead of the canvas itself
         const container = this.canvas.parentElement;
+        if (!container) {
+            throw new Error('Canvas has no parent element for sizing');
+        }
 
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;

@@ -86,7 +86,9 @@ export class InMemoryBigInt64Sequence implements Sequence {
     private _conversion?: (value: number) => number | string
 
     constructor(private _bigConversion?: (value: bigint) => number | string) {
-        this._conversion = typeof this._bigConversion !== "undefined" ? x => this._bigConversion!(BigInt(x)) : undefined;
+        if (typeof this._bigConversion !== "undefined") {
+            this._conversion = x => this._bigConversion!(BigInt(x));
+        }
         this._min = Infinity;
         this._max = -Infinity;
         this._data = new BigInt64Array(1024);
@@ -151,7 +153,9 @@ export class InMemoryBigUint64Sequence implements Sequence {
     private _conversion?: (value: number) => number | string
 
     constructor(private _bigConversion?: (value: bigint) => number | string) {
-        this._conversion = typeof this._bigConversion !== "undefined" ? x => this._bigConversion!(BigInt(x)) : undefined;
+        if (typeof this._bigConversion !== "undefined") {
+            this._conversion = x => this._bigConversion!(BigInt(x));
+        }
         this._min = Infinity;
         this._max = -Infinity;
         this._data = new BigUint64Array(1024);

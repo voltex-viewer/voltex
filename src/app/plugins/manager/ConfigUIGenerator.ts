@@ -131,7 +131,9 @@ export class ConfigUIGenerator {
         resetButton.type = 'button';
         resetButton.textContent = 'Reset';
         resetButton.className = 'action-button';
-        resetButton.addEventListener('click', options.onReset);
+        if (options.onReset) {
+            resetButton.addEventListener('click', options.onReset);
+        }
         form.appendChild(resetButton);
         container.appendChild(form);
 

@@ -4,8 +4,8 @@ import { MetadataBlock, resolveMetadataOffset } from './textBlock';
 import { BufferedFileReader } from '../../BufferedFileReader';
 
 export interface FileHistoryBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
-    fileHistoryNext: MaybeLinked<FileHistoryBlock<TMode>, TMode>;
-    comment: MaybeLinked<MetadataBlock, TMode>;
+    fileHistoryNext: MaybeLinked<FileHistoryBlock<TMode> | null, TMode>;
+    comment: MaybeLinked<MetadataBlock | null, TMode>;
     time: bigint;
     timeZone: number;
     dstOffset: number;
@@ -38,7 +38,7 @@ export function serializeFileHistoryBlock(view: DataView<ArrayBuffer>, context: 
     view.setUint8(31, 0);
 }
 
-export function resolveFileHistoryOffset(context: SerializeContext, block: FileHistoryBlock<'instanced'>) {
+export function resolveFileHistoryOffset(context: SerializeContext, block: FileHistoryBlock<'instanced'> | null) {
     return context.resolve(
         block, 
         {

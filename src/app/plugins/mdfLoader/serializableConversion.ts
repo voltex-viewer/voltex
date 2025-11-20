@@ -10,9 +10,9 @@ export interface SerializableConversionData {
     textValues: TextValue[];
 }
 
-export function deserializeConversion(data: SerializableConversionData): null | ((value: number) => number | string) {
+export function deserializeConversion(data: SerializableConversionData): undefined | ((value: number) => number | string) {
     if (data.conversion === null) {
-        return null;
+        return undefined;
     }
 
     const { fnBody, context } = data.conversion;

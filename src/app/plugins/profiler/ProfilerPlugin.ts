@@ -374,7 +374,7 @@ class FlameGraphValueSequence implements Sequence {
         return this.timelineData.length;
     }
 
-    get null(): number | undefined {
+    get null(): number {
         return -1;
     }
 

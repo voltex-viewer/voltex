@@ -185,7 +185,7 @@ export interface PluginContext {
     createRows(...rows: RowParameters[]): Row[];
     spliceRows(rowsToRemove: Row[], rowsToAdd: RowInsert[]): Row[];
     getRows(): Row[];
-    loadConfig<T>(schema: t.Type<T>, defaultConfig: T): T;
+    loadConfig<A, O = A, I = unknown>(schema: t.Type<A, O, I>, defaultConfig: O): A;
     getEnvironment(): 'electron' | 'browser';
     registerFileOpenHandler(handler: FileOpenHandler): void;
     registerFileSaveHandler(handler: FileSaveHandler): void;

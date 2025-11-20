@@ -4,7 +4,7 @@ import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../../BufferedFileReader';
 
 export interface DataListBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
-    dataListNext: MaybeLinked<DataListBlock<TMode>, TMode>;
+    dataListNext: MaybeLinked<DataListBlock<TMode> | null, TMode>;
     data: MaybeLinked<DataTableBlock, TMode>[];
     flags: number;
 }

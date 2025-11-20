@@ -79,7 +79,7 @@ export default (context: PluginContext): void => {
     let nextCursorNumber = 1;
     let activeCursor: CursorRenderObject | null = null;
     let mouseDownPosition: { x: number; y: number } | null = null;
-    let hoveredRow: Row | null = null;
+    let hoveredRow: Row | undefined = undefined;
 
     const removeCursor = (cursor: CursorRenderObject) => {
         cursor.cleanup();
@@ -120,7 +120,7 @@ export default (context: PluginContext): void => {
                 },
                 onMouseLeave: () => {
                     if (hoveredRow === row) {
-                        hoveredRow = null;
+                        hoveredRow = undefined;
                     }
                 }
             });

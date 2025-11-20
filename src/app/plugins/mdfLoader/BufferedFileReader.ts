@@ -9,7 +9,7 @@ export class BufferedFileReader {
     private bufferSize: number;
     private maxBuffers: number;
     private cache: Map<number, CacheEntry> = new Map();
-    public version: number;
+    public version: number = 0;
     public littleEndian: boolean;
 
     constructor(file: File, bufferSize: number = 1024 * 1024, maxBuffers: number = 4) {
