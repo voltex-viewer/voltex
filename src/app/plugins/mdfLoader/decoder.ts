@@ -145,6 +145,10 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                     }
                 }
                 // Complex case - with masking and/or shifting
+                const useBigInt = bitCount > MAX_SAFE_BITS;
+                const numberConversion = (v: string) => useBigInt ? `BigInt(${v})` : v;
+                const primitive = (v: bigint | number) => useBigInt ? `${v}n` : `${v}`;
+                
                 const parts = [];
                 const end = Math.ceil((bitCount + bitOffset) / 8);
                 for (let i = 0; i < end; i++)
@@ -152,29 +156,22 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                     const byte = littleEndian ? byteOffset + i : byteOffset + end - 1 - i;
                     const shift = i * 8 - (bitOffset % 8);
                     if (shift == 0) {
-                        parts.push(`view.getUint8(${byte})`);
-                    } else if (shift <= 0) {
-                        parts.push(`(view.getUint8(${byte}) >> ${-shift})`);
+                        parts.push(numberConversion(`view.getUint8(${byte})`));
+                    } else if (shift < 0) {
+                        parts.push(`(${numberConversion(`view.getUint8(${byte})`)} >> ${primitive(-shift)})`);
                     } else {
-                        parts.push(`(view.getUint8(${byte}) << ${shift})`);
+                        parts.push(`(${numberConversion(`view.getUint8(${byte})`)} << ${primitive(shift)})`);
                     }
                 }
-                if (bitCount <= MAX_SAFE_BITS) {
-                    const mask = (1 << bitCount) - 1;
-                    if (isSigned) {
-                        return `const value = (${parts.join(" | ")}) & 0x${mask.toString(16)};` +
-                            `return value >= 0x${(1 << (bitCount - 1)).toString(16)} ? value - 0x${(1 << bitCount).toString(16)} : value;`;
-                    } else {
-                        return `return (${parts.join(" | ")}) & 0x${mask.toString(16)};`;
-                    }
+                
+                const mask = (1n << BigInt(bitCount)) - 1n;
+                if (isSigned) {
+                    const signBit = 1n << (BigInt(bitCount) - 1n);
+                    const signAdjust = 1n << BigInt(bitCount);
+                    return `const value = (${parts.join(" | ")}) & ${primitive(mask)};` +
+                        `return value >= ${primitive(signBit)} ? value - ${primitive(signAdjust)} : value;`;
                 } else {
-                    const mask = (1n << BigInt(bitCount)) - 1n;
-                    if (isSigned) {
-                        return `const value = (${parts.map(v => `BigInt(${v})`).join(" | ")}) & 0x${mask.toString(16)}n;` +
-                            `return value >= 0x${(1n << (BigInt(bitCount) - 1n)).toString(16)}n ? value - 0x${(1n << BigInt(bitCount)).toString(16)}n : value;`;
-                    } else {
-                        return `return (${parts.map(v => `BigInt(${v})`).join(" | ")}) & 0x${mask.toString(16)}n;`;
-                    }
+                    return `return (${parts.join(" | ")}) & ${primitive(mask)};`;
                 }
             }
             default:
