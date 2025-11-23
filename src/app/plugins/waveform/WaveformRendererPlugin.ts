@@ -1,4 +1,4 @@
-import { RenderMode, type PluginContext, type Row, type Signal } from '@voltex-viewer/plugin-api';
+import { RenderMode, type PluginContext, type Row, type Signal, type SignalMetadata } from '@voltex-viewer/plugin-api';
 import { WaveformConfigSchema } from './WaveformConfig';
 import { WaveformRenderObject } from './WaveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './WaveformRowHoverOverlayRenderObject';
@@ -9,6 +9,7 @@ import { createGradientDownsampler } from './gradientDownsampler';
 export interface BufferData {
     timeBuffer: WebGLBuffer;
     valueBuffer: WebGLBuffer;
+    downsamplingMode: string;
     bufferCapacity: number;
     bufferLength: number;
     signalIndex: number;
@@ -35,6 +36,7 @@ export default (context: PluginContext): void => {
             downsamplingMode: 'lossless' as const,
         });
 
+    type DownsamplingMode = typeof config.downsamplingMode | "enum";
 
     // Create a single global tooltip render object
     const waveformOverlays: Map<Row, WaveformRowHoverOverlayRenderObject> = new Map();
@@ -143,11 +145,12 @@ export default (context: PluginContext): void => {
         return { bufferOffset, signalIndex };
     };
 
-    const simplifier: Record<typeof config.downsamplingMode, DownsampleFunction> = {
+    const simplifier: Record<DownsamplingMode, DownsampleFunction> = {
         off: rawSamples,
         aggressive: (sequence, signalIndex, seqLen) => gradientDownsampler(sequence, signalIndex, seqLen, 1),
         normal: (sequence, signalIndex, seqLen) => gradientDownsampler(sequence, signalIndex, seqLen, 0.1),
         lossless: (sequence, signalIndex, seqLen) => gradientDownsampler(sequence, signalIndex, seqLen, 0),
+        enum: enumSimplifier,
     };
 
     context.onBeforeRender(() => {
@@ -176,7 +179,22 @@ export default (context: PluginContext): void => {
         let anyBufferNeedsUpdate = false;
         const availableTime = Math.max(1, targetFrameTime - frameTimeOverhead);
 
-        for (const [sequence, bufferData] of buffers.entries()) {
+        for (const [signal, bufferData] of buffers.entries()) {
+            const metadata = context.signalMetadata.get(signal);
+            const downsamplingMode = (() => {
+                switch (metadata.renderMode) {
+                    case RenderMode.Enum: return 'enum';
+                    case RenderMode.Lines: return config.downsamplingMode;
+                    default: return 'off';
+                }
+            })();
+
+            if (downsamplingMode !== bufferData.downsamplingMode) {
+                bufferData.downsamplingMode = downsamplingMode;
+                bufferData.signalIndex = 0;
+                bufferData.bufferLength = 0;
+            }
+
             const remainingTime = availableTime - (performance.now() - frameStartTime);
             if (remainingTime <= 0) {
                 anyBufferNeedsUpdate = true;
@@ -184,7 +202,7 @@ export default (context: PluginContext): void => {
             }
 
             const gl = context.webgl.gl;
-            const seqLen = Math.min(sequence.time.length, sequence.values.length);
+            const seqLen = Math.min(signal.time.length, signal.values.length);
             
             if (bufferData.bufferCapacity !== seqLen) {
                 // Allocate buffer for sequence data
@@ -200,11 +218,9 @@ export default (context: PluginContext): void => {
             }
             
             if (bufferData.signalIndex < seqLen) {
-                const downsampleFn = sequence.renderHint === RenderMode.Enum 
-                    ? enumSimplifier 
-                    : simplifier[config.downsamplingMode];
+                const downsampleFn = simplifier[downsamplingMode];
 
-                const { bufferOffset, signalIndex } = downsampleFn(sequence, bufferData.signalIndex, seqLen);
+                const { bufferOffset, signalIndex } = downsampleFn(signal, bufferData.signalIndex, seqLen);
                 
                 // Upload sequence data
                 gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
@@ -221,6 +237,87 @@ export default (context: PluginContext): void => {
             }
         }
         return anyBufferNeedsUpdate;
+    });
+
+    // Add a render callback that updates the dot buffer and conditionally renders
+    context.rootRenderObject.addChild({
+        zIndex: -100,
+        render: (renderContext, bounds) => {
+            const { state } = renderContext;
+            
+            for (const [channel, dotRenderBuffer] of dotOverlayBuffers.entries()) {
+                // Calculate visible time range
+                const viewStartTime = state.offset / state.pxPerSecond;
+                const viewEndTime = (state.offset + bounds.width) / state.pxPerSecond;
+                
+                // Binary search for visible point range
+                let startIdx = 0;
+                let endIdx = channel.time.length - 1;
+                
+                // Find first visible point
+                let left = 0, right = channel.time.length - 1;
+                while (left <= right) {
+                    const mid = Math.floor((left + right) / 2);
+                    const time = channel.time.valueAt(mid);
+                    if (time < viewStartTime) {
+                        left = mid + 1;
+                    } else {
+                        startIdx = mid;
+                        right = mid - 1;
+                    }
+                }
+                
+                // Find last visible point
+                left = startIdx;
+                right = channel.time.length - 1;
+                while (left <= right) {
+                    const mid = Math.floor((left + right) / 2);
+                    const time = channel.time.valueAt(mid);
+                    if (time <= viewEndTime) {
+                        endIdx = mid;
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
+                    }
+                }
+                
+                const visibleCount = endIdx - startIdx + 1;
+                
+                const pointVisibilityThreshold = config.dotVisibilityThreshold;
+                if (visibleCount > pointVisibilityThreshold || visibleCount <= 0) {
+                    dotRenderBuffer.bufferLength = 0;
+                    continue;
+                }
+                
+                // Allocate buffer if needed
+                if (dotRenderBuffer.bufferCapacity < pointVisibilityThreshold) {
+                    const gl = context.webgl.gl;
+                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
+                    dotRenderBuffer.bufferCapacity = pointVisibilityThreshold;
+                }
+                
+                // Copy visible points to dot buffer
+                const dotTimeArr = new Float32Array(visibleCount);
+                const dotValueArr = new Float32Array(visibleCount);
+                for (let i = 0; i < visibleCount; i++) {
+                    dotTimeArr[i] = channel.time.valueAt(startIdx + i);
+                    dotValueArr[i] = channel.values.valueAt(startIdx + i);
+                }
+                
+                const gl = context.webgl.gl;
+                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeBuffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotTimeArr);
+                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotValueArr);
+                
+                dotRenderBuffer.bufferLength = visibleCount;
+            }
+            
+            return false;
+        }
     });
     
     context.onRowsChanged((event) => {
@@ -241,6 +338,7 @@ export default (context: PluginContext): void => {
                     buffers.set(channel, {
                         timeBuffer,
                         valueBuffer,
+                        downsamplingMode: 'off',
                         bufferCapacity: 0,
                         bufferLength: 0,
                         signalIndex: 0,
@@ -250,7 +348,7 @@ export default (context: PluginContext): void => {
                 rowSignals.push(channel);
                 
                 const buffer = buffers.get(channel)!;
-                const color = context.signalMetadata.getColor(channel);
+                const metadata = context.signalMetadata.get(channel);
                 new WaveformRenderObject(
                     row.mainArea,
                     config,
@@ -258,144 +356,75 @@ export default (context: PluginContext): void => {
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     instancingExt,
-                    color,
+                    metadata,
                     waveformPrograms,
                     channel,
                     row,
-                    channel.renderHint,
                     0,
                 );
-                if (channel.renderHint === RenderMode.Enum) {
-                    new WaveformRenderObject(
-                        row.mainArea,
-                        config,
-                        buffer,
-                        sharedInstanceGeometryBuffer,
-                        sharedBevelJoinGeometryBuffer,
-                        instancingExt,
-                        color,
-                        waveformPrograms,
-                        channel,
-                        row,
-                        RenderMode.Text,
-                        100,
-                    );
+
+                // Add the text renderer to the enum signals
+                const enumTextMetadata = new Proxy(metadata, {
+                    get: (target, prop) => {
+                        if (prop === 'renderMode') {
+                            return target.renderMode === RenderMode.Enum ? RenderMode.Text : RenderMode.Off;
+                        }
+                        return (target as any)[prop];
+                    }
+                });
+                new WaveformRenderObject(
+                    row.mainArea,
+                    config,
+                    buffer,
+                    sharedInstanceGeometryBuffer,
+                    sharedBevelJoinGeometryBuffer,
+                    instancingExt,
+                    enumTextMetadata,
+                    waveformPrograms,
+                    channel,
+                    row,
+                    100,
+                );
+
+                // Create dot overlay buffers
+                const dotTimeBuffer = context.webgl.gl.createBuffer();
+                const dotValueBuffer = context.webgl.gl.createBuffer();
+                if (!dotTimeBuffer || !dotValueBuffer) {
+                    throw new Error('Failed to create WebGL buffers for dot overlay');
                 }
                 
-                // If channel has Lines render hint, create dot overlay
-                if ([RenderMode.Lines, RenderMode.Discrete].includes(channel.renderHint)) {
-                    // Create dot overlay buffers
-                    const dotTimeBuffer = context.webgl.gl.createBuffer();
-                    const dotValueBuffer = context.webgl.gl.createBuffer();
-                    if (!dotTimeBuffer || !dotValueBuffer) {
-                        throw new Error('Failed to create WebGL buffers for dot overlay');
-                    }
-                    
-                    // Create BufferData wrapper for the dot render object
-                    const dotRenderBuffer: BufferData = {
-                        timeBuffer: dotTimeBuffer,
-                        valueBuffer: dotValueBuffer,
-                        bufferCapacity: 0,
-                        bufferLength: 0,
-                        signalIndex: 0,
-                    };
-                    dotOverlayBuffers.set(channel, dotRenderBuffer);
-                    
-                    // Add a render callback that updates the dot buffer and conditionally renders
-                    row.mainArea.addChild({
-                        zIndex: 1,
-                        render: (renderContext, bounds) => {
-                            const { state } = renderContext;
-                            
-                            // Calculate visible time range
-                            const viewStartTime = state.offset / state.pxPerSecond;
-                            const viewEndTime = (state.offset + bounds.width) / state.pxPerSecond;
-                            
-                            // Binary search for visible point range
-                            let startIdx = 0;
-                            let endIdx = channel.time.length - 1;
-                            
-                            // Find first visible point
-                            let left = 0, right = channel.time.length - 1;
-                            while (left <= right) {
-                                const mid = Math.floor((left + right) / 2);
-                                const time = channel.time.valueAt(mid);
-                                if (time < viewStartTime) {
-                                    left = mid + 1;
-                                } else {
-                                    startIdx = mid;
-                                    right = mid - 1;
-                                }
-                            }
-                            
-                            // Find last visible point
-                            left = startIdx;
-                            right = channel.time.length - 1;
-                            while (left <= right) {
-                                const mid = Math.floor((left + right) / 2);
-                                const time = channel.time.valueAt(mid);
-                                if (time <= viewEndTime) {
-                                    endIdx = mid;
-                                    left = mid + 1;
-                                } else {
-                                    right = mid - 1;
-                                }
-                            }
-                            
-                            const visibleCount = endIdx - startIdx + 1;
-                            
-                            const pointVisibilityThreshold = config.dotVisibilityThreshold;
-                            if (visibleCount > pointVisibilityThreshold || visibleCount <= 0) {
-                                dotRenderBuffer.bufferLength = 0;
-                                return false;
-                            }
-                            
-                            // Allocate buffer if needed
-                            if (dotRenderBuffer.bufferCapacity < pointVisibilityThreshold) {
-                                const gl = context.webgl.gl;
-                                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeBuffer);
-                                gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
-                                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
-                                gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
-                                dotRenderBuffer.bufferCapacity = pointVisibilityThreshold;
-                            }
-                            
-                            // Copy visible points to dot buffer
-                            const dotTimeArr = new Float32Array(visibleCount);
-                            const dotValueArr = new Float32Array(visibleCount);
-                            for (let i = 0; i < visibleCount; i++) {
-                                dotTimeArr[i] = channel.time.valueAt(startIdx + i);
-                                dotValueArr[i] = channel.values.valueAt(startIdx + i);
-                            }
-                            
-                            const gl = context.webgl.gl;
-                            gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeBuffer);
-                            gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotTimeArr);
-                            gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
-                            gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotValueArr);
-                            
-                            dotRenderBuffer.bufferLength = visibleCount;
-                            
-                            return false;
+                // Create BufferData wrapper for the dot render object
+                const dotRenderBuffer: BufferData = {
+                    timeBuffer: dotTimeBuffer,
+                    valueBuffer: dotValueBuffer,
+                    bufferCapacity: 0,
+                    bufferLength: 0,
+                    signalIndex: 0,
+                    downsamplingMode: 'off',
+                };
+                dotOverlayBuffers.set(channel, dotRenderBuffer);
+                const dotOverlayMetadata = new Proxy(metadata, {
+                    get: (target, prop) => {
+                        if (prop === 'renderMode') {
+                            return [RenderMode.Lines, RenderMode.Discrete].includes(target.renderMode) ? RenderMode.Dots : RenderMode.Off;
                         }
-                    });
-                    
-                    // Create a WaveformRenderObject for rendering the dots
-                    new WaveformRenderObject(
-                        row.mainArea,
-                        config,
-                        dotRenderBuffer,
-                        sharedInstanceGeometryBuffer,
-                        sharedBevelJoinGeometryBuffer,
-                        instancingExt,
-                        context.signalMetadata.getColor(channel),
-                        waveformPrograms,
-                        channel,
-                        row,
-                        RenderMode.Dots,
-                        2 // Higher zIndex to render on top
-                    );
-                }
+                        return (target as any)[prop];
+                    }
+                });
+                // Create a WaveformRenderObject for rendering the dots
+                new WaveformRenderObject(
+                    row.mainArea,
+                    config,
+                    dotRenderBuffer,
+                    sharedInstanceGeometryBuffer,
+                    sharedBevelJoinGeometryBuffer,
+                    instancingExt,
+                    dotOverlayMetadata,
+                    waveformPrograms,
+                    channel,
+                    row,
+                    2 // Higher zIndex to render on top
+                );
             }
 
             // Add a single hover overlay for the entire row

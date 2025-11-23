@@ -87,53 +87,95 @@ export class ConfigUIGenerator {
                     display: flex;
                     flex-direction: column;
                 }
+                .config-ui-form * {
+                    box-sizing: border-box;
+                }
                 .config-ui-field {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    padding: 8px 0;
-                    border-bottom: 1px solid #374151;
+                    padding: 6px 0;
+                    gap: 8px;
+                }
+                .config-ui-field-with-clear {
+                    display: flex;
+                    align-items: center;
+                    gap: 2px;
+                    min-width: 0;
+                }
+                .config-ui-clear-button {
+                    padding: 4px 6px;
+                    background: transparent;
+                    color: #6b7280;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 12px;
+                    transition: color 0.15s;
+                    min-width: auto;
+                    flex-shrink: 0;
+                    line-height: 1;
+                }
+                .config-ui-clear-button.hidden {
+                    visibility: hidden;
+                    pointer-events: none;
+                }
+                .config-ui-clear-button:hover {
+                    color: #ef4444;
                 }
                 .config-ui-label {
-                    font-size: 13px;
-                    font-weight: 500;
+                    font-size: 12px;
+                    font-weight: 400;
                     color: #d1d5db;
-                    flex: 1;
-                    text-align: left;
+                    min-width: 0;
+                    flex-shrink: 0;
+                    width: 120px;
                 }
                 .config-ui-input {
-                    padding: 6px 10px;
-                    background: #374151;
-                    border: 1px solid #6b7280;
-                    border-radius: 4px;
+                    padding: 4px 8px;
+                    background: #253345;
+                    border: 1px solid #374151;
+                    border-radius: 2px;
                     color: #e5e7eb;
-                    font-size: 13px;
-                    min-width: 120px;
-                    text-align: right;
+                    font-size: 12px;
+                    min-width: 0;
+                    flex: 1;
+                }
+                .config-ui-input:hover {
+                    background: #2a3a4f;
+                    border-color: #4b5563;
+                }
+                .config-ui-input:focus {
+                    outline: 1px solid #3b82f6;
+                    outline-offset: -1px;
+                    background: #253345;
+                    border-color: #3b82f6;
                 }
                 .config-ui-input[type="button"] {
                     text-align: left;
-                    transition: background-color 0.2s;
+                    transition: background-color 0.15s;
+                    cursor: pointer;
                 }
                 .config-ui-input[type="button"]:hover {
-                    background: #4b5563;
+                    background: #2a3a4f;
                 }
                 .config-ui-input[type="button"]:focus {
-                    outline: 2px solid #3b82f6;
-                    outline-offset: -2px;
+                    outline: 1px solid #3b82f6;
+                    outline-offset: -1px;
                 }
                 .config-ui-input[type="number"] {
-                    min-width: 60px;
-                    width: 60px;
+                    min-width: 80px;
                     text-align: left;
                 }
                 .config-ui-input select {
                     text-align: left;
                 }
                 .config-ui-checkbox {
-                    width: 18px;
-                    height: 18px;
+                    width: 16px;
+                    height: 16px;
                     cursor: pointer;
+                    margin: 0;
+                    accent-color: #3b82f6;
+                    flex-shrink: 0;
                 }
                 .action-button {
                     width: 100%;
@@ -158,24 +200,111 @@ export class ConfigUIGenerator {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    padding: 8px 0;
-                    border-bottom: 1px solid #374151;
+                    padding: 6px 0;
                     cursor: pointer;
                     user-select: none;
                 }
                 .config-ui-record-header-title {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #cccccc;
+                }
+                .config-ui-record-header-icon {
+                    transition: transform 0.15s;
+                    color: #858585;
+                    font-size: 10px;
+                }
+                .config-ui-record-content {
+                    padding: 0 0 8px 16px;
+                }
+                .config-ui-array-container {
+                    margin-bottom: 8px;
+                }
+                .config-ui-array-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #374151;
+                }
+                .config-ui-array-header-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    flex: 1;
+                }
+                .config-ui-array-header-title {
                     font-size: 13px;
                     font-weight: 500;
                     color: #d1d5db;
-                    flex: 1;
-                    text-align: left;
+                    cursor: pointer;
+                    user-select: none;
                 }
-                .config-ui-record-header-icon {
+                .config-ui-array-header-icon {
                     transition: transform 0.2s;
                     color: #9ca3af;
+                    cursor: pointer;
                 }
-                .config-ui-record-content {
+                .config-ui-array-add-button {
+                    padding: 4px 12px;
+                    background: #374151;
+                    color: #e5e7eb;
+                    border: 1px solid #4b5563;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    transition: all 0.2s;
+                }
+                .config-ui-array-add-button:hover {
+                    background: #4b5563;
+                    border-color: #6b7280;
+                }
+                .config-ui-array-content {
                     padding: 0;
+                }
+                .config-ui-array-item {
+                    border: 1px solid #374151;
+                    border-radius: 2px;
+                    padding: 8px;
+                    margin: 4px 0;
+                    background: #111827;
+                }
+                .config-ui-array-item-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                    padding-bottom: 6px;
+                    border-bottom: 1px solid #374151;
+                }
+                .config-ui-array-item-title {
+                    font-size: 11px;
+                    color: #858585;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .config-ui-array-item-controls {
+                    display: flex;
+                    gap: 4px;
+                }
+                .config-ui-array-item-button {
+                    padding: 2px 6px;
+                    background: transparent;
+                    color: #858585;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 11px;
+                    transition: color 0.15s;
+                }
+                .config-ui-array-item-button:hover {
+                    color: #cccccc;
+                }
+                .config-ui-array-item-button.delete:hover {
+                    color: #ef4444;
+                }
+                .config-ui-array-item-fields {
+                    display: flex;
+                    flex-direction: column;
                 }
             </style>
         `;
@@ -233,10 +362,22 @@ export class ConfigUIGenerator {
         path: string,
         options: ConfigUIOptions
     ): void {
+        // Check if this is an array type
+        if ((schema as any)._tag === 'ArrayType') {
+            this.generateArraySection(key, schema, value, parentValues, rootValues, container, path, options);
+            return;
+        }
+
         // Check if this is a dictionary/record type (for dynamic keys)
         if ((schema as any)._tag === 'DictionaryType' || 
             (schema as any)._tag === 'RecordType') {
             this.generateCollapsibleSection(key, schema, value, parentValues, rootValues, container, path, options, true);
+            return;
+        }
+
+        // Check if this is a partial type (unwrap and treat as interface)
+        if ((schema as any)._tag === 'PartialType') {
+            this.generateCollapsibleSection(key, schema, value, parentValues, rootValues, container, path, options, false);
             return;
         }
 
@@ -247,7 +388,7 @@ export class ConfigUIGenerator {
         }
 
         // Generate a simple field for primitive types
-        this.generateSimpleField(key, schema, value, parentValues, rootValues, container, path, options);
+        this.generateSimpleField(key, schema, value, parentValues, rootValues, container, path, options, false);
     }
 
     private static generateSimpleField(
@@ -258,7 +399,8 @@ export class ConfigUIGenerator {
         rootValues: any,
         container: HTMLElement,
         path: string,
-        options: ConfigUIOptions
+        options: ConfigUIOptions,
+        allowClear: boolean = false
     ): void {
         const fieldContainer = document.createElement('div');
         fieldContainer.className = 'config-ui-field';
@@ -268,27 +410,328 @@ export class ConfigUIGenerator {
         label.className = 'config-ui-label';
         fieldContainer.appendChild(label);
 
-        const input = this.createInputForType(schema, value);
-        input.className = 'config-ui-input';
+        if (allowClear) {
+            const inputContainer = document.createElement('div');
+            inputContainer.className = 'config-ui-field-with-clear';
 
-        // Update values object when input changes
-        input.addEventListener('change', () => {
-            const newValue = this.getInputValue(input, schema);
-            parentValues[key] = newValue;
+            const input = this.createInputForType(schema, value);
+            input.className = 'config-ui-input';
+
+            const clearButton = document.createElement('button');
+            clearButton.type = 'button';
+            clearButton.className = 'config-ui-clear-button';
+            if (value === undefined) {
+                clearButton.classList.add('hidden');
+            }
+            clearButton.textContent = '✕';
+            clearButton.title = 'Clear field';
+
+            const updateValue = () => {
+                const newValue = this.getInputValue(input, schema);
+                parentValues[key] = newValue;
+                clearButton.classList.remove('hidden');
+                options.onUpdate(rootValues);
+            };
+
+            input.addEventListener('change', updateValue);
+            input.addEventListener('input', () => {
+                if (input instanceof HTMLInputElement && (input.type === 'text' || input.type === 'number')) {
+                    updateValue();
+                }
+            });
+
+            clearButton.addEventListener('click', () => {
+                delete parentValues[key];
+                clearButton.classList.add('hidden');
+                if (input instanceof HTMLInputElement) {
+                    if (input.type === 'checkbox') {
+                        input.checked = false;
+                    } else {
+                        input.value = '';
+                    }
+                } else if (input instanceof HTMLSelectElement) {
+                    input.value = '';
+                } else if (input instanceof HTMLButtonElement) {
+                    input.textContent = 'not set';
+                }
+                options.onUpdate(rootValues);
+            });
+
+            inputContainer.appendChild(input);
+            inputContainer.appendChild(clearButton);
+            fieldContainer.appendChild(inputContainer);
+        } else {
+            const input = this.createInputForType(schema, value);
+            input.className = 'config-ui-input';
+
+            input.addEventListener('change', () => {
+                const newValue = this.getInputValue(input, schema);
+                parentValues[key] = newValue;
+                options.onUpdate(rootValues);
+            });
+
+            input.addEventListener('input', () => {
+                const newValue = this.getInputValue(input, schema);
+                parentValues[key] = newValue;
+                if (input instanceof HTMLInputElement && (input.type === 'text' || input.type === 'number')) {
+                    options.onUpdate(rootValues);
+                }
+            });
+
+            fieldContainer.appendChild(input);
+        }
+
+        container.appendChild(fieldContainer);
+    }
+
+    private static generateArraySection(
+        key: string,
+        schema: t.Type<any>,
+        value: any,
+        parentValues: any,
+        rootValues: any,
+        container: HTMLElement,
+        path: string,
+        options: ConfigUIOptions
+    ): void {
+        const arrayContainer = document.createElement('div');
+        arrayContainer.className = 'config-ui-array-container';
+
+        // Create array header with collapse toggle and add button
+        const header = document.createElement('div');
+        header.className = 'config-ui-array-header';
+
+        const headerLeft = document.createElement('div');
+        headerLeft.className = 'config-ui-array-header-left';
+
+        const collapseIcon = document.createElement('span');
+        collapseIcon.textContent = '▼';
+        collapseIcon.className = 'config-ui-array-header-icon';
+
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = this.formatFieldName(key);
+        headerTitle.className = 'config-ui-array-header-title';
+
+        headerLeft.appendChild(collapseIcon);
+        headerLeft.appendChild(headerTitle);
+
+        const addButton = document.createElement('button');
+        addButton.type = 'button';
+        addButton.textContent = '+ Add';
+        addButton.className = 'config-ui-array-add-button';
+
+        header.appendChild(headerLeft);
+        header.appendChild(addButton);
+
+        // Create content area
+        const content = document.createElement('div');
+        content.className = 'config-ui-array-content';
+
+        const currentArray = Array.isArray(value) ? value : [];
+        
+        if (!parentValues[key]) {
+            parentValues[key] = currentArray;
+        }
+
+        const itemSchema = (schema as any).type;
+
+        // Function to render all array items
+        const renderArrayItems = () => {
+            content.innerHTML = '';
+            const arr = parentValues[key];
+            arr.forEach((item: any, index: number) => {
+                const itemContainer = document.createElement('div');
+                itemContainer.className = 'config-ui-array-item';
+
+                // Item header with index and controls
+                const itemHeader = document.createElement('div');
+                itemHeader.className = 'config-ui-array-item-header';
+
+                const itemTitle = document.createElement('div');
+                itemTitle.className = 'config-ui-array-item-title';
+                itemTitle.textContent = `Item ${index + 1}`;
+
+                const itemControls = document.createElement('div');
+                itemControls.className = 'config-ui-array-item-controls';
+
+                // Move up button
+                if (index > 0) {
+                    const moveUpButton = document.createElement('button');
+                    moveUpButton.type = 'button';
+                    moveUpButton.textContent = '↑';
+                    moveUpButton.className = 'config-ui-array-item-button';
+                    moveUpButton.addEventListener('click', () => {
+                        const temp = arr[index];
+                        arr[index] = arr[index - 1];
+                        arr[index - 1] = temp;
+                        renderArrayItems();
+                        options.onUpdate(rootValues);
+                    });
+                    itemControls.appendChild(moveUpButton);
+                }
+
+                // Move down button
+                if (index < arr.length - 1) {
+                    const moveDownButton = document.createElement('button');
+                    moveDownButton.type = 'button';
+                    moveDownButton.textContent = '↓';
+                    moveDownButton.className = 'config-ui-array-item-button';
+                    moveDownButton.addEventListener('click', () => {
+                        const temp = arr[index];
+                        arr[index] = arr[index + 1];
+                        arr[index + 1] = temp;
+                        renderArrayItems();
+                        options.onUpdate(rootValues);
+                    });
+                    itemControls.appendChild(moveDownButton);
+                }
+
+                // Delete button
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.textContent = '✕';
+                deleteButton.className = 'config-ui-array-item-button delete';
+                deleteButton.addEventListener('click', () => {
+                    arr.splice(index, 1);
+                    renderArrayItems();
+                    options.onUpdate(rootValues);
+                });
+                itemControls.appendChild(deleteButton);
+
+                itemHeader.appendChild(itemTitle);
+                itemHeader.appendChild(itemControls);
+                itemContainer.appendChild(itemHeader);
+
+                // Item fields
+                const itemFields = document.createElement('div');
+                itemFields.className = 'config-ui-array-item-fields';
+
+                // Generate fields for the item
+                if ((itemSchema as any)._tag === 'InterfaceType') {
+                    const props = (itemSchema as any).props;
+                    Object.entries(props).forEach(([propKey, propSchema]) => {
+                        this.generateFormField(
+                            propKey,
+                            propSchema as t.Type<any>,
+                            item[propKey],
+                            item,
+                            rootValues,
+                            itemFields,
+                            `${path}.${index}.${propKey}`,
+                            options
+                        );
+                    });
+                } else if ((itemSchema as any)._tag === 'PartialType') {
+                    const props = (itemSchema as any).props;
+                    Object.entries(props).forEach(([propKey, propSchema]) => {
+                        this.generateSimpleField(
+                            propKey,
+                            propSchema as t.Type<any>,
+                            item[propKey],
+                            item,
+                            rootValues,
+                            itemFields,
+                            `${path}.${index}.${propKey}`,
+                            options,
+                            true
+                        );
+                    });
+                } else {
+                    // Handle primitive array items
+                    this.generateSimpleField(
+                        `value`,
+                        itemSchema,
+                        item,
+                        arr,
+                        rootValues,
+                        itemFields,
+                        `${path}.${index}`,
+                        {
+                            ...options,
+                            onUpdate: (newConfig) => {
+                                arr[index] = arr['value'];
+                                delete arr['value'];
+                                options.onUpdate(rootValues);
+                            }
+                        }
+                    );
+                }
+
+                itemContainer.appendChild(itemFields);
+                content.appendChild(itemContainer);
+            });
+        };
+
+        renderArrayItems();
+
+        // Add button functionality
+        addButton.addEventListener('click', () => {
+            const arr = parentValues[key];
+            // Create a default item based on schema
+            let newItem: any;
+            if ((itemSchema as any)._tag === 'InterfaceType') {
+                newItem = {};
+                const props = (itemSchema as any).props;
+                Object.entries(props).forEach(([propKey, propSchema]) => {
+                    newItem[propKey] = this.getDefaultValueForSchema(propSchema as t.Type<any>);
+                });
+            } else {
+                newItem = this.getDefaultValueForSchema(itemSchema);
+            }
+            arr.push(newItem);
+            renderArrayItems();
             options.onUpdate(rootValues);
         });
 
-        input.addEventListener('input', () => {
-            const newValue = this.getInputValue(input, schema);
-            parentValues[key] = newValue;
-            // Trigger immediate update for text inputs
-            if (input instanceof HTMLInputElement && (input.type === 'text' || input.type === 'number')) {
-                options.onUpdate(rootValues);
-            }
-        });
+        // Toggle collapse functionality
+        let isCollapsed = false;
+        const toggleCollapse = () => {
+            isCollapsed = !isCollapsed;
+            content.style.display = isCollapsed ? 'none' : 'block';
+            collapseIcon.style.transform = isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+        };
+        collapseIcon.addEventListener('click', toggleCollapse);
+        headerTitle.addEventListener('click', toggleCollapse);
 
-        fieldContainer.appendChild(input);
-        container.appendChild(fieldContainer);
+        arrayContainer.appendChild(header);
+        arrayContainer.appendChild(content);
+        container.appendChild(arrayContainer);
+    }
+
+    private static getDefaultValueForSchema(schema: t.Type<any>): any {
+        const schemaName = schema.name;
+        const schemaTag = (schema as any)._tag;
+
+        if (schemaName === 'string' || schemaName === 'Keybinding') {
+            return '';
+        } else if (schemaName === 'number') {
+            return 0;
+        } else if (schemaName === 'boolean') {
+            return false;
+        } else if (schemaTag === 'ArrayType') {
+            return [];
+        } else if (schemaTag === 'InterfaceType') {
+            const obj: any = {};
+            const props = (schema as any).props;
+            Object.entries(props).forEach(([key, propSchema]) => {
+                obj[key] = this.getDefaultValueForSchema(propSchema as t.Type<any>);
+            });
+            return obj;
+        } else if (schemaTag === 'UnionType') {
+            // For union types, try to get the first literal value
+            const types = (schema as any).types;
+            for (const type of types) {
+                if ((type as any)._tag === 'LiteralType') {
+                    return (type as any).value;
+                }
+            }
+            return '';
+        } else if (schemaTag === 'PartialType') {
+            // For partial types, return an empty object
+            return {};
+        } else {
+            return null;
+        }
     }
 
     private static generateCollapsibleSection(
@@ -337,11 +780,13 @@ export class ConfigUIGenerator {
                 this.generateFormField(entryKey, entrySchema, entryValue, currentValue, rootValues, content, `${path}.${entryKey}`, options);
             });
         } else {
-            // Generate fields for each property in the interface
-            const props = (schema as any).props;
+            // Generate fields for each property in the interface or partial
+            let props = (schema as any).props;
+            const isPartial = (schema as any)._tag === 'PartialType';
+            
             Object.entries(props).forEach(([propKey, propSchema]) => {
                 const propValue = currentValue[propKey];
-                this.generateFormField(propKey, propSchema as t.Type<any>, propValue, currentValue, rootValues, content, `${path}.${propKey}`, options);
+                this.generateSimpleField(propKey, propSchema as t.Type<any>, propValue, currentValue, rootValues, content, `${path}.${propKey}`, options, isPartial);
             });
         }
 

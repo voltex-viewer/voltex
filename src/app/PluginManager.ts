@@ -24,6 +24,7 @@ interface PluginSignalSourceManager extends SignalSourceManager {
 
 interface PluginData {
     rowsChangedCallbacks: RowsChangedCallback[];
+    configChangedCallbacks: ((pluginName: string, newConfig: any) => void)[];
     beforeRenderCallbacks: (() => boolean)[];
     afterRenderCallbacks: (() => boolean)[];
     sidebarEntries: SidebarEntryArgs[];
@@ -58,6 +59,10 @@ export class PluginManager {
     ) {
         rowManager.onChange((event: RowChangedEvent) => {
             this.onRowsChanged(event);
+        });
+
+        configManager.onConfigChanged((pluginName, newConfig, _oldConfig) => {
+            this.notifyConfigChanged(pluginName, newConfig);
         });
     }
 
@@ -110,6 +115,10 @@ export class PluginManager {
             onRowsChanged: (callback: RowsChangedCallback) => {
                 const data = this.pluginData.get(plugin)!;
                 data.rowsChangedCallbacks.push(callback);
+            },
+            onConfigChanged: (callback: (pluginName: string, newConfig: any) => void) => {
+                const data = this.pluginData.get(plugin)!;
+                data.configChangedCallbacks.push(callback);
             },
             onBeforeRender: (callback: () => boolean) => {
                 const data = this.pluginData.get(plugin)!;
@@ -186,6 +195,7 @@ export class PluginManager {
         this.plugins.push(plugin);
         this.pluginData.set(plugin, {
             rowsChangedCallbacks: [],
+            configChangedCallbacks: [],
             beforeRenderCallbacks: [],
             afterRenderCallbacks: [],
             sidebarEntries: [],
@@ -543,5 +553,21 @@ export class PluginManager {
 
     executeKeybinding(keybinding: string): boolean {
         return this.commandManager.executeCommand(keybinding);
+    }
+
+    notifyConfigChanged(pluginName: string, newConfig: any): void {
+        const plugin = this.plugins.find(p => p.metadata.name === pluginName);
+        if (!plugin) return;
+
+        const data = this.pluginData.get(plugin);
+        if (!data) return;
+
+        for (const callback of data.configChangedCallbacks) {
+            try {
+                callback(pluginName, newConfig);
+            } catch (error) {
+                console.error(`Error in configChanged callback of plugin ${plugin.metadata.name}:`, error);
+            }
+        }
     }
 }

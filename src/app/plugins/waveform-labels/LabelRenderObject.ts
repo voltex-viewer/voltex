@@ -63,7 +63,7 @@ export class LabelRenderObject {
             const channelHeight = bounds.height / this.channels.length;
 
             this.channels.forEach((channel, index) => {
-                const channelColor = this.signalMetadata.getColor(channel);
+                const channelColor = this.signalMetadata.get(channel).color;
                 const y = index * borderHeight;
                 const borderVertices = new Float32Array([
                     0, y,

@@ -1,4 +1,4 @@
-import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent } from '@voltex-viewer/plugin-api';
+import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent, SignalMetadata } from '@voltex-viewer/plugin-api';
 import { type WaveformConfig } from './WaveformConfig';
 import type { SignalTooltipData, TooltipData } from './WaveformTooltipRenderObject';
 import type { BufferData } from './WaveformRendererPlugin';
@@ -69,12 +69,23 @@ export class WaveformRowHoverOverlayRenderObject {
             const bufferData = signalBuffers.get(signal);
             if (bufferData) {
                 // Create a highlight signal that will hold just the highlighted data
-                const render = signal.renderHint === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots;
+                const baseMetadata = this.context.signalMetadata.get(signal);
+                const highlightMetadata = new Proxy<SignalMetadata>(baseMetadata, {
+                    get: (target, prop) => {
+                        if (prop === 'color') {
+                            return this.createHighlightColor(target.color);
+                        } else if (prop === 'renderMode') {
+                            return target.renderMode === RenderMode.Enum ? RenderMode.Enum : RenderMode.Dots;
+                        }
+                        return (target as any)[prop];
+                    }
+                });
+
                 const highlightSignal = new HighlightSignal(
                     signal.source,
                     new ArraySequence(),
                     new ArraySequence(),
-                    render
+                    RenderMode.Dots // This is ignored as the render metadata proxy provides the correct mode
                 );
                 this.highlightSignals.set(signal, highlightSignal);
 
@@ -88,6 +99,7 @@ export class WaveformRowHoverOverlayRenderObject {
                 const bufferData: BufferData = {
                     timeBuffer: highlightTimeBuffer,
                     valueBuffer: highlightValueBuffer,
+                    downsamplingMode: 'off',
                     bufferCapacity: 0,
                     bufferLength: 0,
                     signalIndex: 0,
@@ -96,8 +108,6 @@ export class WaveformRowHoverOverlayRenderObject {
                 // Store the buffer references for direct access
                 this.highlightBuffers.set(signal, bufferData);
 
-                const baseColor = this.context.signalMetadata.getColor(signal);
-                const highlightColor = this.createHighlightColor(baseColor);
                 const highlightConfig = {
                     ...config,
                     dotSize: config.dotSize * 1.5,
@@ -111,11 +121,10 @@ export class WaveformRowHoverOverlayRenderObject {
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     instancingExt,
-                    highlightColor,
+                    highlightMetadata,
                     waveformPrograms,
                     highlightSignal, // Use the highlight signal instead of the original
                     row,
-                    render,
                     95
                 );
             }
@@ -171,16 +180,17 @@ export class WaveformRowHoverOverlayRenderObject {
 
         // Find data for all signals at this time and render highlight dots
         for (const signal of this.signals) {
-            const dataPoint = this.getSignalValueAtTime(signal, mouseTimeDouble);
+            const signalMetadata = this.context.signalMetadata.get(signal);
+            const renderMode = signalMetadata.renderMode;
+            const dataPoint = this.getSignalValueAtTime(signal, mouseTimeDouble, renderMode);
             if (dataPoint !== null && dataPoint.display !== "null") {
-                const color = this.context.signalMetadata.getColor(signal);
                 signalData.push({
                     ...dataPoint,
                     signal: signal,
-                    color: color
+                    color: signalMetadata.color,
                 });
                 
-                this.updateHighlightSignal(signal, dataPoint.dataIndex, context);
+                this.updateHighlightSignal(signal, dataPoint.dataIndex, context, renderMode);
             }
         }
 
@@ -203,7 +213,8 @@ export class WaveformRowHoverOverlayRenderObject {
     private updateHighlightSignal(
         signal: Signal,
         dataIndex: number,
-        context: RenderContext
+        context: RenderContext,
+        renderMode: RenderMode
     ): void {
         const highlightSignal = this.highlightSignals.get(signal);
         const bufferData = this.signalBuffers.get(signal);
@@ -214,7 +225,7 @@ export class WaveformRowHoverOverlayRenderObject {
         if (dataIndex >= maxUpdateIndex) return;
 
         let indices = [];
-        if (signal.renderHint === RenderMode.Enum) {
+        if (renderMode === RenderMode.Enum) {
             if (dataIndex >= maxUpdateIndex - 1) return;
             
             indices.push(dataIndex, dataIndex + 1);
@@ -249,7 +260,7 @@ export class WaveformRowHoverOverlayRenderObject {
         }
     }
 
-    private getSignalValueAtTime(signal: Signal, time: number): { time: number; value: number; display: number | string; dataIndex: number } | null {
+    private getSignalValueAtTime(signal: Signal, time: number, renderMode: RenderMode): { time: number; value: number; display: number | string; dataIndex: number } | null {
         const bufferData = this.signalBuffers.get(signal);
         if (!bufferData) return null;
         
@@ -273,7 +284,7 @@ export class WaveformRowHoverOverlayRenderObject {
         
         let closestIndex = left;
         
-        if (signal.renderHint === RenderMode.Enum) {
+        if (renderMode === RenderMode.Enum) {
             // For enum signals, always look leftwards (backwards in time)
             // Find the last data point that is <= the mouse time
             if (left < maxUpdateIndex) {

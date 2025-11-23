@@ -23,6 +23,8 @@ import voltexFunction from './voltex/voltexPlugin';
 import voltexMetadata from './voltex/plugin.json';
 import CursorFunction from './cursor/CursorPlugin';
 import CursorMetadata from './cursor/plugin.json';
+import SignalPropertiesFunction from './signal-properties/SignalPropertiesPlugin';
+import SignalPropertiesMetadata from './signal-properties/plugin.json';
 
 const FpsPlugin: PluginModule = {
     plugin: FpsPluginFunction,
@@ -84,6 +86,11 @@ const CursorPlugin: PluginModule = {
     metadata: CursorMetadata,
 }
 
+const SignalPropertiesPlugin: PluginModule = {
+    plugin: SignalPropertiesFunction,
+    metadata: SignalPropertiesMetadata,
+}
+
 export function getAvailablePlugins(): PluginModule[] {
     return [
         FpsPlugin,
@@ -98,5 +105,6 @@ export function getAvailablePlugins(): PluginModule[] {
         csvLoaderPlugin,
         voltexPlugin,
         CursorPlugin,
+        SignalPropertiesPlugin,
     ];
 }

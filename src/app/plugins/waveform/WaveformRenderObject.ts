@@ -1,4 +1,4 @@
-import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal } from "@voltex-viewer/plugin-api";
+import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal, SignalMetadata } from "@voltex-viewer/plugin-api";
 import type { BufferData } from './WaveformRendererPlugin';
 import { WaveformConfig } from './WaveformConfig';
 import { WaveformShaders } from './WaveformShaders';
@@ -11,11 +11,10 @@ export class WaveformRenderObject {
         private sharedInstanceGeometryBuffer: WebGLBuffer,
         private sharedBevelJoinGeometryBuffer: WebGLBuffer,
         private instancingExt: ANGLE_instanced_arrays,
-        private color: string,
+        private metadata: SignalMetadata,
         private waveformPrograms: WaveformShaders,
         private signal: Signal,
         private row: Row,
-        private renderMode: RenderMode,
         zIndex: number = 0
     ) {
         parent.addChild({
@@ -28,7 +27,7 @@ export class WaveformRenderObject {
         const {render, state} = context;
         const { gl } = render;
         
-        const color = this.color;
+        const color = this.metadata.color;
             
         // Calculate left time with high precision
         const leftTimeDouble = state.offset / state.pxPerSecond;
@@ -46,7 +45,7 @@ export class WaveformRenderObject {
             gl.uniform1f(gl.getUniformLocation(program, 'u_timeOffsetLow'), timeOffsetLow);
             gl.uniform1f(gl.getUniformLocation(program, 'u_pxPerSecond'), state.pxPerSecond);
             
-            gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.signal.renderHint == RenderMode.Discrete ? 1 : 0);
+            gl.uniform1i(gl.getUniformLocation(program, 'u_discrete'), this.metadata.renderMode == RenderMode.Discrete ? 1 : 0);
 
             // Apply row-specific y-scale and y-offset
             gl.uniform1f(gl.getUniformLocation(program, 'u_yScale'), this.row.yScale);
@@ -81,7 +80,7 @@ export class WaveformRenderObject {
         let linesBindUniforms = bindUniforms(this.config.lineWidth);
         let dotsBindUniforms = bindUniforms(this.config.dotSize);
         
-        const renderMode = this.renderMode;
+        const renderMode = this.metadata.renderMode;
         if (renderMode === RenderMode.Lines) {
             this.renderInstancedLines(gl, this.waveformPrograms.instancedLine, linesBindUniforms);
             this.renderBevelJoins(gl, this.waveformPrograms.bevelJoin, linesBindUniforms);

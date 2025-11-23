@@ -4,7 +4,8 @@ import { GridLinePosition } from './HorizontalGridPlugin';
 export class HorizontalGridLabelRenderObject {
     constructor(
         parent: RenderObject,
-        private calculateGridPositions: (bounds: { height: number }) => GridLinePosition[]
+        private calculateGridPositions: (bounds: { height: number }) => GridLinePosition[],
+        private visible: () => boolean,
     ) {
         parent.addChild({
             zIndex: 100,
@@ -76,6 +77,9 @@ export class HorizontalGridLabelRenderObject {
     }
     
     render(context: RenderContext, bounds: RenderBounds): boolean {
+        if (!this.visible()) {
+            return false;
+        }
         const { render } = context;
         const { gl, utils } = render;
         

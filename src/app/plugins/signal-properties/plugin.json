@@ -1,0 +1,7 @@
+{
+  "name": "@voltex-viewer/signal-properties-plugin",
+  "displayName": "Signal Properties",
+  "version": "1.0.0",
+  "description": "Controls signal rendering properties via pattern matching",
+  "author": "Voltex Team"
+}

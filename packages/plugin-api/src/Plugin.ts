@@ -1,5 +1,11 @@
 import * as t from 'io-ts';
 
+export const DEFAULT_VALUE = Symbol('DEFAULT_VALUE');
+
+export type WithDefaults<T> = {
+    [P in keyof T]?: T[P] | typeof DEFAULT_VALUE;
+};
+
 // Branded type for keybindings
 export interface KeybindingBrand {
     readonly Keybinding: unique symbol;
@@ -58,6 +64,7 @@ export enum RenderMode {
     Dots = 'dots',
     Enum = 'enum',
     Text = 'text',
+    Off = 'off',
 }
 
 export interface MeasureInfo {
@@ -153,9 +160,14 @@ export interface FileSaveHandler {
     handler: (file: FileSystemWritableFileStream) => Promise<void>;
 }
 
+export interface SignalMetadata {
+    color: string;
+    renderMode: RenderMode;
+}
+
 export interface SignalMetadataManager {
-    getColor(signal: Signal): string;
-    setColor(signal: Signal, color: string): void;
+    get(signal: Signal): SignalMetadata;
+    set(signal: Signal, value: WithDefaults<SignalMetadata>): void;
 }
 
 export interface RenderObjectArgs extends Partial<MouseEventHandlers> {
@@ -178,6 +190,7 @@ export interface PluginContext {
     renderProfiler: ReadOnlyRenderProfiler;
     rootRenderObject: RenderObject,
     onRowsChanged(callback: RowsChangedCallback): void;
+    onConfigChanged(callback: (pluginName: string, newConfig: any) => void): void;
     onBeforeRender(callback: () => boolean): void;
     onAfterRender(callback: () => boolean): void;
     addSidebarEntry(entry: SidebarEntryArgs): SidebarEntry;

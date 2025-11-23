@@ -153,7 +153,7 @@ export class CursorSidebar {
         if (!contentDiv) return;
 
         if (this.cursors.length === 0) {
-            const keybinding = String(this.config.keybindings['cursor.add']);
+            const keybinding = String(this.config.keybindings['add']);
             contentDiv.innerHTML = `<div class="no-cursors">No cursors placed. Press "${keybinding}" to add a cursor.</div>`;
             return;
         }

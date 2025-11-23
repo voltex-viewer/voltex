@@ -97,15 +97,16 @@ function getGridSpacing(valueRange: number, rowHeight: number): number {
 export default (context: PluginContext): void => {
     context.onRowsChanged((event) => {
         for (const row of event.added) {
-            if (row.signals.length > 0 && row.signals.some(s => s.renderHint != RenderMode.Enum)) {
+            if (row.signals.length > 0) {
                 // Create a closed-over function that knows about this specific row
                 const calculateGridPositionsForRow = (bounds: { height: number }) => 
                     calculateGridLinePositions(row, bounds);
-                                                                                                                                                
+                const visible = () => row.signals.some(s => context.signalMetadata.get(s).renderMode != RenderMode.Enum);
+
                 // Add grid lines with lower z-index
-                new HorizontalGridRenderObject(row.mainArea, calculateGridPositionsForRow);
+                new HorizontalGridRenderObject(row.mainArea, calculateGridPositionsForRow, visible);
                 // Add labels with higher z-index to render on top
-                new HorizontalGridLabelRenderObject(row.mainArea, calculateGridPositionsForRow);
+                new HorizontalGridLabelRenderObject(row.mainArea, calculateGridPositionsForRow, visible);
             }
         }
     });
