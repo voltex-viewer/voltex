@@ -164,14 +164,13 @@ export default (context: PluginContext): void => {
                         const valuesConstructor = metadata.valuesSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.valuesSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
                         
                         // Apply default conversions for bigint types if no custom conversion provided
-
-                        function wrapConversion(type: NumberType, conversion: ((x: number) => string | number) | undefined): undefined | ((x: bigint) => string | number) | ((x: number) => string | number) {
+                        function wrapConversion(type: NumberType, conversion: ((x: number) => string | number) | undefined): undefined | ((x: bigint) => string | bigint | number) | ((x: number) => string | number) {
                             if (type === NumberType.Float64) {
                                 return conversion;
                             } else if (conversion) {
                                 return (x: bigint) => conversion(Number(x));
                             } else {
-                                return (x: bigint) => x.toString();
+                                return (x: bigint) => x;
                             }
                         }
                         

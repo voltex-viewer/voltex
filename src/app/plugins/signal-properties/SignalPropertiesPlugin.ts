@@ -10,6 +10,7 @@ const SignalPropertyRuleSchema = t.partial({
         t.literal(RenderMode.Enum),
         t.literal(RenderMode.Text),
     ]),
+    display: t.union([t.literal('decimal'), t.literal('hex')]),
 });
 
 const SignalPropertyConfigSchema = t.type({
@@ -37,6 +38,7 @@ export default (context: PluginContext): void => {
                 const metadata: WithDefaults<SignalMetadata> = {
                     color: DEFAULT_VALUE,
                     renderMode: DEFAULT_VALUE,
+                    display: DEFAULT_VALUE,
                 };
 
                 for (const rule of config.rules) {
@@ -60,6 +62,9 @@ export default (context: PluginContext): void => {
                         }
                         if (rule.properties.renderMode !== undefined) {
                             metadata.renderMode = rule.properties.renderMode;
+                        }
+                        if (rule.properties.display !== undefined) {
+                            metadata.display = rule.properties.display;
                         }
                     }
                 }

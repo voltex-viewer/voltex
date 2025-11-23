@@ -17,16 +17,10 @@ function generateDefaultColor(name: string): string {
     return defaultColors[Math.abs(hash) % defaultColors.length];
 }
 
-function defaultMetadata(signal: Signal): SignalMetadata {
-    return {
-        color: generateDefaultColor(signal.source.name[signal.source.name.length - 1]),
-        renderMode: undefined!,
-    };
-}
-
 type InternalSignalMetadata = {
     color: string | typeof DEFAULT_VALUE;
     renderMode: RenderMode | typeof DEFAULT_VALUE | undefined;
+    display: 'decimal' | 'hex' | typeof DEFAULT_VALUE;
 };
 
 export class SignalMetadataManagerImpl implements SignalMetadataManager {
@@ -39,6 +33,7 @@ export class SignalMetadataManagerImpl implements SignalMetadataManager {
             internalMetadata = {
                 color: generateDefaultColor(signal.source.name[signal.source.name.length - 1]),
                 renderMode: undefined,
+                display: 'decimal',
             };
             this.metadata.set(signalName, internalMetadata);
         }
@@ -56,6 +51,13 @@ export class SignalMetadataManagerImpl implements SignalMetadataManager {
                     const value = target.color;
                     if (value === DEFAULT_VALUE) {
                         return generateDefaultColor(signal.source.name[signal.source.name.length - 1]);
+                    }
+                    return value;
+                }
+                if (prop === 'display') {
+                    const value = target.display;
+                    if (value === DEFAULT_VALUE) {
+                        return 'decimal';
                     }
                     return value;
                 }

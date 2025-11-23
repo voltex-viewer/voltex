@@ -6,7 +6,7 @@ export interface SignalTooltipData {
     signal: Signal;
     time: number;
     value: number;
-    display: number | string;
+    display: string;
     dataIndex: number;
     color: string;
 }
@@ -35,7 +35,7 @@ export class WaveformTooltipRenderObject {
         try {
             const { signal, value, time, color, dataIndex, display } = signalData;
             const name = signal.source.name;
-            
+                        
             const formatFunction = new Function(
                 'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'display',
                 `return ${this.config.formatTooltip}`);

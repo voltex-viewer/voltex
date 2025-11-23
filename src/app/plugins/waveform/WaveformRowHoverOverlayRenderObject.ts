@@ -1,4 +1,4 @@
-import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent, SignalMetadata } from '@voltex-viewer/plugin-api';
+import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent, SignalMetadata, formatValueForDisplay } from '@voltex-viewer/plugin-api';
 import { type WaveformConfig } from './WaveformConfig';
 import type { SignalTooltipData, TooltipData } from './WaveformTooltipRenderObject';
 import type { BufferData } from './WaveformRendererPlugin';
@@ -14,7 +14,7 @@ class HighlightSignal implements Signal {
     ) {
     }
 
-    updateData(time: number[], values: number[], converted?: (number | string)[]): void {
+    updateData(time: number[], values: number[], converted?: (number | bigint | string)[]): void {
         this.time.updateData(time);
         this.values.updateData(values, converted);
     }
@@ -181,8 +181,7 @@ export class WaveformRowHoverOverlayRenderObject {
         // Find data for all signals at this time and render highlight dots
         for (const signal of this.signals) {
             const signalMetadata = this.context.signalMetadata.get(signal);
-            const renderMode = signalMetadata.renderMode;
-            const dataPoint = this.getSignalValueAtTime(signal, mouseTimeDouble, renderMode);
+            const dataPoint = this.getSignalValueAtTime(signal, mouseTimeDouble, signalMetadata);
             if (dataPoint !== null && dataPoint.display !== "null") {
                 signalData.push({
                     ...dataPoint,
@@ -190,7 +189,7 @@ export class WaveformRowHoverOverlayRenderObject {
                     color: signalMetadata.color,
                 });
                 
-                this.updateHighlightSignal(signal, dataPoint.dataIndex, context, renderMode);
+                this.updateHighlightSignal(signal, dataPoint.dataIndex, context, signalMetadata.renderMode);
             }
         }
 
@@ -260,7 +259,7 @@ export class WaveformRowHoverOverlayRenderObject {
         }
     }
 
-    private getSignalValueAtTime(signal: Signal, time: number, renderMode: RenderMode): { time: number; value: number; display: number | string; dataIndex: number } | null {
+    private getSignalValueAtTime(signal: Signal, time: number, signalMetadata: SignalMetadata): { time: number; value: number; display: string; dataIndex: number } | null {
         const bufferData = this.signalBuffers.get(signal);
         if (!bufferData) return null;
         
@@ -284,7 +283,7 @@ export class WaveformRowHoverOverlayRenderObject {
         
         let closestIndex = left;
         
-        if (renderMode === RenderMode.Enum) {
+        if (signalMetadata.renderMode === RenderMode.Enum) {
             // For enum signals, always look leftwards (backwards in time)
             // Find the last data point that is <= the mouse time
             if (left < maxUpdateIndex) {
@@ -314,17 +313,22 @@ export class WaveformRowHoverOverlayRenderObject {
 
         const dataTime = signal.time.valueAt(closestIndex);
         const value = signal.values.valueAt(closestIndex);
-        let display: number | string = value;
+        let display: number | bigint | string = value;
         if (signal.values.convertedValueAt) {
             display = signal.values.convertedValueAt(closestIndex);
         }
-        return { time: dataTime, value, display, dataIndex: closestIndex };
+        return {
+            time: dataTime,
+            value,
+            display: formatValueForDisplay(display, signalMetadata.display),
+            dataIndex: closestIndex,
+        };
     }
 }
 
 class ArraySequence implements Sequence {
     private data: number[];
-    convertedValueAt?(index: number): number | string;
+    convertedValueAt?(index: number): number | bigint | string;
 
     constructor() {
         this.data = [];
@@ -348,7 +352,7 @@ class ArraySequence implements Sequence {
         return this.data[index];
     }
 
-    updateData(newData: number[], convertedData?: (number | string)[]): void {
+    updateData(newData: number[], convertedData?: (number | bigint | string)[]): void {
         this.data = newData;
         if (typeof convertedData !== 'undefined') {
             this.convertedValueAt = (index: number) => convertedData[index];

@@ -163,6 +163,7 @@ export interface FileSaveHandler {
 export interface SignalMetadata {
     color: string;
     renderMode: RenderMode;
+    display: 'decimal' | 'hex';
 }
 
 export interface SignalMetadataManager {
@@ -246,12 +247,18 @@ export interface TextValue {
 }
 
 export interface Sequence {
+    /** Minimum value in the sequence */
     min: number;
+    /** Maximum value in the sequence */
     max: number;
+    /** Number of values in the sequence */
     length: number;
+    /** Optional value representing null/missing data */
     null?: number;
+    /** Returns the value at the specified index used for plotting */
     valueAt(index: number): number;
-    convertedValueAt?(index: number): number | string;
+    /** Returns the converted/formatted value at the specified index used for tooltips/display */
+    convertedValueAt?(index: number): number | bigint | string;
 }
 
 export interface Signal {
@@ -354,5 +361,28 @@ export function resolvePositionValue(value: PositionValue, parentDimension: numb
             return (value.value / 100) * parentDimension;
         default:
             throw new Error(`Unknown position value type: ${JSON.stringify(value)}`);
+    }
+}
+
+export function formatValueForDisplay(value: number | bigint | string, displayMode: 'decimal' | 'hex'): string {
+    switch (typeof value) {
+        case 'string':
+            return value;
+        case 'bigint':
+            if (displayMode === 'hex') {
+                const hex = value.toString(16);
+                return value < 0n ? `-0x${hex.slice(1).toUpperCase()}` : `0x${hex.toUpperCase()}`;
+            } else {
+                return value.toString();
+            }
+        case 'number':
+            if (displayMode === 'hex') {
+                const hex = Math.round(value).toString(16);
+                return value < 0 ? `-0x${hex.slice(1).toUpperCase()}` : `0x${hex.toUpperCase()}`;
+            } else if (Math.abs(value) >= 1e6 || (Math.abs(value) < 1e-3 && value !== 0)) {
+                return value.toExponential(3);
+            } else {
+                return value.toFixed(6);
+            }
     }
 }

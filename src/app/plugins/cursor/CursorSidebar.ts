@@ -1,4 +1,5 @@
 import type { PluginContext, Signal, Row } from '@voltex-viewer/plugin-api';
+import { formatValueForDisplay } from '@voltex-viewer/plugin-api';
 import type { CursorRenderObject } from './CursorRenderObject';
 import type { CursorConfig } from './CursorPlugin';
 
@@ -243,7 +244,11 @@ export class CursorSidebar {
                 const valueCell = document.createElement('td');
                 valueCell.className = 'signal-value';
                 const value = this.getSignalValueAtCursor(signalInfo.signal, cursor);
-                valueCell.textContent = value !== null ? this.formatValue(value) : '-';
+                if (value !== null) {
+                    valueCell.textContent = formatValueForDisplay(value, this.context.signalMetadata.get(signalInfo.signal).display);
+                } else {
+                    valueCell.textContent = '-';
+                }
                 signalRow.appendChild(valueCell);
             }
 
@@ -282,7 +287,7 @@ export class CursorSidebar {
         return signals;
     }
 
-    private getSignalValueAtCursor(signal: Signal, cursor: CursorRenderObject): number | string | null {
+    private getSignalValueAtCursor(signal: Signal, cursor: CursorRenderObject): number | bigint | string | null {
         const cursorTime = cursor.getPosition();
         if (cursorTime === null) return null;
 
@@ -320,24 +325,6 @@ export class CursorSidebar {
         }
         
         return result;
-    }
-
-    private formatValue(value: number | string): string {
-        if (typeof value === 'string') {
-            return value;
-        }
-        
-        // Format numbers with appropriate precision
-        if (Number.isInteger(value)) {
-            return value.toString();
-        }
-        
-        // Use scientific notation for very large or very small numbers
-        if (Math.abs(value) >= 1e6 || (Math.abs(value) < 1e-3 && value !== 0)) {
-            return value.toExponential(3);
-        }
-        
-        return value.toFixed(6);
     }
 
     private calculateSignalColumnWidth(signals: Array<{ name: string[], signal: Signal }>): number {
