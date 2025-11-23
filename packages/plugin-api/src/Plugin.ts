@@ -250,7 +250,6 @@ export interface Sequence {
     max: number;
     length: number;
     null?: number;
-    textValues?: TextValue[];
     valueAt(index: number): number;
     convertedValueAt?(index: number): number | string;
 }

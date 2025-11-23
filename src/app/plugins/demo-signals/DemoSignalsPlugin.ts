@@ -131,14 +131,7 @@ export default async (context: PluginContext) => {
                 }
             }
             
-            const signal = new SequenceSignal(trafficLightSource, timeSeq, valueSeq, RenderMode.Enum);
-            (signal.values as any).textValues = [
-                { text: 'stop', value: 0 },
-                { text: 'wait', value: 1 },
-                { text: 'go', value: 2 },
-            ];
-            
-            return Promise.resolve(signal);
+            return Promise.resolve(new SequenceSignal(trafficLightSource, timeSeq, valueSeq, RenderMode.Enum));
         },
     };
 
