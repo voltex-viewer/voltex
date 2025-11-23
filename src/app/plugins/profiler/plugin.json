@@ -1,5 +1,6 @@
 {
-    "name": "Profiler",
+    "name": "@voltex-viewer/profiler-plugin",
+    "displayName": "Profiler",
     "description": "Provides rendering performance profiling capabilities",
     "version": "1.0.0"
 }

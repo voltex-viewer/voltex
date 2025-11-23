@@ -324,8 +324,8 @@ export class RowContainerRenderObject {
             }),
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.select-all-rows',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'select-all-rows',
             action: () => {
                 for (const row of this.rows.filter(r => r.signals.length > 0)) {
                     this.selectedRows.add(row);
@@ -335,8 +335,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.clear-selection',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'clear-selection',
             action: () => {
                 for (const row of this.selectedRows) {
                     row.selected = false;
@@ -346,8 +346,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.group-selected-rows',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'group-selected-rows',
             action: () => {
                 if (this.selectedRows.size >= 2) {
                     const selectedRowsArray = this.getSelectedRowsInOrder();
@@ -366,8 +366,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.ungroup-selected-rows',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'ungroup-selected-rows',
             action: () => {
                 if (this.selectedRows.size > 0) {
                     const selectedRowsArray = this.getSelectedRowsInOrder();
@@ -387,8 +387,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.delete-selected-rows',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'delete-selected-rows',
             action: () => {
                 if (this.selectedRows.size > 0) {
                     this.spliceRows(this.getSelectedRowsInOrder(), []);
@@ -398,8 +398,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.zoom-in',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'zoom-in',
             action: () => {
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
                 const anchorX = this.resizeState.type === 'time-offset' 
@@ -408,8 +408,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.zoom-out',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'zoom-out',
             action: () => {
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
                 const anchorX = this.resizeState.type === 'time-offset' 
@@ -418,8 +418,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.pan-left',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'pan-left',
             action: () => {
                 if (this.resizeState.type === 'time-offset') return;
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
@@ -427,8 +427,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.pan-right',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'pan-right',
             action: () => {
                 if (this.resizeState.type === 'time-offset') return;
                 const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
@@ -436,8 +436,8 @@ export class RowContainerRenderObject {
             }
         });
 
-        this.commandManager.registerCommand('Voltex', {
-            id: 'voltex.fit-to-signal',
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'fit-to-signal',
             action: () => {
                 const selectedRowsArray = this.getSelectedRowsInOrder();
                 const rowsToCheck = selectedRowsArray.length > 0 ? selectedRowsArray : this.rows;

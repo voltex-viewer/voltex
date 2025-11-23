@@ -18,8 +18,8 @@ const CURSOR_COLORS = [
 
 const CursorConfigSchema = t.type({
     keybindings: t.type({
-        'cursor.add': Keybinding,
-        'cursor.cancel': Keybinding,
+        'add': Keybinding,
+        'cancel': Keybinding,
     })
 });
 
@@ -68,8 +68,8 @@ class MousePositionTracker {
 export default (context: PluginContext): void => {
     const config: CursorConfig = context.loadConfig(CursorConfigSchema, {
         keybindings: {
-            'cursor.add': 'c' as any,
-            'cursor.cancel': 'escape' as any,
+            'add': 'c' as any,
+            'cancel': 'escape' as any,
         }
     });
 
@@ -178,7 +178,7 @@ export default (context: PluginContext): void => {
     });
 
     context.registerCommand({
-        id: 'cursor.add',
+        id: 'add',
         action: () => {
             if (isAddingCursor) return;
             
@@ -215,7 +215,7 @@ export default (context: PluginContext): void => {
     });
 
     context.registerCommand({
-        id: 'cursor.cancel',
+        id: 'cancel',
         action: () => {
             if (!activeCursor) return;
             

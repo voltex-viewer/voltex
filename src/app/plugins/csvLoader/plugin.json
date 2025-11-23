@@ -1,5 +1,6 @@
 {
-  "name": "CSV Loader",
+  "name": "@voltex-viewer/csv-loader-plugin",
+  "displayName": "CSV Loader",
   "version": "1.0.0",
   "description": "Provides CSV loading and saving support",
   "author": "Voltex"

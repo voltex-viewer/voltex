@@ -7,6 +7,73 @@ export interface ConfigUIOptions {
 }
 
 export class ConfigUIGenerator {
+    static updateConfigUI(container: HTMLElement, configSchema: PluginConfigSchema): void {
+        const form = container.querySelector('.config-ui-form');
+        if (!form) return;
+
+        this.updateFormFields(form as HTMLElement, configSchema.schema, configSchema.config, '');
+    }
+
+    private static updateFormFields(container: HTMLElement, schema: t.Type<any>, values: any, path: string): void {
+        if ((schema as any)._tag === 'InterfaceType') {
+            const props = (schema as any).props;
+            for (const [key, propSchema] of Object.entries(props)) {
+                const fieldPath = path ? `${path}.${key}` : key;
+                const fieldValue = values[key];
+                this.updateFormField(container, key, propSchema as t.Type<any>, fieldValue, fieldPath);
+            }
+        }
+    }
+
+    private static updateFormField(container: HTMLElement, key: string, schema: t.Type<any>, value: any, path: string): void {
+        if ((schema as any)._tag === 'DictionaryType' || 
+            (schema as any)._tag === 'RecordType' ||
+            (schema as any)._tag === 'InterfaceType') {
+            return;
+        }
+
+        const fieldElements = container.querySelectorAll('.config-ui-field');
+        for (const fieldElement of Array.from(fieldElements)) {
+            const label = fieldElement.querySelector('.config-ui-label');
+            if (label?.textContent === this.formatFieldName(key)) {
+                const input = fieldElement.querySelector('.config-ui-input') as HTMLInputElement | HTMLSelectElement | HTMLButtonElement | null;
+                if (input && document.activeElement !== input) {
+                    this.updateInputValue(input, schema, value);
+                }
+                break;
+            }
+        }
+    }
+
+    private static updateInputValue(input: HTMLInputElement | HTMLSelectElement | HTMLButtonElement, schema: t.Type<any>, value: any): void {
+        const schemaName = schema.name;
+
+        if (schemaName === 'number' && input instanceof HTMLInputElement) {
+            if (input.value !== value?.toString()) {
+                input.value = value?.toString() || '0';
+            }
+        } else if (schemaName === 'boolean' && input instanceof HTMLInputElement) {
+            if (input.checked !== value) {
+                input.checked = value || false;
+            }
+        } else if ((schemaName === 'Keybinding' || 
+                   ((schema as any)._tag === 'RefinementType' && (schema as any).name === 'Keybinding')) &&
+                   input instanceof HTMLButtonElement) {
+            const displayValue = value || 'not set';
+            if (input.textContent !== displayValue) {
+                input.textContent = displayValue;
+            }
+        } else if (input instanceof HTMLInputElement && input.type === 'text') {
+            if (input.value !== (value || '')) {
+                input.value = value || '';
+            }
+        } else if (input instanceof HTMLSelectElement) {
+            if (input.value !== value) {
+                input.value = value;
+            }
+        }
+    }
+
     static generateConfigUI(configSchema: PluginConfigSchema, options: ConfigUIOptions): HTMLElement {
         const container = document.createElement('div');
         

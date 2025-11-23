@@ -1,6 +1,6 @@
-import type { Signal } from '@voltex-viewer/plugin-api';
+import type { Signal, SignalMetadataManager } from '@voltex-viewer/plugin-api';
 
-export class SignalMetadataManagerImpl {
+export class SignalMetadataManagerImpl implements SignalMetadataManager {
     private colorMap = new Map<string, string>();
     private readonly defaultColors = [
         '#00eaff', '#ff6b6b', '#51cf66', '#ffd43b', 

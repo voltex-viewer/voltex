@@ -1,5 +1,6 @@
 {
-  "name": "Time Axis",
+  "name": "@voltex-viewer/time-axis-plugin",
+  "displayName": "Time Axis",
   "version": "1.0.0",
   "description": "Provides a time axis",
   "author": "Voltex"

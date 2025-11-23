@@ -139,6 +139,63 @@ document.addEventListener('DOMContentLoaded', async () => {
                     },
                     { type: 'separator' },
                     {
+                        label: 'Export Config...',
+                        action: async () => {
+                            try {
+                                const configManager = renderer.pluginManager.getConfigManager();
+                                const configs = configManager.exportAllConfigs();
+                                
+                                const json = JSON.stringify(configs, null, 2);
+                                const blob = new Blob([json], { type: 'application/json' });
+                                
+                                const fileHandle = await window.showSaveFilePicker({
+                                    suggestedName: 'voltex-config.json',
+                                    types: [{
+                                        description: 'JSON Config File',
+                                        accept: { 'application/json': ['.json'] }
+                                    }]
+                                });
+                                
+                                const writable = await fileHandle.createWritable();
+                                await writable.write(blob);
+                                await writable.close();
+                            } catch (error) {
+                                if (error instanceof Error && error.name === 'AbortError') {
+                                    return;
+                                }
+                                throw error;
+                            }
+                        }
+                    },
+                    {
+                        label: 'Import Config...',
+                        action: async () => {
+                            try {
+                                const fileHandles = await window.showOpenFilePicker({
+                                    multiple: false,
+                                    types: [{
+                                        description: 'JSON Config File',
+                                        accept: { 'application/json': ['.json'] }
+                                    }]
+                                });
+                                
+                                const file = await fileHandles[0].getFile();
+                                const text = await file.text();
+                                const configs = JSON.parse(text);
+                                
+                                const configManager = renderer.pluginManager.getConfigManager();
+                                configManager.importAllConfigs(configs);
+                            } catch (error) {
+                                if (error instanceof Error && error.name === 'AbortError') {
+                                    return;
+                                }
+                                const message = error instanceof Error ? error.message : String(error);
+                                alert(`Error importing configuration: ${message}`);
+                            }
+                        }
+                    },
+                    { type: 'separator' },
+                    {
                         label: 'Exit',
                         action: () => {
                             if (window.waveformApi) {

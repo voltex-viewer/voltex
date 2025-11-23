@@ -5,29 +5,29 @@ export default (context: PluginContext): void => {
     context.loadConfig(
         t.type({
             keybindings: t.type({
-                'voltex.select-all-rows': Keybinding,
-                'voltex.clear-selection': Keybinding,
-                'voltex.group-selected-rows': Keybinding,
-                'voltex.ungroup-selected-rows': Keybinding,
-                'voltex.delete-selected-rows': Keybinding,
-                'voltex.zoom-in': Keybinding,
-                'voltex.zoom-out': Keybinding,
-                'voltex.pan-left': Keybinding,
-                'voltex.pan-right': Keybinding,
-                'voltex.fit-to-signal': Keybinding,
+                'select-all-rows': Keybinding,
+                'clear-selection': Keybinding,
+                'group-selected-rows': Keybinding,
+                'ungroup-selected-rows': Keybinding,
+                'delete-selected-rows': Keybinding,
+                'zoom-in': Keybinding,
+                'zoom-out': Keybinding,
+                'pan-left': Keybinding,
+                'pan-right': Keybinding,
+                'fit-to-signal': Keybinding,
             })
         }), {
         keybindings: {
-            'voltex.select-all-rows': 'ctrl+a',
-            'voltex.clear-selection': 'escape',
-            'voltex.group-selected-rows': 'ctrl+g',
-            'voltex.ungroup-selected-rows': 'ctrl+shift+g',
-            'voltex.delete-selected-rows': 'delete',
-            'voltex.zoom-in': 'w',
-            'voltex.zoom-out': 's',
-            'voltex.pan-left': 'a',
-            'voltex.pan-right': 'd',
-            'voltex.fit-to-signal': 'f',
+            'select-all-rows': 'ctrl+a',
+            'clear-selection': 'escape',
+            'group-selected-rows': 'ctrl+g',
+            'ungroup-selected-rows': 'ctrl+shift+g',
+            'delete-selected-rows': 'delete',
+            'zoom-in': 'w',
+            'zoom-out': 's',
+            'pan-left': 'a',
+            'pan-right': 'd',
+            'fit-to-signal': 'f',
         }
     });
 };

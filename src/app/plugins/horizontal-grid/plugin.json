@@ -1,6 +1,7 @@
 {
-  "name": "Vertical Grid",
+  "name": "@voltex-viewer/horizontal-grid-plugin",
+  "displayName": "Horizontal Grid",
   "version": "1.0.0",
-  "description": "Provides vertical grid lines with value labels",
+  "description": "Provides horizontal grid lines with value labels",
   "author": "Voltex"
 }

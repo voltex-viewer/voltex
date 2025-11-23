@@ -1,5 +1,6 @@
 {
-  "name": "Waveform Renderer",
+  "name": "@voltex-viewer/waveform-plugin",
+  "displayName": "Waveform Renderer",
   "version": "1.0.0",
   "description": "Renders signal waveforms using WebGL",
   "author": "Voltex Team"

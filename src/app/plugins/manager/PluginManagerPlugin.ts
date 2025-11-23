@@ -20,6 +20,7 @@ let config: PluginManagerConfig;
 let customPluginStorage: CustomPluginStorage;
 let customPluginNames = new Set<string>();
 let availableUpdates = new Map<string, string>();
+let currentlyDisplayedPluginName: string | null = null;
 
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
@@ -46,7 +47,7 @@ export default (pluginContext: PluginContext): void => {
     
     // Register command to check for updates
     context.registerCommand({
-        id: 'plugin-manager.checkForUpdates',
+        id: 'checkForUpdates',
         action: () => {
             checkForUpdates();
         }
@@ -85,6 +86,19 @@ export async function setPluginManager(manager: PluginManager): Promise<void> {
     // Register to be notified when new plugins are registered
     pluginManager.onPluginRegistered(() => {
         refreshPluginList();
+    });
+    
+    // Listen for config changes to update the currently displayed config view
+    pluginManager.getConfigManager().onConfigChanged((pluginName) => {
+        if (currentlyDisplayedPluginName === pluginName && sidebarContainer && pluginManager) {
+            const configContent = sidebarContainer.querySelector('#config-content') as HTMLElement;
+            const configUI = configContent?.querySelector('.config-ui-root') as HTMLElement;
+            const configSchema = pluginManager.getConfigManager().getConfigSchema(pluginName);
+            
+            if (configUI && configSchema) {
+                ConfigUIGenerator.updateConfigUI(configUI, configSchema);
+            }
+        }
     });
 }
 
@@ -602,6 +616,8 @@ function refreshPluginList(): void {
 function showListView(): void {
     if (!sidebarContainer) return;
     
+    currentlyDisplayedPluginName = null;
+    
     const listView = sidebarContainer.querySelector('#list-view') as HTMLElement;
     const configView = sidebarContainer.querySelector('#config-view') as HTMLElement;
     
@@ -611,6 +627,8 @@ function showListView(): void {
 
 function showConfigView(pluginName: string): void {
     if (!pluginManager || !sidebarContainer) return;
+
+    currentlyDisplayedPluginName = pluginName;
 
     const configSchema = pluginManager.getConfigManager().getConfigSchema(pluginName);
     if (!configSchema) return;

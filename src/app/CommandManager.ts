@@ -11,18 +11,23 @@ export class CommandManager {
     private globalKeybindingMap = new Map<string, string>();
 
     constructor(private pluginConfigManager: PluginConfigManager) {
-        this.pluginConfigManager.onConfigChanged((pluginName, newConfig, oldConfig) => {
-            for (const [commandId, { pluginName: cmdPluginName }] of this.commands) {
+        this.pluginConfigManager.onConfigChanged((pluginName, _newConfig, _oldConfig) => {
+            for (const { pluginName: cmdPluginName, command } of this.commands.values()) {
                 if (cmdPluginName === pluginName) {
-                    this.updateCommandKeybinding(commandId, pluginName);
+                    this.updateCommandKeybinding(pluginName, command.id);
                 }
             }
         });
     }
 
+    private makeCommandKey(pluginName: string, commandId: string): string {
+        return `${pluginName}:${commandId}`;
+    }
+
     registerCommand(pluginName: string, command: Command): void {
-        this.commands.set(command.id, { command, pluginName });
-        this.updateCommandKeybinding(command.id, pluginName);
+        const namespacedId = this.makeCommandKey(pluginName, command.id);
+        this.commands.set(namespacedId, { command, pluginName });
+        this.updateCommandKeybinding(pluginName, command.id);
     }
 
     unregisterCommand(commandId: string): void {
@@ -50,14 +55,15 @@ export class CommandManager {
         return false;
     }
 
-    private updateCommandKeybinding(commandId: string, pluginName: string): void {
+    private updateCommandKeybinding(pluginName: string, commandId: string): void {
+        const namespacedCommandId = this.makeCommandKey(pluginName, commandId);
         const pluginConfig = this.pluginConfigManager.getConfig(pluginName) as any;
         if (!pluginConfig || !pluginConfig.keybindings) return;
         
         const keybinding = pluginConfig.keybindings[commandId] || null;
         
         for (const [kb, cmdId] of this.globalKeybindingMap) {
-            if (cmdId === commandId) {
+            if (cmdId === namespacedCommandId) {
                 this.globalKeybindingMap.delete(kb);
                 break;
             }
@@ -65,9 +71,9 @@ export class CommandManager {
 
         if (keybinding) {
             if (this.globalKeybindingMap.has(keybinding)) {
-                console.warn(`Keybinding conflict: ${keybinding} is already used by command ${this.globalKeybindingMap.get(keybinding)}, overriding with ${commandId}`);
+                console.warn(`Keybinding conflict: ${keybinding} is already used by command ${this.globalKeybindingMap.get(keybinding)}, overriding with ${namespacedCommandId}`);
             }
-            this.globalKeybindingMap.set(keybinding, commandId);
+            this.globalKeybindingMap.set(keybinding, namespacedCommandId);
         }
     }
 }
