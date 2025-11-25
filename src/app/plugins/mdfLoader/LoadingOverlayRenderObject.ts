@@ -43,10 +43,11 @@ export function loadingOverlayRenderObject(): RenderObjectArgs & { updateChannel
             const vertexShaderSource = `
                 attribute vec2 position;
                 uniform vec2 resolution;
+                uniform float pointSize;
                 void main() {
                     vec2 clipSpace = ((position / resolution) * 2.0 - 1.0) * vec2(1, -1);
                     gl_Position = vec4(clipSpace, 0, 1);
-                    gl_PointSize = ${dotRadius * 2.0 * context.dpr}.0;
+                    gl_PointSize = pointSize;
                 }
             `;
             
@@ -70,9 +71,11 @@ export function loadingOverlayRenderObject(): RenderObjectArgs & { updateChannel
             
             const positionLoc = gl.getAttribLocation(program, 'position');
             const resolutionLoc = gl.getUniformLocation(program, 'resolution');
+            const pointSizeLoc = gl.getUniformLocation(program, 'pointSize');
             const colorLoc = gl.getUniformLocation(program, 'color');
             
             gl.uniform2f(resolutionLoc, context.canvas.width, context.canvas.height);
+            gl.uniform1f(pointSizeLoc, dotRadius * 2.0 * context.dpr);
             
             const positions = new Float32Array(segments * 2);
             for (let i = 0; i < segments; i++) {
