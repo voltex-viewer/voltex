@@ -27,9 +27,9 @@ export default (pluginContext: PluginContext): void => {
     
     config = context.loadConfig(PluginManagerConfigSchema, {
         enabledPlugins: {
-            'FPS': false,
-            'Demo Signals': false,
-            'Profiler': false,
+            '@voltex-viewer/fps-plugin': false,
+            '@voltex-viewer/demo-signals-plugin': false,
+            '@voltex-viewer/profiler-plugin': false,
         }
     });
 
@@ -209,7 +209,7 @@ async function deleteCustomPlugin(pluginName: string): Promise<void> {
     
     // Remove from config
     delete config.enabledPlugins[pluginName];
-    pluginManager.getConfigManager().updateConfig('Plugin Manager', config);
+    pluginManager.getConfigManager().updateConfig('@voltex-viewer/manager-plugin', config);
     
     refreshPluginList();
     context?.requestRender();
@@ -254,7 +254,7 @@ async function restorePluginStates() {
         const pluginName = pluginModule.metadata.name;
         
         // Skip the Plugin Manager itself
-        if (pluginName === 'Plugin Manager') continue;
+        if (pluginName === '@voltex-viewer/manager-plugin') continue;
         
         const savedState = config.enabledPlugins[pluginName];
         const shouldBeEnabled = savedState !== undefined ? savedState : true; // Default to enabled
@@ -275,7 +275,7 @@ function savePluginState(pluginName: string, enabled: boolean): void {
     if (!config || !pluginManager) return;
     
     config.enabledPlugins[pluginName] = enabled;
-    pluginManager.getConfigManager().updateConfig('Plugin Manager', config);
+    pluginManager.getConfigManager().updateConfig('@voltex-viewer/manager-plugin', config);
 }
 
 function renderContent(): HTMLElement {

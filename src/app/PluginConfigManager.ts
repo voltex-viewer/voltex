@@ -49,16 +49,31 @@ function computeDelta(config: any, defaultConfig: any): any {
 
 function validateAndMergeWithDefaults<A>(delta: any, defaultConfig: any, schema: t.Type<A, any, unknown>): A {
     if (!delta) {
-        return { ...defaultConfig } as A;
+        return JSON.parse(JSON.stringify(defaultConfig)) as A;
     }
     
-    // Try validating the entire merged config first (shallow merge for top-level test)
-    const naiveMerge = { ...defaultConfig };
-    for (const key in delta) {
-        if (delta.hasOwnProperty(key)) {
-            naiveMerge[key] = delta[key];
+    // Deep merge helper
+    function deepMerge(target: any, source: any): any {
+        if (typeof source !== 'object' || source === null || Array.isArray(source)) {
+            return source;
         }
+        
+        const result = { ...target };
+        for (const key in source) {
+            if (source.hasOwnProperty(key)) {
+                if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key]) &&
+                    typeof target[key] === 'object' && target[key] !== null && !Array.isArray(target[key])) {
+                    result[key] = deepMerge(target[key], source[key]);
+                } else {
+                    result[key] = source[key];
+                }
+            }
+        }
+        return result;
     }
+
+    // Try validating the entire merged config first
+    const naiveMerge = deepMerge(defaultConfig, delta);
     
     const fullValidation = schema.decode(naiveMerge);
     if (isRight(fullValidation)) {
@@ -66,7 +81,7 @@ function validateAndMergeWithDefaults<A>(delta: any, defaultConfig: any, schema:
     }
     
     // If full validation fails, validate property by property, bottom-up
-    const result: any = { ...defaultConfig };
+    const result: any = JSON.parse(JSON.stringify(defaultConfig));
     
     for (const key in delta) {
         if (delta.hasOwnProperty(key)) {
@@ -77,27 +92,22 @@ function validateAndMergeWithDefaults<A>(delta: any, defaultConfig: any, schema:
             if (typeof deltaValue === 'object' && deltaValue !== null && !Array.isArray(deltaValue) &&
                 typeof defaultValue === 'object' && defaultValue !== null && !Array.isArray(defaultValue)) {
                 
-                // Recursively merge nested object
-                const mergedNested = { ...defaultValue };
-                for (const nestedKey in deltaValue) {
-                    if (deltaValue.hasOwnProperty(nestedKey)) {
-                        mergedNested[nestedKey] = deltaValue[nestedKey];
-                    }
-                }
+                // Recursively merge nested object using deep merge
+                const mergedNested = deepMerge(defaultValue, deltaValue);
                 
                 // Test if this nested merge is valid
-                const testConfig = { ...defaultConfig, [key]: mergedNested };
+                const testConfig = deepMerge(defaultConfig, { [key]: mergedNested });
                 const validation = schema.decode(testConfig);
                 
                 if (isRight(validation)) {
                     result[key] = mergedNested;
                 } else {
                     // Try property by property within the nested object
-                    const nestedResult = { ...defaultValue };
+                    const nestedResult = JSON.parse(JSON.stringify(defaultValue));
                     for (const nestedKey in deltaValue) {
                         if (deltaValue.hasOwnProperty(nestedKey)) {
-                            const testNested = { ...defaultValue, [nestedKey]: deltaValue[nestedKey] };
-                            const testConfig = { ...defaultConfig, [key]: testNested };
+                            const testNested = deepMerge(defaultValue, { [nestedKey]: deltaValue[nestedKey] });
+                            const testConfig = deepMerge(defaultConfig, { [key]: testNested });
                             const nestedValidation = schema.decode(testConfig);
                             
                             if (isRight(nestedValidation)) {
@@ -109,7 +119,7 @@ function validateAndMergeWithDefaults<A>(delta: any, defaultConfig: any, schema:
                 }
             } else {
                 // Non-object value, test directly
-                const testConfig = { ...defaultConfig, [key]: deltaValue };
+                const testConfig = deepMerge(defaultConfig, { [key]: deltaValue });
                 const validation = schema.decode(testConfig);
                 
                 if (isRight(validation)) {
