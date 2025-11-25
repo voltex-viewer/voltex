@@ -1,4 +1,4 @@
-import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal, SignalMetadata } from "@voltex-viewer/plugin-api";
+import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal, SignalMetadata, formatValueForDisplay } from "@voltex-viewer/plugin-api";
 import type { BufferData } from './WaveformRendererPlugin';
 import { WaveformConfig } from './WaveformConfig';
 import { WaveformShaders } from './WaveformShaders';
@@ -134,7 +134,7 @@ export class WaveformRenderObject {
             // Skip ahead to avoid rendering duplicate labels for the same value
             i = j - 1;
             
-            let enumText = "convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt(i).toString() : value.toString();
+            let enumText = formatValueForDisplay("convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt(i) : value, this.metadata.display);
 
             if (enumText == "null") continue;
             
