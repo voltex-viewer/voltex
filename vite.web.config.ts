@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import path from 'path';
 import { execSync } from 'child_process';
+import eslint from 'vite-plugin-eslint2';
 
 function getGitCommitHash(): string {
   try {
@@ -12,6 +13,7 @@ function getGitCommitHash(): string {
 
 // https://vitejs.dev/config
 export default defineConfig({
+  plugins: [eslint({ emitErrorAsWarning: false })],
   root: '.', // Use project root instead of src/app
   base: './', // Use relative paths for GitHub Pages compatibility
   publicDir: 'assets',
