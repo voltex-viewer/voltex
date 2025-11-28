@@ -1,8 +1,8 @@
 import './index.css';
 import { WaveformState } from "@voltex-viewer/plugin-api";
-import { Renderer } from './Renderer';
-import { VerticalSidebar } from './VerticalSidebar';
-import { createMenuBar } from './MenuBar';
+import { Renderer } from './renderer';
+import { VerticalSidebar } from './verticalSidebar';
+import { createMenuBar } from './menuBar';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const root = document.getElementById('root');

@@ -1,5 +1,6 @@
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export interface Link<T> {
     __brand: "<T>",
 }
@@ -7,11 +8,11 @@ export interface Link<T> {
 export type MaybeLinked<T, TMode extends 'linked' | 'instanced'> = TMode extends 'linked' ? Link<T> : T;
 
 export function newLink<T>(value: bigint): Link<T> {
-    return value as any;
+    return value as unknown as Link<T>;
 }
 
-export function getLink(link: Link<any>): bigint {
-    return link as any as bigint;
+export function getLink<T>(link: Link<T>): bigint {
+    return link as unknown as bigint;
 }
 
 export interface GenericBlockHeader {
@@ -25,8 +26,8 @@ export interface GenericBlock extends GenericBlockHeader {
     links: Link<unknown>[];
 }
 
-export async function readBlockHeader(link: Link<any>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlockHeader> {
-    let offset = Number(getLink(link));
+export async function readBlockHeader<T>(link: Link<T>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlockHeader> {
+    const offset = Number(getLink(link));
     
     const buffer = await reader.readBytes(offset, 24);
     const type = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
@@ -42,8 +43,8 @@ export async function readBlockHeader(link: Link<any>, reader: BufferedFileReade
     };
 }
 
-export async function readBlock(link: Link<any>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlock> {
-    let fileOffset = Number(getLink(link));
+export async function readBlock<T>(link: Link<T>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlock> {
+    const fileOffset = Number(getLink(link));
     const header = await readBlockHeader(link, reader, expectedType);
     
     const payload = await reader.readBytes(fileOffset + 24, Number(header.length) - 24);

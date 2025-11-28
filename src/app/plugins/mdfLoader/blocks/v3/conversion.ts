@@ -141,40 +141,40 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                 const groups: [number, number, string][] = conversion.table.map(x => [x[0], x[1], x[2].data]);
                 const defaultValue = conversion.default?.data;
                 groups.sort((a, b) => a[0] - b[0]);
-                const keys_min = groups.map(group => group[0]);
-                const keys_max = groups.map(group => group[1]);
+                const keysMin = groups.map(group => group[0]);
+                const keysMax = groups.map(group => group[1]);
                 const values = groups.map(group => group[2]);
                 if (typeof defaultValue === "string") {
                     textValues.push({text: defaultValue});
                 }
                 textValues.push(...values.map(v => ({text: v})));
                 
-                if (keys_min.length <= 8) {
+                if (keysMin.length <= 8) {
                     return {
-                        fnBody: `for (let i = 0; i < keys_min.length; i++) {
-                        if (value >= keys_min[i] && value <= keys_max[i]) {
+                        fnBody: `for (let i = 0; i < keysMin.length; i++) {
+                        if (value >= keysMin[i] && value <= keysMax[i]) {
                             return values[i];
                         }
                     }
                     return defaultValue !== undefined ? defaultValue : value;`,
-                        context: { keys_min, keys_max, values, defaultValue }
+                        context: { keysMin, keysMax, values, defaultValue }
                     };
                 } else {
                     return {
                         fnBody: `let left = 0;
-                    let right = keys_min.length - 1;
+                    let right = keysMin.length - 1;
                     while (left <= right) {
                         const mid = (left + right) >>> 1;
-                        if (value >= keys_min[mid] && value <= keys_max[mid]) {
+                        if (value >= keysMin[mid] && value <= keysMax[mid]) {
                             return values[mid];
-                        } else if (value < keys_min[mid]) {
+                        } else if (value < keysMin[mid]) {
                             right = mid - 1;
                         } else {
                             left = mid + 1;
                         }
                     }
                     return defaultValue !== undefined ? defaultValue : value;`,
-                        context: { keys_min, keys_max, values, defaultValue }
+                        context: { keysMin, keysMax, values, defaultValue }
                     };
                 }
             }

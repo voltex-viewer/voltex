@@ -1,8 +1,8 @@
 import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
-import { DataGroupBlock, resolveDataGroupOffset, serializeDataGroupBlock } from './dataGroupBlock';
+import { DataGroupBlock, resolveDataGroupOffset } from './dataGroupBlock';
 import { FileHistoryBlock, resolveFileHistoryOffset } from './fileHistoryBlock';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 
 export interface Header<TMode extends 'linked' | 'instanced' = 'linked'> {
     firstDataGroup: MaybeLinked<DataGroupBlock<TMode> | null, TMode>;

@@ -1,19 +1,19 @@
 import type { PluginModule } from '@voltex-viewer/plugin-api';
-import FpsPluginFunction from './fps/FpsPlugin';
+import FpsPluginFunction from './fps/fpsPlugin';
 import FpsPluginMetadata from './fps/plugin.json';
-import HorizontalGridFunction from './horizontal-grid/HorizontalGridPlugin';
-import HorizontalGridMetadata from './horizontal-grid/plugin.json';
-import SignalManagerFunction from './signal-manager/SignalManagerPlugin';
-import SignalManagerMetadata from './signal-manager/plugin.json';
-import WaveformRendererFunction from './waveform/WaveformRendererPlugin';
+import HorizontalGridFunction from './horizontalGrid/horizontalGridPlugin';
+import HorizontalGridMetadata from './horizontalGrid/plugin.json';
+import SignalManagerFunction from './signalManager/signalManagerPlugin';
+import SignalManagerMetadata from './signalManager/plugin.json';
+import WaveformRendererFunction from './waveform/waveformRendererPlugin';
 import WaveformRendererMetadata from './waveform/plugin.json';
-import DemoSignalsFunction from './demo-signals/DemoSignalsPlugin';
-import DemoSignalsMetadata from './demo-signals/plugin.json';
-import TimeAxisFunction from './time-axis/TimeAxisPlugin';
-import TimeAxisMetadata from './time-axis/plugin.json';
-import WaveformLabelsFunction from './waveform-labels/WaveformLabelsPlugin';
-import WaveformLabelsMetadata from './waveform-labels/plugin.json';
-import ProfilerFunction from './profiler/ProfilerPlugin';
+import DemoSignalsFunction from './demoSignals/demoSignalsPlugin';
+import DemoSignalsMetadata from './demoSignals/plugin.json';
+import TimeAxisFunction from './timeAxis/timeAxisPlugin';
+import TimeAxisMetadata from './timeAxis/plugin.json';
+import WaveformLabelsFunction from './waveformLabels/waveformLabelsPlugin';
+import WaveformLabelsMetadata from './waveformLabels/plugin.json';
+import ProfilerFunction from './profiler/profilerPlugin';
 import ProfilerMetadata from './profiler/plugin.json';
 import mdfLoaderFunction from './mdfLoader/mdfLoaderPlugin';
 import mdfLoaderMetadata from './mdfLoader/plugin.json';
@@ -21,47 +21,47 @@ import csvLoaderFunction from './csvLoader/csvLoaderPlugin';
 import csvLoaderMetadata from './csvLoader/plugin.json';
 import voltexFunction from './voltex/voltexPlugin';
 import voltexMetadata from './voltex/plugin.json';
-import CursorFunction from './cursor/CursorPlugin';
+import CursorFunction from './cursor/cursorPlugin';
 import CursorMetadata from './cursor/plugin.json';
-import SignalPropertiesFunction from './signal-properties/SignalPropertiesPlugin';
-import SignalPropertiesMetadata from './signal-properties/plugin.json';
+import SignalPropertiesFunction from './signalProperties/signalPropertiesPlugin';
+import SignalPropertiesMetadata from './signalProperties/plugin.json';
 
-const FpsPlugin: PluginModule = {
+const fpsPlugin: PluginModule = {
     plugin: FpsPluginFunction,
     metadata: FpsPluginMetadata
 };
 
-const HorizontalGridPlugin: PluginModule = {
+const horizontalGridPlugin: PluginModule = {
     plugin: HorizontalGridFunction,
     metadata: HorizontalGridMetadata
 };
 
-const SignalManagerPlugin: PluginModule = {
+const signalManagerPlugin: PluginModule = {
     plugin: SignalManagerFunction,
     metadata: SignalManagerMetadata
 };
 
-const WaveformRendererPlugin: PluginModule = {
+const waveformRendererPlugin: PluginModule = {
     plugin: WaveformRendererFunction,
     metadata: WaveformRendererMetadata
 };
 
-const DemoSignalsPlugin: PluginModule = {
+const demoSignalsPlugin: PluginModule = {
     plugin: DemoSignalsFunction,
     metadata: DemoSignalsMetadata
 };
 
-const TimeAxisPlugin: PluginModule = {
+const timeAxisPlugin: PluginModule = {
     plugin: TimeAxisFunction,
     metadata: TimeAxisMetadata
 };
 
-const WaveformLabelsPlugin: PluginModule = {
+const waveformLabelsPlugin: PluginModule = {
     plugin: WaveformLabelsFunction,
     metadata: WaveformLabelsMetadata
 };
 
-const ProfilerPlugin: PluginModule = {
+const profilerPlugin: PluginModule = {
     plugin: ProfilerFunction,
     metadata: ProfilerMetadata
 };
@@ -81,30 +81,30 @@ const voltexPlugin: PluginModule = {
     metadata: voltexMetadata,
 }
 
-const CursorPlugin: PluginModule = {
+const cursorPlugin: PluginModule = {
     plugin: CursorFunction,
     metadata: CursorMetadata,
 }
 
-const SignalPropertiesPlugin: PluginModule = {
+const signalPropertiesPlugin: PluginModule = {
     plugin: SignalPropertiesFunction,
     metadata: SignalPropertiesMetadata,
 }
 
 export function getAvailablePlugins(): PluginModule[] {
     return [
-        FpsPlugin,
-        HorizontalGridPlugin,
-        TimeAxisPlugin,
-        SignalManagerPlugin,
-        WaveformRendererPlugin,
-        WaveformLabelsPlugin,
-        DemoSignalsPlugin,
-        ProfilerPlugin,
+        fpsPlugin,
+        horizontalGridPlugin,
+        timeAxisPlugin,
+        signalManagerPlugin,
+        waveformRendererPlugin,
+        waveformLabelsPlugin,
+        demoSignalsPlugin,
+        profilerPlugin,
         mdfLoaderPlugin,
         csvLoaderPlugin,
         voltexPlugin,
-        CursorPlugin,
-        SignalPropertiesPlugin,
+        cursorPlugin,
+        signalPropertiesPlugin,
     ];
 }

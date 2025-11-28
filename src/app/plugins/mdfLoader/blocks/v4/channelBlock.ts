@@ -2,7 +2,7 @@ import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelConversionBlock, resolveChannelConversionOffset } from './channelConversionBlock';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 
 export enum DataType {
     UintLe = 0,

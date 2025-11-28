@@ -3,10 +3,10 @@ import { resolveHeaderOffset, Header, DataTableBlock, DataListBlock, DataGroupBl
 import * as v4 from './blocks/v4';
 import { SerializeContext } from './blocks/v4/serializer';
 import { deserializeConversion } from './serializableConversion';
-import { SharedBufferBackedSequence } from './SharedBufferBackedSequence';
+import { SharedBufferBackedSequence } from './sharedBufferBackedSequence';
 import { NumberType } from './decoder';
 import type { WorkerMessage, WorkerResponse } from './workerTypes';
-import { loadingOverlayRenderObject } from './LoadingOverlayRenderObject';
+import { loadingOverlayRenderObject } from './loadingOverlayRenderObject';
 
 type AnySequence = SharedBufferBackedSequence<Float64Array> | SharedBufferBackedSequence<BigInt64Array> | SharedBufferBackedSequence<BigUint64Array>;
 
@@ -19,7 +19,7 @@ export default (context: PluginContext): void => {
     let loadingOverlay: RenderObject | null = null;
     let loadingOverlayObj: ReturnType<typeof loadingOverlayRenderObject> | null = null;
     // @ts-expect-error - import.meta.url is provided by Vite
-    let worker: Worker | null = new Worker(new URL('./mdfLoaderWorker.ts', import.meta.url), { type: 'module' });
+    const worker: Worker | null = new Worker(new URL('./mdfLoaderWorker.ts', import.meta.url), { type: 'module' });
     worker.addEventListener('message', (event: MessageEvent<WorkerResponse>) => {
         const data = event.data;
         

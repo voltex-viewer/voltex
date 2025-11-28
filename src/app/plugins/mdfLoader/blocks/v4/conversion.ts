@@ -1,13 +1,13 @@
 import { TextValue } from "@voltex-viewer/plugin-api";
 import { ChannelConversionBlock, ConversionType } from ".";
-import { SerializableConversion, SerializableConversionData } from "../../serializableConversion";
+import { SerializableConversionData } from "../../serializableConversion";
 
 export function serializeConversion(conversion: ChannelConversionBlock<'instanced'> | null): SerializableConversionData {
     const textValues: TextValue[] = [];
-    const context: Record<string, any> = {};
+    const context: Record<string, unknown> = {};
     let varCounter = 0;
     
-    function addToContext(value: any): string {
+    function addToContext(value: unknown): string {
         const varName = `v${varCounter++}`;
         context[varName] = value;
         return varName;
@@ -98,15 +98,15 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                 }
                 const defaultVal = conversion.values[conversion.values.length - 1];
                 groups.sort((a, b) => a[0] - b[0]);
-                const keys_min = addToContext(groups.map(group => group[0]));
-                const keys_max = addToContext(groups.map(group => group[1]));
+                const keysMin = addToContext(groups.map(group => group[0]));
+                const keysMax = addToContext(groups.map(group => group[1]));
                 const values = addToContext(groups.map(group => group[2]));
                 const defaultValue = addToContext(defaultVal);
                 
                 if (groups.length <= 8) {
                     return `(function() {
-                        for (let i = 0; i < ${keys_min}.length; i++) {
-                            if (value >= ${keys_min}[i] && value <= ${keys_max}[i]) {
+                        for (let i = 0; i < ${keysMin}.length; i++) {
+                            if (value >= ${keysMin}[i] && value <= ${keysMax}[i]) {
                                 return ${values}[i];
                             }
                         }
@@ -115,12 +115,12 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                 } else {
                     return `(function() {
                         let left = 0;
-                        let right = ${keys_min}.length - 1;
+                        let right = ${keysMin}.length - 1;
                         while (left <= right) {
                             const mid = (left + right) >>> 1;
-                            if (value >= ${keys_min}[mid] && value <= ${keys_max}[mid]) {
+                            if (value >= ${keysMin}[mid] && value <= ${keysMax}[mid]) {
                                 return ${values}[mid];
-                            } else if (value < ${keys_min}[mid]) {
+                            } else if (value < ${keysMin}[mid]) {
                                 right = mid - 1;
                             } else {
                                 left = mid + 1;

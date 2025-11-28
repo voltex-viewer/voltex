@@ -1,0 +1,235 @@
+import { type PluginContext, Keybinding, type MouseEvent, Row, type KeybindingBrand } from '@voltex-viewer/plugin-api';
+import * as t from 'io-ts';
+import { CursorRenderObject } from './cursorRenderObject';
+import { CursorSidebar } from './cursorSidebar';
+
+const cursorColors = [
+    '#FF6B6B',
+    '#4ECDC4',
+    '#45B7D1',
+    '#FFA07A',
+    '#98D8C8',
+    '#F7DC6F',
+    '#BB8FCE',
+    '#85C1E2',
+    '#F8B739',
+    '#52B788',
+];
+
+const cursorConfigSchema = t.type({
+    keybindings: t.type({
+        'add': Keybinding,
+        'cancel': Keybinding,
+    })
+});
+
+type CursorConfig = t.TypeOf<typeof cursorConfigSchema>;
+
+export type { CursorConfig };
+
+class MousePositionTracker {
+    private lastMouseX: number | null = null;
+
+    constructor(private context: PluginContext) {
+        this.initialize();
+    }
+
+    private initialize(): void {
+        this.context.rootRenderObject.addChild({
+            zIndex: -1000, // Low z-index to not interfere with other interactions
+            onMouseMove: (event: MouseEvent) => {
+                // Store the clientX which is relative to the root
+                this.lastMouseX = event.clientX;
+            },
+        });
+    }
+
+    getLastMouseX(): number | null {
+        if (this.lastMouseX === null) return null;
+        
+        // Subtract the label width to get position relative to main area
+        const rows = this.context.getRows();
+        if (rows.length === 0) return this.lastMouseX;
+        
+        const firstRow = rows[0];
+        const labelWidth = firstRow.labelArea.width;
+        
+        if (labelWidth.type !== 'pixels') return this.lastMouseX;
+        
+        return this.lastMouseX - labelWidth.value;
+    }
+
+    screenXToTime(screenX: number): number {
+        const { state } = this.context;
+        return (state.offset + screenX) / state.pxPerSecond;
+    }
+}
+
+export default (context: PluginContext): void => {
+    const config: CursorConfig = context.loadConfig(cursorConfigSchema, {
+        keybindings: {
+            'add': 'c' as t.Branded<string, KeybindingBrand>,
+            'cancel': 'escape' as t.Branded<string, KeybindingBrand>,
+        }
+    });
+
+    const mouseTracker = new MousePositionTracker(context);
+    const cursors: CursorRenderObject[] = [];
+    let isAddingCursor = false;
+    let nextCursorNumber = 1;
+    let activeCursor: CursorRenderObject | null = null;
+    let mouseDownPosition: { x: number; y: number } | null = null;
+    let hoveredRow: Row | undefined = undefined;
+
+    const removeCursor = (cursor: CursorRenderObject) => {
+        cursor.cleanup();
+        const index = cursors.indexOf(cursor);
+        if (index > -1) {
+            cursors.splice(index, 1);
+        }
+        if (activeCursor === cursor) {
+            activeCursor = null;
+            isAddingCursor = false;
+        }
+        cursorSidebar.updateContent();
+        context.requestRender();
+    };
+
+    const cursorSidebar = new CursorSidebar(context, cursors, removeCursor, config);
+    
+    context.addSidebarEntry({
+        title: 'Cursors',
+        iconHtml: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="3" width="8" height="8" rx="2"/>
+            <line x1="12" y1="11" x2="12" y2="21"/>
+        </svg>`,
+        renderContent: () => cursorSidebar.render()
+    });
+
+    context.onRowsChanged((event) => {
+        for (const cursor of cursors) {
+            cursor.addRowRenderObjects(event.added);
+        }
+        
+        // Set up hover tracking for each row
+        for (const row of event.added) {
+            row.mainArea.addChild({
+                zIndex: -999,
+                onMouseEnter: () => {
+                    hoveredRow = row;
+                },
+                onMouseLeave: () => {
+                    if (hoveredRow === row) {
+                        hoveredRow = undefined;
+                    }
+                }
+            });
+        }
+        
+        cursorSidebar.updateContent();
+    });
+
+    // Set up global mouse tracking for active cursor
+    context.rootRenderObject.addChild({
+        zIndex: 1001, // Higher than cursor render objects
+        onMouseMove: (event: MouseEvent) => {
+            if (!activeCursor) return;
+            
+            const mouseX = mouseTracker.getLastMouseX();
+            if (mouseX !== null) {
+                const time = mouseTracker.screenXToTime(mouseX);
+                activeCursor.updatePosition(time, hoveredRow);
+                cursorSidebar.updateContent();
+                context.requestRender();
+            }
+            
+            // Clear mousedown position if mouse moved significantly
+            if (mouseDownPosition) {
+                const dx = Math.abs(event.clientX - mouseDownPosition.x);
+                const dy = Math.abs(event.clientY - mouseDownPosition.y);
+                if (dx > 3 || dy > 3) {
+                    mouseDownPosition = null;
+                }
+            }
+        },
+        onMouseDown: (event: MouseEvent) => {
+            if (!activeCursor) return;
+            
+            if (event.button === 0) {
+                mouseDownPosition = { x: event.clientX, y: event.clientY };
+            }
+        },
+        onMouseUp: (event: MouseEvent) => {
+            if (!activeCursor) return;
+            
+            if (event.button === 0 && mouseDownPosition) {
+                // Only place cursor if mouse didn't move significantly
+                const position = activeCursor.getPosition();
+                if (position !== null) {
+                    activeCursor = null;
+                    isAddingCursor = false;
+                    cursorSidebar.updateContent();
+                    context.requestRender();
+                }
+            }
+            
+            mouseDownPosition = null;
+        }
+    });
+
+    context.registerCommand({
+        id: 'add',
+        action: () => {
+            if (isAddingCursor) return;
+            
+            isAddingCursor = true;
+            
+            // Find the smallest available cursor number
+            const usedNumbers = new Set(cursors.map(c => c.getCursorNumber()));
+            let cursorNumber = 1;
+            while (usedNumbers.has(cursorNumber)) {
+                cursorNumber++;
+            }
+            nextCursorNumber = Math.max(nextCursorNumber, cursorNumber + 1);
+            
+            const color = cursorColors[(cursorNumber - 1) % cursorColors.length];
+            
+            // Get initial position from mouse tracker
+            const mouseX = mouseTracker.getLastMouseX();
+            const initialTime = mouseX !== null ? mouseTracker.screenXToTime(mouseX) : null;
+            
+            const cursor = new CursorRenderObject(
+                context,
+                cursorNumber,
+                color,
+                initialTime,
+                hoveredRow
+            );
+            cursor.addRowRenderObjects(context.getRows());
+            
+            activeCursor = cursor;
+            cursors.push(cursor);
+            cursorSidebar.updateContent();
+            context.requestRender();
+        }
+    });
+
+    context.registerCommand({
+        id: 'cancel',
+        action: () => {
+            if (!activeCursor) return;
+            
+            activeCursor.cleanup();
+            const index = cursors.indexOf(activeCursor);
+            if (index > -1) {
+                cursors.splice(index, 1);
+            }
+            activeCursor = null;
+            isAddingCursor = false;
+            nextCursorNumber--;
+            mouseDownPosition = null;
+            cursorSidebar.updateContent();
+            context.requestRender();
+        }
+    });
+};

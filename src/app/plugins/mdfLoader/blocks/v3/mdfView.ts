@@ -39,7 +39,7 @@ export class MdfView<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike & { 
             throw new Error("String longer than the space allocated");
         }
         arr.set(encoded, 0);
-        arr.set(Array(length - encoded.length).map(_ => 0), encoded.length); // null padding
+        arr.set(Array(length - encoded.length).map(() => 0), encoded.length); // null padding
         this.offset += length;
     }
 

@@ -2,7 +2,7 @@ import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
 //import { DataGroupBlock, resolveDataGroupOffset, serializeDataGroupBlock } from './dataGroupBlock';
 //import { FileHistoryBlock, resolveFileHistoryOffset } from './fileHistoryBlock';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 import { TextBlock } from '.';
 import { MdfView } from './mdfView';
 
@@ -51,7 +51,7 @@ export function deserializeHeader(block: GenericBlock, version: number): Header 
     }
 }
 
-export function serializeHeader(view: MdfView<ArrayBuffer>, context: SerializeContext, header: Header<'instanced'>): void {
+export function serializeHeader(_view: MdfView<ArrayBuffer>, _context: SerializeContext, _header: Header<'instanced'>): void {
     /*view.setBigUint64(0, context.get(header.firstDataGroup), true);
     view.setBigUint64(8, context.get(header.fileHistory), true);
     view.setBigUint64(16, context.get(header.channelHierarchy), true);
@@ -76,7 +76,7 @@ export function resolveHeaderOffset(context: SerializeContext, header: Header<'i
             length: 204,
         },
         serializeHeader,
-        block => {
+        _block => {
             //resolveDataGroupOffset(context, block.firstDataGroup);
             //resolveFileHistoryOffset(context, block.fileHistory);
         }

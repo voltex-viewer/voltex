@@ -2,7 +2,7 @@ import { TextValue } from "@voltex-viewer/plugin-api";
 
 export interface SerializableConversion {
     fnBody: string;
-    context: Record<string, any>;
+    context: Record<string, unknown>;
 }
 
 export interface SerializableConversionData {

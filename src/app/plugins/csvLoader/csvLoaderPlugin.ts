@@ -95,18 +95,18 @@ export default (context: PluginContext): void => {
                         valuesSeq.push(numValue);
                     }
 
-                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq, codeToText.size >= 2 ? RenderMode.Enum : RenderMode.Lines);
+                    const signal = new SequenceSignal(null!, seq.time, valuesSeq, codeToText.size >= 2 ? RenderMode.Enum : RenderMode.Lines);
                     const source = new CsvSource(name, signal);
-                    (signal as any).source = source;
+                    signal.source = source;
                     sources.push(source);
                 } else {
                     const valuesSeq = new InMemorySequence();
                     for (const value of seq.numericValues) {
                         valuesSeq.push(value);
                     }
-                    const signal = new SequenceSignal(null as any, seq.time, valuesSeq, RenderMode.Lines);
+                    const signal = new SequenceSignal(null!, seq.time, valuesSeq, RenderMode.Lines);
                     const source = new CsvSource(name, signal);
-                    (signal as any).source = source;
+                    signal.source = source;
                     sources.push(source);
                 }
             }
@@ -134,7 +134,7 @@ export default (context: PluginContext): void => {
             try {
                 await writer.write(header);
 
-                const BUFFER_SIZE = 1024 * 1024;
+                const bufferSize = 1024 * 1024;
                 let buffer = '';
 
                 const signalData = signals.map(s => ({
@@ -182,7 +182,7 @@ export default (context: PluginContext): void => {
                         buffer += row.join(',') + '\n';
                     }
                     
-                    if (buffer.length >= BUFFER_SIZE) {
+                    if (buffer.length >= bufferSize) {
                         await writer.write(buffer);
                         buffer = '';
                     }

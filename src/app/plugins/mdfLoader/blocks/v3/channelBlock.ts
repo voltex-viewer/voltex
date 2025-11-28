@@ -1,7 +1,7 @@
 import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 import { MdfView } from './mdfView';
 
 export enum DataType {
@@ -77,7 +77,7 @@ export function deserializeChannelBlock(block: GenericBlock): ChannelBlock<'link
     };
 }
 
-export function serializeChannelBlock(view: MdfView, context: SerializeContext, block: ChannelBlock<'instanced'>) {
+export function serializeChannelBlock(_view: MdfView, _context: SerializeContext, _block: ChannelBlock<'instanced'>) {
     
 }
 

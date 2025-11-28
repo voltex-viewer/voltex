@@ -1,6 +1,6 @@
 import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 import { MdfView } from './mdfView';
 import { TextBlock, ChannelBlock, resolveTextBlockOffset, resolveChannelOffset } from '.';
 

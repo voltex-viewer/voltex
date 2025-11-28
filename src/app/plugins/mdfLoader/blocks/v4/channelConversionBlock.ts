@@ -1,7 +1,7 @@
 import { Link, readBlock, GenericBlock, MaybeLinked } from './common';
 import { SerializeContext } from './serializer';
 import { TextBlock, MetadataBlock, resolveTextBlockOffset } from './textBlock';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 
 export enum ConversionType {
     OneToOne = 0,

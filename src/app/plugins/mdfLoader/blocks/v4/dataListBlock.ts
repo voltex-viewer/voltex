@@ -1,7 +1,7 @@
 import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { DataTableBlock, resolveDataTableOffset } from './dataTableBlock';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 
 export interface DataListBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     dataListNext: MaybeLinked<DataListBlock<TMode> | null, TMode>;

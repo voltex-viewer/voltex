@@ -23,7 +23,7 @@ export function createGradientDownsampler(
         for (; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
             const time = sequence.time.valueAt(signalIndex);
             const value = sequence.values.valueAt(signalIndex);
-            let gradient = (value - lastValue) / (time - lastTime);
+            const gradient = (value - lastValue) / (time - lastTime);
             if (Math.abs(gradient - lastGradient) > gradientThreshold) {
                 bufferOffset++;
                 timeBuffer[bufferOffset] = time;

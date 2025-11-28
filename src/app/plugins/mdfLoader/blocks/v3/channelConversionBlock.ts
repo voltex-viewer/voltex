@@ -1,8 +1,8 @@
-import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 import { MdfView } from './mdfView';
-import { TextBlock, ChannelBlock, resolveTextBlockOffset, resolveChannelOffset } from '.';
+import { TextBlock } from '.';
 
 export enum ConversionType {
     Linear = 0,
@@ -215,11 +215,11 @@ export function deserializeChannelConversionBlock(block: GenericBlock): ChannelC
 
 }
 
-export function serializeChannelConversionBlock(view: MdfView, context: SerializeContext, block: ChannelConversionBlock<'instanced'>) {
+export function serializeChannelConversionBlock(_view: MdfView, _context: SerializeContext, _block: ChannelConversionBlock<'instanced'>) {
     throw new Error("Not implemented");
 }
 
-export function resolveChannelConversionOffset(context: SerializeContext, block: ChannelConversionBlock<'instanced'>) {
+export function resolveChannelConversionOffset(_context: SerializeContext, _block: ChannelConversionBlock<'instanced'>) {
     throw new Error("Not implemented");
     /*return context.resolve(
         block, 

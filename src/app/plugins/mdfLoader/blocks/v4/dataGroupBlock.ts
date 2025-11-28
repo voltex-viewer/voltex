@@ -3,7 +3,7 @@ import { DataTableBlock, deserializeDataTableBlock, readDataTableBlock, resolveD
 import { DataListBlock, iterateDataListBlocks, resolveDataListOffset } from './dataListBlock';
 import { ChannelGroupBlock, resolveChannelGroupOffset } from './channelGroupBlock';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 import { deserializeHeaderListBlock, HeaderListBlock, resolveHeaderListOffset } from './headerListBlock';
 
 export interface DataGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {

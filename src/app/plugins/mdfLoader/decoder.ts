@@ -1,5 +1,5 @@
 // Maximum number of integer bits that can be represented exactly in a js number
-const MAX_SAFE_BITS: number = 53;
+const maxSafeBits: number = 53;
 
 export enum NumberType {
     Float64 = 0,
@@ -9,7 +9,7 @@ export enum NumberType {
 
 export function getNumberType(channel: AbstractChannel): NumberType {
     // Javascript number cannot represent integers with > 53 bits exactly, so use a BigInt sequence for this
-    if (channel.bitCount > MAX_SAFE_BITS) {
+    if (channel.bitCount > maxSafeBits) {
         if (channel.dataType === DataType.IntLe || channel.dataType === DataType.IntBe) {
             return NumberType.BigInt64;
         } else if (channel.dataType === DataType.UintLe || channel.dataType === DataType.UintBe) {
@@ -62,7 +62,7 @@ export class DataGroupLoader {
     constructor(private data: AbstractDataGroup, private blocks: () => Promise<AsyncIterableIterator<DataView<ArrayBuffer>>>) {}
 
     async loadInto(sequences: Map<AbstractChannel, { push(value: number | bigint): void }>): Promise<void> {
-        let records = new Map<number, {length: number, sequences: {sequence: { push(value: number | bigint): void }, loader: ((buffer: DataView) => number | bigint)}[]}>();
+        const records = new Map<number, {length: number, sequences: {sequence: { push(value: number | bigint): void }, loader: ((buffer: DataView) => number | bigint)}[]}>();
         
         for (const group of this.data.groups) {
             if (group.channels.length == 0) {
@@ -91,7 +91,7 @@ export class DataGroupLoader {
         }
         
         let rowCount = 0;
-        let totalRows = this.data.totalRows ?? 0;
+        const totalRows = this.data.totalRows ?? 0;
         await parseData(
             this.data.recordIdSize,
             await this.blocks(),
@@ -145,7 +145,7 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                     }
                 }
                 // Complex case - with masking and/or shifting
-                const useBigInt = bitCount > MAX_SAFE_BITS;
+                const useBigInt = bitCount > maxSafeBits;
                 const numberConversion = (v: string) => useBigInt ? `BigInt(${v})` : v;
                 const primitive = (v: bigint | number) => useBigInt ? `${v}n` : `${v}`;
                 
@@ -182,7 +182,7 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
 }
 
 async function parseData<T>(recordIdSize: number, blocks: AsyncIterableIterator<DataView<ArrayBuffer>>, records: ReadonlyMap<number, T & {length: number}>, rowHandler: (context: T, chunk: DataView) => boolean): Promise<void> {
-    let carry = new Uint8Array(recordIdSize + Math.max(...records.values().map(x => x.length)));
+    const carry = new Uint8Array(recordIdSize + Math.max(...records.values().map(x => x.length)));
     let carryLength = 0;
 
     function getMetadata(view: DataView) {

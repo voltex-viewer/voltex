@@ -1,7 +1,7 @@
 import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
 import { MetadataBlock, resolveMetadataOffset } from './textBlock';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 
 export interface FileHistoryBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     fileHistoryNext: MaybeLinked<FileHistoryBlock<TMode> | null, TMode>;

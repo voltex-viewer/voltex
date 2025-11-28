@@ -36,7 +36,7 @@ describe('gradientDownsampler', () => {
     describe('Basic functionality', () => {
         it('should emit first point', () => {
             const signal = createMockSignal([0, 1, 2], [0, 1, 2]);
-            const result = gradientDownsampler(signal, 0, 3, 0.1);
+            gradientDownsampler(signal, 0, 3, 0.1);
 
             expect(timeBuffer[0]).toBe(0);
             expect(valueBuffer[0]).toBe(0);
@@ -154,7 +154,7 @@ describe('gradientDownsampler', () => {
             const signal = createMockSignal(times, values);
 
             // Process with threshold 0 to capture all gradient changes
-            let result = gradientDownsampler(signal, 0, signalLength, 0);
+            const result = gradientDownsampler(signal, 0, signalLength, 0);
             
             // With varying signal, should process many points
             expect(result.signalIndex).toBeGreaterThan(0);
@@ -187,7 +187,7 @@ describe('gradientDownsampler', () => {
             const signal = createMockSignal(times, values);
 
             // Start from index 2
-            const result = gradientDownsampler(signal, 2, 5, 0.1);
+            gradientDownsampler(signal, 2, 5, 0.1);
 
             // First point in buffer should be the point at index 2
             expect(timeBuffer[0]).toBe(2);

@@ -10,12 +10,12 @@ import {
 } from './blocks/v4';
 import * as v4 from './blocks/v4';
 import * as v3 from './blocks/v3'
-import { BufferedFileReader } from './BufferedFileReader';
+import { BufferedFileReader } from './bufferedFileReader';
 import { ChannelType, DataType, getNumberType, NumberType } from './decoder';
 import { DataGroupLoader } from './decoder';
 import type { AbstractChannel, AbstractDataGroup } from './decoder';
 import { RenderMode } from '@voltex-viewer/plugin-api';
-import { SharedBufferSequence, SharedBufferBigInt64Sequence, SharedBufferBigUint64Sequence } from './SharedBufferSequence';
+import { SharedBufferSequence, SharedBufferBigInt64Sequence, SharedBufferBigUint64Sequence } from './sharedBufferSequence';
 import type { WorkerMessage, WorkerResponse, SignalMetadata } from './workerTypes';
 import { SerializableConversionData } from './serializableConversion';
 
@@ -25,7 +25,7 @@ interface LoadedSignalData {
     file: File;
     version: number;
     littleEndian: boolean;
-    dgBlockLink: any;
+    dgBlockLink: v3.DataGroupBlock<'linked'> | v4.DataGroupBlock<'linked'>;
     dataGroupKey: string;
     conversionLink: bigint | number;
     timeConversionLink: bigint | number;
@@ -36,8 +36,8 @@ interface CachedDataGroup {
     loading: Promise<void> | null;
 }
 
-let signalDataMap: Map<number, LoadedSignalData> = new Map();
-let dataGroupCache: Map<string, CachedDataGroup> = new Map();
+const signalDataMap: Map<number, LoadedSignalData> = new Map();
+const dataGroupCache: Map<string, CachedDataGroup> = new Map();
 
 async function instanceMdf3ConversionBlock(conversionBlockLinked: v3.ChannelConversionBlock<'linked'>, reader: BufferedFileReader): Promise<v3.ChannelConversionBlock<'instanced'>> {
     if (conversionBlockLinked.type === v3.ConversionType.TextRangeTable) {
@@ -84,7 +84,7 @@ function mdf4TypeToDataType(type: v4.DataType): DataType {
 async function readMf3(reader: BufferedFileReader): Promise<SignalMetadata[]> {
     const rootLink = newLink<Header>(64n);
     const header = await v3.readHeader(rootLink, reader);
-    let signals: SignalMetadata[] = [];
+    const signals: SignalMetadata[] = [];
     let signalId = 0;
     let dataGroupIndex = 0;
     console.log(header);
@@ -184,7 +184,7 @@ async function readMf4(reader: BufferedFileReader): Promise<SignalMetadata[]> {
     const header = await readHeader(rootLink, reader);
     console.log(header);
     
-    let signals: SignalMetadata[] = [];
+    const signals: SignalMetadata[] = [];
     let signalId = 0;
     let dataGroupIndex = 0;
     let lastProgressUpdate = 0;
@@ -463,9 +463,9 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                     
                     const loader = new DataGroupLoader(dataGroup, async () => {
                         if (version >= 400 && version < 500) {
-                            return await v4.getDataBlocks(dgBlockLink, reader);
+                            return await v4.getDataBlocks(dgBlockLink as v4.DataGroupBlock<'linked'>, reader);
                         } else if (version >= 300 && version < 400) {
-                            return await v3.getDataBlocks(dgBlockLink, reader);
+                            return await v3.getDataBlocks(dgBlockLink as v3.DataGroupBlock<'linked'>, reader);
                         } else {
                             throw new Error(`Unsupported version: ${version}`);
                         }
@@ -475,11 +475,15 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                     const wrappedSequences = new Map<AbstractChannel, { push(value: number | bigint): void }>();
                     
                     for (const [ch, seq] of sequences) {
-                        wrappedSequences.set(ch, {
-                            push(value: number | bigint) {
-                                (seq.push as any)(value);
-                            }
-                        });
+                        if (seq instanceof SharedBufferSequence) {
+                            wrappedSequences.set(ch, {
+                                push: (value: number | bigint) => seq.push(value as number)
+                            });
+                        } else {
+                            wrappedSequences.set(ch, {
+                                push: (value: number | bigint) => seq.push(value as bigint)
+                            });
+                        }
                     }
 
                     // Load data

@@ -32,7 +32,7 @@ export class SerializeContext {
         return offset;
     }
 
-    public async serialize(file: WritableStreamDefaultWriter<any>): Promise<void> {
+    public async serialize(file: WritableStreamDefaultWriter<Uint8Array>): Promise<void> {
         // 64 KB block size is pretty good for random access on SSDs
         const buffer = new ArrayBuffer(65536);
         const sortedList = Array.from(this.blocks.entries()).sort(([, [offsetA]], [, [offsetB]]) => Number(offsetA - offsetB));
@@ -45,7 +45,7 @@ export class SerializeContext {
                 const gapSize = offset - fileOffset;
                 if (bufferOffset + gapSize > buffer.byteLength) {
                     // Flush buffer to the file
-                    await file.write(new DataView(buffer, 0, bufferOffset));
+                    await file.write(new Uint8Array(buffer, 0, bufferOffset));
                     bufferOffset = 0;
                 }
                 new Uint8Array(buffer, bufferOffset, gapSize).fill(0);
@@ -57,7 +57,7 @@ export class SerializeContext {
             const lengthWithHeader = 4 + metadata.length;
             if (bufferOffset + Number(lengthWithHeader) > buffer.byteLength) {
                 // Flush buffer to the file
-                await file.write(new DataView(buffer, 0, bufferOffset));
+                await file.write(new Uint8Array(buffer, 0, bufferOffset));
                 bufferOffset = 0;
             }
             const view = new DataView(buffer, bufferOffset, Number(lengthWithHeader));
@@ -74,6 +74,6 @@ export class SerializeContext {
             bufferOffset += Number(lengthWithHeader);
             fileOffset += lengthWithHeader;
         }
-        await file.write(new MdfView(buffer, true, 0, bufferOffset));
+        await file.write(new Uint8Array(buffer, 0, bufferOffset));
     }
 }

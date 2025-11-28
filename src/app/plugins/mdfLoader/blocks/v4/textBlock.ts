@@ -1,6 +1,6 @@
 import { Link, readBlock, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
-import { BufferedFileReader } from '../../BufferedFileReader';
+import { BufferedFileReader } from '../../bufferedFileReader';
 
 export interface TextBlock {
     data: string;
