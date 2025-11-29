@@ -45,7 +45,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@voltex-viewer/plugin-api': path.resolve(__dirname, 'packages/plugin-api/src/index.ts')
+      '@voltex-viewer/plugin-api': path.resolve(__dirname, 'packages/plugin-api/src/index.ts'),
+      '@voltex-viewer/mdf-reader': path.resolve(__dirname, 'packages/mdf-reader/src/index.ts'),
     }
   }
 });
