@@ -1,6 +1,5 @@
 import { RenderMode } from '@voltex-viewer/plugin-api';
-import type { SerializableConversionData } from './serializableConversion';
-import type { NumberType } from './decoder';
+import type { SerializableConversionData, NumberType } from '@voltex-viewer/mdf-reader';
 
 export interface SignalMetadata {
     name: string[];

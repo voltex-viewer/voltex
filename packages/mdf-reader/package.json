@@ -1,0 +1,41 @@
+{
+  "name": "@voltex-viewer/mdf-reader",
+  "version": "0.1.0",
+  "description": "MDF (Measurement Data Format) file reader for MDF3 and MDF4",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "mdf",
+    "mdf3",
+    "mdf4",
+    "measurement",
+    "data",
+    "asam"
+  ],
+  "author": "tgillbe",
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/voltex-viewer/voltex.git"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2"
+  }
+}

@@ -54,6 +54,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@voltex-viewer/mdf-reader": "workspace:*",
     "@voltex-viewer/plugin-api": "workspace:*",
     "electron-squirrel-startup": "^1.0.1",
     "fp-ts": "^2.16.11",

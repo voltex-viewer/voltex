@@ -1,10 +1,6 @@
 import { PluginContext, SignalSource, Sequence, Signal, RenderObject } from '@voltex-viewer/plugin-api';
-import { resolveHeaderOffset, Header, DataTableBlock, DataListBlock, DataGroupBlock, ChannelBlock, } from './blocks/v4';
-import * as v4 from './blocks/v4';
-import { SerializeContext } from './blocks/v4/serializer';
-import { deserializeConversion } from './serializableConversion';
+import { v4, NumberType, deserializeConversion } from '@voltex-viewer/mdf-reader';
 import { SharedBufferBackedSequence } from './sharedBufferBackedSequence';
-import { NumberType } from './decoder';
 import type { WorkerMessage, WorkerResponse } from './workerTypes';
 import { loadingOverlayRenderObject } from './loadingOverlayRenderObject';
 
@@ -269,7 +265,7 @@ export default (context: PluginContext): void => {
                     limitMaximum: 0,
                     limitExtendedMinimum: 0,
                     limitExtendedMaximum: 0,
-                } as ChannelBlock<'instanced'>));
+                } as v4.ChannelBlock<'instanced'>));
                 
                 for (let i = 0; i < channels.length - 1; i++) {
                     channels[i].channelNext = channels[i + 1];
@@ -278,7 +274,7 @@ export default (context: PluginContext): void => {
                 const bytesPerSample = channels.length * Float32Array.BYTES_PER_ELEMENT;
                 const samplesPerArray = Math.floor(maxBytesPerArray / bytesPerSample);
                 const numArrays = Math.ceil(length / samplesPerArray);
-                const arrays: DataTableBlock[] = [];
+                const arrays: v4.DataTableBlock[] = [];
 
                 for (let arrayIndex = 0; arrayIndex < numArrays; arrayIndex++) {
                     const startSample = arrayIndex * samplesPerArray;
@@ -317,16 +313,16 @@ export default (context: PluginContext): void => {
                         dataListNext: null,
                         data: arrays,
                         flags: 0,
-                    } as DataListBlock<'instanced'>,
+                    } as v4.DataListBlock<'instanced'>,
                     comment: null,
                     recordIdSize: 0,
-                } as DataGroupBlock<'instanced'>
+                } as v4.DataGroupBlock<'instanced'>
             });
             const dataGroup = dataGroups[0];
             for (let i = 1; i < dataGroups.length; i++) {
                 dataGroups[i - 1].dataGroupNext = dataGroups[i];
             }
-            const header: Header<'instanced'> = {
+            const header: v4.Header<'instanced'> = {
                 firstDataGroup: dataGroup,
                 fileHistory: {
                     fileHistoryNext: null,
@@ -351,8 +347,8 @@ export default (context: PluginContext): void => {
                 startAngle: 0n,
                 startDistance: 0n,
             };
-            const serializeContext = new SerializeContext();
-            resolveHeaderOffset(serializeContext, header);
+            const serializeContext = new v4.SerializeContext();
+            v4.resolveHeaderOffset(serializeContext, header);
             const writer = file.getWriter();
             try {
                 await serializeContext.serialize(writer);

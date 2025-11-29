@@ -30,21 +30,15 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
             : (v: ArrayValue<T>) => Number(v)) as (value: ArrayValue<T>) => number;
     }
 
-    private recalculateMinMax(): void {
-        this._min = Infinity;
-        this._max = -Infinity;
-        for (let i = 0; i < this._length; i++) {
+    updateBuffer(newBuffer: SharedArrayBuffer, newLength: number): void {
+        // TypeScript has trouble with union-typed constructors, but this is safe at runtime
+        this.array = new (this.arrayConstructor as unknown as { new(buffer: SharedArrayBuffer): T })(newBuffer);
+        for (let i = this._length; i < newLength; i++) {
             const value = this.valueAt(i);
             if (value < this._min) this._min = value;
             if (value > this._max) this._max = value;
         }
-    }
-
-    updateBuffer(newBuffer: SharedArrayBuffer, newLength: number): void {
-        // TypeScript has trouble with union-typed constructors, but this is safe at runtime
-        this.array = new (this.arrayConstructor as unknown as { new(buffer: SharedArrayBuffer): T })(newBuffer);
         this._length = newLength;
-        this.recalculateMinMax();
     }
 
     updateLength(newLength: number): void {
