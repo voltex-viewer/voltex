@@ -4,6 +4,14 @@ interface CacheEntry {
     lastUsed: number;
 }
 
+export interface CacheStats {
+    hits: number;
+    misses: number;
+    hitRate: number;
+    evictions: number;
+    directReads: number;
+}
+
 export class BufferedFileReader {
     private _file: File;
     private bufferSize: number;
@@ -11,12 +19,27 @@ export class BufferedFileReader {
     private cache: Map<number, CacheEntry> = new Map();
     public version: number = 0;
     public littleEndian: boolean;
+    private cacheHits: number = 0;
+    private cacheMisses: number = 0;
+    private evictions: number = 0;
+    private directReads: number = 0;
 
     constructor(file: File, bufferSize: number = 1024 * 1024, maxBuffers: number = 4) {
         this._file = file;
         this.bufferSize = bufferSize;
         this.maxBuffers = maxBuffers;
         this.littleEndian = true;
+    }
+
+    getCacheStats(): CacheStats {
+        const total = this.cacheHits + this.cacheMisses;
+        return {
+            hits: this.cacheHits,
+            misses: this.cacheMisses,
+            hitRate: total > 0 ? this.cacheHits / total : 0,
+            evictions: this.evictions,
+            directReads: this.directReads,
+        };
     }
 
     get file(): File {
@@ -26,6 +49,7 @@ export class BufferedFileReader {
     async readBytes(offset: number, length: number): Promise<ArrayBuffer> {
         // For very large requests (more than 2 buffer sizes), read directly from file
         if (length > this.bufferSize * 2) {
+            this.directReads++;
             return await this._file.slice(offset, offset + length).arrayBuffer();
         }
 
@@ -39,11 +63,13 @@ export class BufferedFileReader {
             
             if (cacheEntry) {
                 // Update last used counter and return slice
+                this.cacheHits++;
                 cacheEntry.lastUsed = Date.now();
                 const bufferOffset = offset - startAlignedOffset;
                 return cacheEntry.buffer.slice(bufferOffset, bufferOffset + length);
             } else {
                 // Cache miss: Load the buffer from file
+                this.cacheMisses++;
                 const bufferEnd = Math.min(this._file.size, startAlignedOffset + this.bufferSize);
                 const buffer = await this._file.slice(startAlignedOffset, bufferEnd).arrayBuffer();
                 
@@ -72,6 +98,7 @@ export class BufferedFileReader {
             let cacheEntry = this.cache.get(alignedOffset);
             
             if (!cacheEntry) {
+                this.cacheMisses++;
                 const bufferEnd = Math.min(this._file.size, alignedOffset + this.bufferSize);
                 const buffer = await this._file.slice(alignedOffset, bufferEnd).arrayBuffer();
                 
@@ -87,6 +114,7 @@ export class BufferedFileReader {
                 
                 this.cache.set(alignedOffset, cacheEntry);
             } else {
+                this.cacheHits++;
                 cacheEntry.lastUsed = Date.now();
             }
             
@@ -134,6 +162,7 @@ export class BufferedFileReader {
         
         if (oldestOffset !== -1) {
             this.cache.delete(oldestOffset);
+            this.evictions++;
         }
     }
 }

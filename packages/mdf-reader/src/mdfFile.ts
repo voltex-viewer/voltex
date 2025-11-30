@@ -204,6 +204,8 @@ class MdfFileImpl implements MdfFile {
             throw new Error(`Unsupported MDF version: ${id.version}`);
         }
 
+        console.log(`Cache stats when loading "${file.name}":`, reader.getCacheStats());
+
         return mdf;
     }
 
