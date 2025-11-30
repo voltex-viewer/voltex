@@ -37,10 +37,7 @@ function isLink(value: unknown): value is v4.Link<unknown> {
     return typeof value === 'bigint';
 }
 
-export function createMdfBlockViewer(context: PluginContext): {
-    loadFile: (file: File) => Promise<void>;
-    clear: () => void;
-} {
+export default (context: PluginContext): void => {
     let sidebarEntry: SidebarEntry | null = null;
     let blocks: BlockInfo[] = [];
     let blockByAddress: Map<bigint, BlockInfo> = new Map();
@@ -450,37 +447,33 @@ export function createMdfBlockViewer(context: PluginContext): {
         return result;
     }
 
-    return {
-        async loadFile(file: File): Promise<void> {
-            blocks = await scanBlocks(file);
-            blockByAddress = new Map(blocks.map(b => [b.address, b]));
+    async function loadFile(file: File): Promise<void> {
+        blocks = await scanBlocks(file);
+        blockByAddress = new Map(blocks.map(b => [b.address, b]));
 
-            if (!sidebarEntry) {
-                sidebarEntry = context.addSidebarEntry({
-                    title: 'MDF Blocks',
-                    iconHtml: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="7"/>
-                        <rect x="14" y="3" width="7" height="7"/>
-                        <rect x="14" y="14" width="7" height="7"/>
-                        <rect x="3" y="14" width="7" height="7"/>
-                    </svg>`,
-                    renderContent: () => createContainer(),
-                });
-            }
+        if (!sidebarEntry) {
+            sidebarEntry = context.addSidebarEntry({
+                title: 'MDF Blocks',
+                iconHtml: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                </svg>`,
+                renderContent: () => createContainer(),
+            });
+        }
 
-            updateVirtualScroll();
-            sidebarEntry.open();
-        },
+        updateVirtualScroll();
+        sidebarEntry.open();
+    }
 
-        clear(): void {
-            blocks = [];
-            blockByAddress.clear();
-            if (container) {
-                const list = container.querySelector('.mdf-block-list');
-                if (list) {
-                    list.innerHTML = '<div class="mdf-block-empty">No MDF file loaded</div>';
-                }
-            }
-        },
-    };
+    context.registerFileOpenHandler({
+        extensions: ['.mf4', '.mdf'],
+        description: 'MDF/MF4 Measurement Files',
+        mimeType: '*/*',
+        handler: async (file: File) => {
+            await loadFile(file);
+        }
+    });
 }

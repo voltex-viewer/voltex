@@ -496,14 +496,28 @@ export class PluginManager {
     }
 
     getFileOpenTypes(): FilePickerAcceptType[] {
-        const individualTypes = this.plugins.flatMap(plugin => {
+        // Collect all handlers and group by extensions
+        const extensionMap = new Map<string, { description: string; mimeType: `${string}/${string}`; extensions: `.${string}`[] }>();
+        
+        for (const plugin of this.plugins) {
             const data = this.pluginData.get(plugin);
-            if (!data) return [];
-            return data.fileExtensionHandlers.map(handler => ({
-                description: handler.description,
-                accept: { [handler.mimeType]: handler.extensions }
-            }));
-        });
+            if (!data) continue;
+            for (const handler of data.fileExtensionHandlers) {
+                const key = handler.extensions.map(e => e.toLowerCase()).sort().join(',');
+                if (!extensionMap.has(key)) {
+                    extensionMap.set(key, {
+                        description: handler.description,
+                        mimeType: handler.mimeType,
+                        extensions: handler.extensions
+                    });
+                }
+            }
+        }
+
+        const individualTypes = Array.from(extensionMap.values()).map(handler => ({
+            description: handler.description,
+            accept: { [handler.mimeType]: handler.extensions } as Record<`${string}/${string}`, `.${string}`[]>
+        }));
 
         if (individualTypes.length === 0) {
             return [];
@@ -511,7 +525,7 @@ export class PluginManager {
 
         const allExtensions = individualTypes.flatMap(type => 
             Object.values(type.accept).flat()
-        );
+        ) as `.${string}`[];
 
         const allSupportedFiles: FilePickerAcceptType = {
             description: 'All Supported Files',

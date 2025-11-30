@@ -1,0 +1,7 @@
+{
+  "name": "@voltex-viewer/mdf-block-viewer-plugin",
+  "displayName": "MDF Block Viewer",
+  "version": "1.0.0",
+  "description": "Displays the internal block structure of MDF files for debugging and analysis",
+  "author": "Voltex"
+}

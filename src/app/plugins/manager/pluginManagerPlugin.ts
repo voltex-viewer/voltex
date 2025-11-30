@@ -30,6 +30,7 @@ export default (pluginContext: PluginContext): void => {
             '@voltex-viewer/fps-plugin': false,
             '@voltex-viewer/demo-signals-plugin': false,
             '@voltex-viewer/profiler-plugin': false,
+            '@voltex-viewer/mdf-block-viewer-plugin': false,
         }
     });
 

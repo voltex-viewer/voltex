@@ -3,18 +3,10 @@ import { v4, NumberType, deserializeConversion } from '@voltex-viewer/mdf-reader
 import { SharedBufferBackedSequence } from './sharedBufferBackedSequence';
 import type { WorkerMessage, WorkerResponse } from './workerTypes';
 import { loadingOverlayRenderObject } from './loadingOverlayRenderObject';
-import { createMdfBlockViewer } from './mdfBlockViewer';
-import * as t from 'io-ts';
 
 type AnySequence = SharedBufferBackedSequence<Float64Array> | SharedBufferBackedSequence<BigInt64Array> | SharedBufferBackedSequence<BigUint64Array>;
 
-const configSchema = t.type({
-    showBlockViewer: t.boolean,
-});
-
 export default (context: PluginContext): void => {
-    const config = context.loadConfig(configSchema, { showBlockViewer: false });
-    const blockViewer = config.showBlockViewer ? createMdfBlockViewer(context) : null;
 
     const activeSignalLoaders = new Map<number, {
         timeSequence: AnySequence;
@@ -105,11 +97,6 @@ export default (context: PluginContext): void => {
         description: 'MDF/MF4 Measurement Files',
         mimeType: '*/*',
         handler: async (file: File) => {
-            // Load block viewer if enabled
-            if (blockViewer) {
-                blockViewer.loadFile(file);
-            }
-
             // Show loading overlay after a delay to avoid flashing for quick loads
             const showOverlayTimeout = setTimeout(() => {
                 loadingOverlayObj = loadingOverlayRenderObject();

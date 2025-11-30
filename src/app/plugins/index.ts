@@ -17,6 +17,8 @@ import ProfilerFunction from './profiler/profilerPlugin';
 import ProfilerMetadata from './profiler/plugin.json';
 import mdfLoaderFunction from './mdfLoader/mdfLoaderPlugin';
 import mdfLoaderMetadata from './mdfLoader/plugin.json';
+import mdfBlockViewerFunction from './mdfBlockViewer/mdfBlockViewerPlugin';
+import mdfBlockViewerMetadata from './mdfBlockViewer/plugin.json';
 import csvLoaderFunction from './csvLoader/csvLoaderPlugin';
 import csvLoaderMetadata from './csvLoader/plugin.json';
 import voltexFunction from './voltex/voltexPlugin';
@@ -71,6 +73,11 @@ const mdfLoaderPlugin: PluginModule = {
     metadata: mdfLoaderMetadata
 };
 
+const mdfBlockViewerPlugin: PluginModule = {
+    plugin: mdfBlockViewerFunction,
+    metadata: mdfBlockViewerMetadata
+};
+
 const csvLoaderPlugin: PluginModule = {
     plugin: csvLoaderFunction,
     metadata: csvLoaderMetadata
@@ -102,6 +109,7 @@ export function getAvailablePlugins(): PluginModule[] {
         demoSignalsPlugin,
         profilerPlugin,
         mdfLoaderPlugin,
+        mdfBlockViewerPlugin,
         csvLoaderPlugin,
         voltexPlugin,
         cursorPlugin,
