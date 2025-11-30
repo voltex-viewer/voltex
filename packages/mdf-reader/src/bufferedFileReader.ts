@@ -23,6 +23,7 @@ export class BufferedFileReader {
     private cacheMisses: number = 0;
     private evictions: number = 0;
     private directReads: number = 0;
+    private accessCounter: number = 0;
 
     constructor(file: File, bufferSize: number = 1024 * 1024, maxBuffers: number = 4) {
         this._file = file;
@@ -64,7 +65,7 @@ export class BufferedFileReader {
             if (cacheEntry) {
                 // Update last used counter and return slice
                 this.cacheHits++;
-                cacheEntry.lastUsed = Date.now();
+                cacheEntry.lastUsed = ++this.accessCounter;
                 const bufferOffset = offset - startAlignedOffset;
                 return cacheEntry.buffer.slice(bufferOffset, bufferOffset + length);
             } else {
@@ -76,7 +77,7 @@ export class BufferedFileReader {
                 cacheEntry = {
                     buffer: buffer,
                     offset: startAlignedOffset,
-                    lastUsed: Date.now()
+                    lastUsed: ++this.accessCounter
                 };
                 
                 if (this.cache.size >= this.maxBuffers) {
@@ -105,7 +106,7 @@ export class BufferedFileReader {
                 cacheEntry = {
                     buffer: buffer,
                     offset: alignedOffset,
-                    lastUsed: Date.now()
+                    lastUsed: ++this.accessCounter
                 };
                 
                 if (this.cache.size >= this.maxBuffers) {
@@ -115,7 +116,7 @@ export class BufferedFileReader {
                 this.cache.set(alignedOffset, cacheEntry);
             } else {
                 this.cacheHits++;
-                cacheEntry.lastUsed = Date.now();
+                cacheEntry.lastUsed = ++this.accessCounter;
             }
             
             neededBuffers.push(cacheEntry);
