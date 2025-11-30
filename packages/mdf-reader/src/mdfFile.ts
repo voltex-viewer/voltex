@@ -41,7 +41,6 @@ export interface MdfFile {
     readonly version: number;
     getGroups(): MdfSignalGroup[];
     read<TBuffer = Float64Array | BigInt64Array | BigUint64Array>(groups: MdfSignalGroup[], options?: ReadOptions<TBuffer>): Promise<SignalData<TBuffer>[][]>;
-    close(): void;
 }
 
 const INITIAL_BUFFER_SIZE = 1024;
@@ -567,10 +566,6 @@ class MdfFileImpl implements MdfFile {
         }
 
         return results;
-    }
-
-    close(): void {
-        this.reader.clearBuffer();
     }
 }
 

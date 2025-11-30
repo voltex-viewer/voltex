@@ -136,24 +136,4 @@ export class BufferedFileReader {
             this.cache.delete(oldestOffset);
         }
     }
-
-    get size(): number {
-        return this._file.size;
-    }
-
-    clearBuffer(): void {
-        this.cache.clear();
-    }
-    
-    getCacheStats(): { entries: number, totalMemory: number } {
-        let totalMemory = 0;
-        for (const entry of this.cache.values()) {
-            totalMemory += entry.buffer.byteLength;
-        }
-        
-        return {
-            entries: this.cache.size,
-            totalMemory: totalMemory
-        };
-    }
 }
