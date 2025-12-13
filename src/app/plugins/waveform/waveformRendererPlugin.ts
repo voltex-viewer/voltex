@@ -18,12 +18,6 @@ export interface BufferData {
 export default (context: PluginContext): void => {
     const waveformPrograms = new WaveformShaders(context.webgl.utils);
 
-    // Initialize instancing extension once
-    const instancingExt = context.webgl.gl.getExtension('ANGLE_instanced_arrays');
-    if (!instancingExt) {
-        throw new Error('ANGLE_instanced_arrays extension is not supported - instanced line rendering will not be available');
-    }
-
     const config = context.loadConfig(
         waveformConfigSchema,
         {
@@ -355,7 +349,6 @@ export default (context: PluginContext): void => {
                     buffer,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
-                    instancingExt,
                     metadata,
                     waveformPrograms,
                     channel,
@@ -378,7 +371,6 @@ export default (context: PluginContext): void => {
                     buffer,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
-                    instancingExt,
                     enumTextMetadata,
                     waveformPrograms,
                     channel,
@@ -418,7 +410,6 @@ export default (context: PluginContext): void => {
                     dotRenderBuffer,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
-                    instancingExt,
                     dotOverlayMetadata,
                     waveformPrograms,
                     channel,
@@ -440,7 +431,6 @@ export default (context: PluginContext): void => {
                         buffers,
                         sharedInstanceGeometryBuffer,
                         sharedBevelJoinGeometryBuffer,
-                        instancingExt,
                         waveformPrograms
                     ));
             }

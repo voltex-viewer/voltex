@@ -10,7 +10,7 @@ export class WebGLUtilsImpl {
     private measureTextCache: Map<string, {metrics: TextMetrics, renderWidth: number, renderHeight: number}> = new Map();
     private cachedBodyFont: string | null = null;
 
-    constructor(private gl: WebGLRenderingContext) {
+    constructor(private gl: WebGL2RenderingContext) {
         const lineVertexShader = this.createShader('vertex-shader', `
             attribute vec2 a_position;
             uniform vec2 u_bounds;

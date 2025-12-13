@@ -233,7 +233,7 @@ export class CursorRenderObject {
     }
 
     private drawRoundedRect(
-        gl: WebGLRenderingContext,
+        gl: WebGL2RenderingContext,
         utils: WebGLUtils,
         x: number,
         y: number,

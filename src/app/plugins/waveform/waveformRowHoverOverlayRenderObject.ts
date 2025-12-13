@@ -35,7 +35,6 @@ export class WaveformRowHoverOverlayRenderObject {
         private readonly signalBuffers: Map<Signal, BufferData>,
         sharedInstanceGeometryBuffer: WebGLBuffer,
         sharedBevelJoinGeometryBuffer: WebGLBuffer,
-        instancingExt: ANGLE_instanced_arrays,
         waveformPrograms: WaveformShaders,
         zIndex: number = 90
     ) {
@@ -120,7 +119,6 @@ export class WaveformRowHoverOverlayRenderObject {
                     bufferData,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
-                    instancingExt,
                     highlightMetadata,
                     waveformPrograms,
                     highlightSignal, // Use the highlight signal instead of the original

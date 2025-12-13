@@ -10,7 +10,6 @@ export class WaveformRenderObject {
         private bufferData: BufferData,
         private sharedInstanceGeometryBuffer: WebGLBuffer,
         private sharedBevelJoinGeometryBuffer: WebGLBuffer,
-        private instancingExt: ANGLE_instanced_arrays,
         private metadata: SignalMetadata,
         private waveformPrograms: WaveformShaders,
         private signal: Signal,
@@ -266,7 +265,7 @@ export class WaveformRenderObject {
     }
     
     private renderSignal(
-        gl: WebGLRenderingContext,
+        gl: WebGL2RenderingContext,
         program: WebGLProgram,
         bindUniforms: (program: WebGLProgram) => void,
     ): void {
@@ -293,7 +292,7 @@ export class WaveformRenderObject {
     }
     
     private renderInstancedLines(
-        gl: WebGLRenderingContext,
+        gl: WebGL2RenderingContext,
         program: WebGLProgram,
         bindUniforms: (program: WebGLProgram) => void,
     ): void {
@@ -305,44 +304,44 @@ export class WaveformRenderObject {
         const positionLocation = gl.getAttribLocation(program, 'position');
         gl.enableVertexAttribArray(positionLocation);
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
+        gl.vertexAttribDivisor(positionLocation, 0);
         
         // Bind time buffer for pointA times (instanced data)
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
         const pointATimeLocation = gl.getAttribLocation(program, 'pointATime');
         gl.enableVertexAttribArray(pointATimeLocation);
         gl.vertexAttribPointer(pointATimeLocation, 1, gl.FLOAT, false, 4, 0); // stride: 1 float, offset: 0
-        this.instancingExt.vertexAttribDivisorANGLE(pointATimeLocation, 1);
+        gl.vertexAttribDivisor(pointATimeLocation, 1);
         
         const pointBTimeLocation = gl.getAttribLocation(program, 'pointBTime');
         gl.enableVertexAttribArray(pointBTimeLocation);
         gl.vertexAttribPointer(pointBTimeLocation, 1, gl.FLOAT, false, 4, 4); // stride: 1 float, offset: 1 float
-        this.instancingExt.vertexAttribDivisorANGLE(pointBTimeLocation, 1);
+        gl.vertexAttribDivisor(pointBTimeLocation, 1);
         
         // Bind value buffer for pointA/pointB values (instanced data)
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const pointAValueLocation = gl.getAttribLocation(program, 'pointAValue');
         gl.enableVertexAttribArray(pointAValueLocation);
         gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0); // stride: 1 float, offset: 0
-        this.instancingExt.vertexAttribDivisorANGLE(pointAValueLocation, 1);
+        gl.vertexAttribDivisor(pointAValueLocation, 1);
         
         const pointBValueLocation = gl.getAttribLocation(program, 'pointBValue');
         gl.enableVertexAttribArray(pointBValueLocation);
         gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4); // stride: 1 float, offset: 1 float
-        this.instancingExt.vertexAttribDivisorANGLE(pointBValueLocation, 1);
+        gl.vertexAttribDivisor(pointBValueLocation, 1);
         
         // Draw instanced
         const instanceCount = this.bufferData.bufferLength - 1;
         if (instanceCount > 0) {
-            this.instancingExt.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, instanceCount);
+            gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, instanceCount);
         }
         
         // Clean up divisors
-        this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointATimeLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointBTimeLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointAValueLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointBValueLocation, 0);
+        gl.vertexAttribDivisor(positionLocation, 0);
+        gl.vertexAttribDivisor(pointATimeLocation, 0);
+        gl.vertexAttribDivisor(pointBTimeLocation, 0);
+        gl.vertexAttribDivisor(pointAValueLocation, 0);
+        gl.vertexAttribDivisor(pointBValueLocation, 0);
         
         // Disable vertex attribute arrays
         gl.disableVertexAttribArray(positionLocation);
@@ -353,7 +352,7 @@ export class WaveformRenderObject {
     }
     
     private renderBevelJoins(
-        gl: WebGLRenderingContext,
+        gl: WebGL2RenderingContext,
         program: WebGLProgram,
         bindUniforms: (program: WebGLProgram) => void,
     ): void {
@@ -365,56 +364,56 @@ export class WaveformRenderObject {
         const positionLocation = gl.getAttribLocation(program, 'position');
         gl.enableVertexAttribArray(positionLocation);
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
+        gl.vertexAttribDivisor(positionLocation, 0);
         
         // Bind time buffer for three consecutive point times (A, B, C)
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
         const pointATimeLocation = gl.getAttribLocation(program, 'pointATime');
         gl.enableVertexAttribArray(pointATimeLocation);
         gl.vertexAttribPointer(pointATimeLocation, 1, gl.FLOAT, false, 4, 0); // offset: 0
-        this.instancingExt.vertexAttribDivisorANGLE(pointATimeLocation, 1);
+        gl.vertexAttribDivisor(pointATimeLocation, 1);
         
         const pointBTimeLocation = gl.getAttribLocation(program, 'pointBTime');
         gl.enableVertexAttribArray(pointBTimeLocation);
         gl.vertexAttribPointer(pointBTimeLocation, 1, gl.FLOAT, false, 4, 4); // offset: 1 float
-        this.instancingExt.vertexAttribDivisorANGLE(pointBTimeLocation, 1);
+        gl.vertexAttribDivisor(pointBTimeLocation, 1);
         
         const pointCTimeLocation = gl.getAttribLocation(program, 'pointCTime');
         gl.enableVertexAttribArray(pointCTimeLocation);
         gl.vertexAttribPointer(pointCTimeLocation, 1, gl.FLOAT, false, 4, 8); // offset: 2 floats
-        this.instancingExt.vertexAttribDivisorANGLE(pointCTimeLocation, 1);
+        gl.vertexAttribDivisor(pointCTimeLocation, 1);
         
         // Bind value buffer for three consecutive point values (A, B, C)
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const pointAValueLocation = gl.getAttribLocation(program, 'pointAValue');
         gl.enableVertexAttribArray(pointAValueLocation);
         gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0); // offset: 0
-        this.instancingExt.vertexAttribDivisorANGLE(pointAValueLocation, 1);
+        gl.vertexAttribDivisor(pointAValueLocation, 1);
         
         const pointBValueLocation = gl.getAttribLocation(program, 'pointBValue');
         gl.enableVertexAttribArray(pointBValueLocation);
         gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4); // offset: 1 float
-        this.instancingExt.vertexAttribDivisorANGLE(pointBValueLocation, 1);
+        gl.vertexAttribDivisor(pointBValueLocation, 1);
         
         const pointCValueLocation = gl.getAttribLocation(program, 'pointCValue');
         gl.enableVertexAttribArray(pointCValueLocation);
         gl.vertexAttribPointer(pointCValueLocation, 1, gl.FLOAT, false, 4, 8); // offset: 2 floats
-        this.instancingExt.vertexAttribDivisorANGLE(pointCValueLocation, 1);
+        gl.vertexAttribDivisor(pointCValueLocation, 1);
         
         // Draw instanced bevel joins - need 3 consecutive points
         const instanceCount = this.bufferData.bufferLength - 2;
         if (instanceCount > 0) {
-            this.instancingExt.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 3, instanceCount);
+            gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, instanceCount);
         }
         
         // Clean up divisors
-        this.instancingExt.vertexAttribDivisorANGLE(positionLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointATimeLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointBTimeLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointCTimeLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointAValueLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointBValueLocation, 0);
-        this.instancingExt.vertexAttribDivisorANGLE(pointCValueLocation, 0);
+        gl.vertexAttribDivisor(positionLocation, 0);
+        gl.vertexAttribDivisor(pointATimeLocation, 0);
+        gl.vertexAttribDivisor(pointBTimeLocation, 0);
+        gl.vertexAttribDivisor(pointCTimeLocation, 0);
+        gl.vertexAttribDivisor(pointAValueLocation, 0);
+        gl.vertexAttribDivisor(pointBValueLocation, 0);
+        gl.vertexAttribDivisor(pointCValueLocation, 0);
         
         // Disable vertex attribute arrays
         gl.disableVertexAttribArray(positionLocation);

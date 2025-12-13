@@ -113,7 +113,7 @@ export class WaveformTooltipRenderObject {
     }
 
     private drawColorIndicator(
-        gl: WebGLRenderingContext,
+        gl: WebGL2RenderingContext,
         utils: WebGLUtils,
         x: number,
         y: number,
@@ -166,7 +166,7 @@ export class WaveformTooltipRenderObject {
     }
 
     private drawTooltipBackground(
-        gl: WebGLRenderingContext,
+        gl: WebGL2RenderingContext,
         utils: WebGLUtils, 
         x: number, 
         y: number, 

@@ -275,7 +275,7 @@ export interface RenderContext {
     viewport: [number, number, number, number];
 }
 export interface WebGlContext {
-    gl: WebGLRenderingContext;
+    gl: WebGL2RenderingContext;
     utils: WebGLUtils;
 }
 

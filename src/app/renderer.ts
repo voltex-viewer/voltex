@@ -52,10 +52,10 @@ export class Renderer {
         // Create root render object
         this.rootRenderObject = new RenderObjectImpl(null, { });
         
-        // Initialize WebGL context
-        const gl = this.canvas.getContext('webgl');
+        // Initialize WebGL2 context
+        const gl = this.canvas.getContext('webgl2');
         if (!gl) {
-            throw new Error('WebGL not supported');
+            throw new Error('WebGL2 not supported');
         }
 
         const webglUtils = new WebGLUtilsImpl(gl);
@@ -415,9 +415,9 @@ export class Renderer {
 
         renderRequested = this.pluginManager.onBeforeRender(this.renderProfiler) || renderRequested;
         
-        const gl = this.canvas.getContext('webgl');
+        const gl = this.canvas.getContext('webgl2');
         if (!gl) {
-            throw new Error('WebGL context not available');
+            throw new Error('WebGL2 context not available');
         }
         
         const dpr = window.devicePixelRatio || 1;
