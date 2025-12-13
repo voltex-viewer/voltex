@@ -101,7 +101,6 @@ export class WaveformRowHoverOverlayRenderObject {
                     downsamplingMode: 'off',
                     bufferCapacity: 0,
                     bufferLength: 0,
-                    signalIndex: 0,
                 };
 
                 // Store the buffer references for direct access
@@ -214,16 +213,14 @@ export class WaveformRowHoverOverlayRenderObject {
         renderMode: RenderMode
     ): void {
         const highlightSignal = this.highlightSignals.get(signal);
-        const bufferData = this.signalBuffers.get(signal);
         const { gl } = context.render;
         
-        if (!bufferData) return;
-        const maxUpdateIndex = bufferData.signalIndex;
-        if (dataIndex >= maxUpdateIndex) return;
+        const signalLength = Math.min(signal.time.length, signal.values.length);
+        if (dataIndex >= signalLength) return;
 
         const indices = [];
         if (renderMode === RenderMode.Enum) {
-            if (dataIndex >= maxUpdateIndex - 1) return;
+            if (dataIndex >= signalLength - 1) return;
             
             indices.push(dataIndex, dataIndex + 1);
         } else {
@@ -251,22 +248,18 @@ export class WaveformRowHoverOverlayRenderObject {
             gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);
             
             // Update buffer metadata
-            highlightBufferData.signalIndex = indices.length;
             highlightBufferData.bufferLength = indices.length;
             highlightBufferData.bufferCapacity = indices.length;
         }
     }
 
     private getSignalValueAtTime(signal: Signal, time: number, signalMetadata: SignalMetadata): { time: number; value: number; display: string; dataIndex: number } | null {
-        const bufferData = this.signalBuffers.get(signal);
-        if (!bufferData) return null;
-        
-        const maxUpdateIndex = bufferData.signalIndex;
-        if (maxUpdateIndex === 0) return null;
+        const signalLength = Math.min(signal.time.length, signal.values.length);
+        if (signalLength === 0) return null;
 
         // Use binary search to find the closest data point
         let left = 0;
-        let right = maxUpdateIndex - 1;
+        let right = signalLength - 1;
         
         while (left < right) {
             const mid = Math.floor((left + right) / 2);
@@ -284,14 +277,14 @@ export class WaveformRowHoverOverlayRenderObject {
         if (signalMetadata.renderMode === RenderMode.Enum) {
             // For enum signals, always look leftwards (backwards in time)
             // Find the last data point that is <= the mouse time
-            if (left < maxUpdateIndex) {
+            if (left < signalLength) {
                 if (signal.time.valueAt(left) > time && left > 0) {
                     // If the found point is after the mouse time, go back one
                     closestIndex = left - 1;
                 }
             } else {
                 // If we're past the end, use the last point
-                closestIndex = maxUpdateIndex - 1;
+                closestIndex = signalLength - 1;
             }
         } else {
             // For non-enum signals, use the closest-point
@@ -304,8 +297,8 @@ export class WaveformRowHoverOverlayRenderObject {
                 }
             }
             
-            if (left >= maxUpdateIndex) {
-                closestIndex = maxUpdateIndex - 1;
+            if (left >= signalLength) {
+                closestIndex = signalLength - 1;
             }
         }
 

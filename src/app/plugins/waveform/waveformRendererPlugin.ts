@@ -4,7 +4,10 @@ import { WaveformRenderObject } from './waveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './waveformRowHoverOverlayRenderObject';
 import { WaveformTooltipRenderObject } from './waveformTooltipRenderObject';
 import { WaveformShaders } from './waveformShaders';
-import { createGradientDownsampler } from './gradientDownsampler';
+import { createGradientDownsampler } from './downsamplers/gradientDownsampler';
+import { createEnumDownsampler } from './downsamplers/enumDownsampler';
+import type { Downsampler } from './downsamplers/types';
+import { createRawDownsampler } from './downsamplers/rawDownsampler';
 
 export interface BufferData {
     timeBuffer: WebGLBuffer;
@@ -12,7 +15,11 @@ export interface BufferData {
     downsamplingMode: string;
     bufferCapacity: number;
     bufferLength: number;
-    signalIndex: number;
+}
+
+interface SignalBufferData extends BufferData {
+    generator: Downsampler;
+    overwriteNext: boolean;
 }
 
 export default (context: PluginContext): void => {
@@ -30,17 +37,12 @@ export default (context: PluginContext): void => {
             downsamplingMode: 'lossless' as const,
         });
 
-    type DownsamplingMode = typeof config.downsamplingMode | "enum";
-
     // Create a single global tooltip render object
     const waveformOverlays: Map<Row, WaveformRowHoverOverlayRenderObject> = new Map();
     new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays);
 
-    const buffers = new Map<Signal, BufferData>();
+    const buffers = new Map<Signal, SignalBufferData>();
     const dotOverlayBuffers = new Map<Signal, BufferData>();
-    
-    // Track current downsampling mode to detect changes
-    let currentDownsamplingMode = config.downsamplingMode;
     
     // Create shared instance geometry for line segments (2 triangles, 6 vertices)
     const segmentInstanceGeometry = new Float32Array([
@@ -78,156 +80,108 @@ export default (context: PluginContext): void => {
     // Frame timing variables
     let frameStartTime = 0;
     const frameTimeOverhead = 2; // ms overhead to avoid losing performance
-    let adaptiveChunkSize = 1000;
 
     const maxPoints = 4096;
-    const timeBuffer = new Float32Array(maxPoints);
-    const valueBuffer = new Float32Array(maxPoints);
 
-    type DownsampleFunction = (
-        sequence: Signal,
-        signalIndex: number,
-        seqLen: number
-    ) => { bufferOffset: number; signalIndex: number };
+    type DownsamplingMode = typeof config.downsamplingMode | 'enum';
 
-    const rawSamples: DownsampleFunction = (
-        sequence: Signal,
-        signalIndex: number,
-        seqLen: number
-    ) => {
-        let bufferOffset = 0;
-        for (; bufferOffset < maxPoints && signalIndex < seqLen; signalIndex++) {
-            const time = sequence.time.valueAt(signalIndex);
-            const value = sequence.values.valueAt(signalIndex);
-            timeBuffer[bufferOffset] = time;
-            valueBuffer[bufferOffset] = value;
-            bufferOffset++;
-        }
-        return { bufferOffset, signalIndex };
+    const downsamplerFactories: Record<DownsamplingMode, (signal: Signal) => Downsampler> = {
+        off: (signal) => createRawDownsampler(signal, maxPoints),
+        aggressive: (signal) => createGradientDownsampler(signal, 1, maxPoints),
+        normal: (signal) => createGradientDownsampler(signal, 0.1, maxPoints),
+        lossless: (signal) => createGradientDownsampler(signal, 0, maxPoints),
+        enum: (signal) => createEnumDownsampler(signal, maxPoints),
     };
 
-    const gradientDownsampler = createGradientDownsampler(maxPoints, timeBuffer, valueBuffer);
-
-    const enumSimplifier: DownsampleFunction = (
-        sequence: Signal,
-        signalIndex: number,
-        seqLen: number
-    ) => {
-        let bufferOffset = 0;
-        let lastValue: number | undefined;
-
-        for (; signalIndex < seqLen && bufferOffset < maxPoints - 1; signalIndex++) {
-            const value = sequence.values.valueAt(signalIndex);
-            if (value !== lastValue) {
-                timeBuffer[bufferOffset] = sequence.time.valueAt(signalIndex);
-                valueBuffer[bufferOffset] = value;
-                bufferOffset++;
-                lastValue = value;
-            }
-        }
-        
-        // Add the last value if it is needed to cover the end of the sequence
-        if (bufferOffset > 0 && signalIndex === seqLen && seqLen >= 2) {
-            const lastButOneValue = sequence.values.valueAt(seqLen - 2);
-            if (lastValue === lastButOneValue) {
-                timeBuffer[bufferOffset] = sequence.time.valueAt(seqLen - 1);
-                valueBuffer[bufferOffset] = lastValue;
-                bufferOffset++;
-            }
-        }
-
-        return { bufferOffset, signalIndex };
-    };
-
-    const simplifier: Record<DownsamplingMode, DownsampleFunction> = {
-        off: rawSamples,
-        aggressive: (sequence, signalIndex, seqLen) => gradientDownsampler(sequence, signalIndex, seqLen, 1),
-        normal: (sequence, signalIndex, seqLen) => gradientDownsampler(sequence, signalIndex, seqLen, 0.1),
-        lossless: (sequence, signalIndex, seqLen) => gradientDownsampler(sequence, signalIndex, seqLen, 0),
-        enum: enumSimplifier,
-    };
+    let currentDownsamplingMode = config.downsamplingMode;
 
     context.onBeforeRender(() => {
         frameStartTime = performance.now();
         
-        // Check if downsampling mode has changed and reset buffers if needed
+        // Check if downsampling mode changed and recreate generators
         if (currentDownsamplingMode !== config.downsamplingMode) {
             currentDownsamplingMode = config.downsamplingMode;
-            for (const bufferData of buffers.values()) {
-                bufferData.signalIndex = 0;
+            for (const [signal, bufferData] of buffers.entries()) {
+                const metadata = context.signalMetadata.get(signal);
+                const mode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
+                bufferData.downsamplingMode = mode;
+                bufferData.generator = downsamplerFactories[mode](signal);
                 bufferData.bufferLength = 0;
+                bufferData.overwriteNext = false;
             }
         }
         
         // Adapt chunk size based on previous frame performance
         const targetFrameTime = 1000 / config.targetFps; // Convert FPS to milliseconds
-        const frameRenderTime = context.renderProfiler.getFilteredFrameRenderTime();
-        if (frameRenderTime > 0) { // Only adjust after we have some frame time data
-            if (frameRenderTime > targetFrameTime) {
-                adaptiveChunkSize = Math.max(100, adaptiveChunkSize * 0.8);
-            } else if (frameRenderTime < targetFrameTime * 0.7) {
-                adaptiveChunkSize = Math.min(10000, adaptiveChunkSize * 1.1);
-            }
-        }
         
         let anyBufferNeedsUpdate = false;
         const availableTime = Math.max(1, targetFrameTime - frameTimeOverhead);
 
         for (const [signal, bufferData] of buffers.entries()) {
-            const metadata = context.signalMetadata.get(signal);
-            const downsamplingMode = (() => {
-                switch (metadata.renderMode) {
-                    case RenderMode.Enum: return 'enum';
-                    case RenderMode.Lines: return config.downsamplingMode;
-                    default: return 'off';
-                }
-            })();
-
-            if (downsamplingMode !== bufferData.downsamplingMode) {
-                bufferData.downsamplingMode = downsamplingMode;
-                bufferData.signalIndex = 0;
-                bufferData.bufferLength = 0;
-            }
-
             const remainingTime = availableTime - (performance.now() - frameStartTime);
             if (remainingTime <= 0) {
                 anyBufferNeedsUpdate = true;
                 break;
             }
 
-            const gl = context.webgl.gl;
+            const gl = context.webgl.gl as WebGL2RenderingContext;
             const seqLen = Math.min(signal.time.length, signal.values.length);
             
-            if (bufferData.bufferCapacity !== seqLen) {
-                // Allocate buffer for sequence data
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, seqLen * 4, gl.DYNAMIC_DRAW);
-
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, seqLen * 4, gl.DYNAMIC_DRAW);
+            if (bufferData.bufferCapacity < seqLen) {
+                // Power-of-two growth strategy
+                const newCapacity = Math.max(256, 1 << Math.ceil(Math.log2(seqLen)));
                 
-                bufferData.bufferCapacity = seqLen;
-                bufferData.bufferLength = 0;
-                bufferData.signalIndex = 0;
-            }
-            
-            if (bufferData.signalIndex < seqLen) {
-                const downsampleFn = simplifier[downsamplingMode];
-
-                const { bufferOffset, signalIndex } = downsampleFn(signal, bufferData.signalIndex, seqLen);
+                // Create new buffers
+                const newTimeBuffer = gl.createBuffer()!;
+                const newValueBuffer = gl.createBuffer()!;
                 
-                // Upload sequence data
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, timeBuffer.subarray(0, bufferOffset));
-                gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, valueBuffer.subarray(0, bufferOffset));
-                bufferData.bufferLength += bufferOffset;
-
-                bufferData.signalIndex = signalIndex;
+                // Allocate new buffers
+                gl.bindBuffer(gl.ARRAY_BUFFER, newTimeBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
+                gl.bindBuffer(gl.ARRAY_BUFFER, newValueBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
                 
-                if (bufferData.signalIndex < seqLen) {
-                    anyBufferNeedsUpdate = true;
+                // Copy existing data on GPU if there's any
+                if (bufferData.bufferLength > 0) {
+                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.timeBuffer);
+                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newTimeBuffer);
+                    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, bufferData.bufferLength * 4);
+                    
+                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.valueBuffer);
+                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newValueBuffer);
+                    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, bufferData.bufferLength * 4);
                 }
+                
+                // Delete old buffers and swap
+                gl.deleteBuffer(bufferData.timeBuffer);
+                gl.deleteBuffer(bufferData.valueBuffer);
+                bufferData.timeBuffer = newTimeBuffer;
+                bufferData.valueBuffer = newValueBuffer;
+                bufferData.bufferCapacity = newCapacity;
+            }
+
+            const result = bufferData.generator.next();
+            if (result.done) throw new Error('Downsampler generator unexpectedly returned');
+            
+            const { bufferOffset, hasMore, overwriteNext } = result.value;
+
+            if (bufferData.overwriteNext && bufferOffset > 0 && bufferData.bufferLength > 0) {
+                bufferData.bufferLength--;
+            }
+
+            // Upload new data
+            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
+            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.timeBuffer.subarray(0, bufferOffset));
+            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
+            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.valueBuffer.subarray(0, bufferOffset));
+            bufferData.bufferLength += bufferOffset;
+            
+            if (bufferOffset > 0) {
+                bufferData.overwriteNext = overwriteNext ?? false;
+            }
+
+            if (hasMore) {
+                anyBufferNeedsUpdate = true;
             }
         }
         return anyBufferNeedsUpdate;
@@ -329,13 +283,16 @@ export default (context: PluginContext): void => {
                     if (!valueBuffer) {
                         throw new Error('Failed to create WebGL buffer for sequence');
                     }
+                    const metadata = context.signalMetadata.get(channel);
+                    const downsamplingMode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
                     buffers.set(channel, {
                         timeBuffer,
                         valueBuffer,
-                        downsamplingMode: 'off',
+                        downsamplingMode,
                         bufferCapacity: 0,
                         bufferLength: 0,
-                        signalIndex: 0,
+                        generator: downsamplerFactories[downsamplingMode](channel),
+                        overwriteNext: false,
                     });
                 }
                 
@@ -389,10 +346,9 @@ export default (context: PluginContext): void => {
                 const dotRenderBuffer: BufferData = {
                     timeBuffer: dotTimeBuffer,
                     valueBuffer: dotValueBuffer,
+                    downsamplingMode: 'off',
                     bufferCapacity: 0,
                     bufferLength: 0,
-                    signalIndex: 0,
-                    downsamplingMode: 'off',
                 };
                 dotOverlayBuffers.set(channel, dotRenderBuffer);
                 const dotOverlayMetadata = new Proxy(metadata, {

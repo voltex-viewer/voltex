@@ -224,7 +224,7 @@ export class WaveformRenderObject {
         }
 
         let result = findStart ? right + 1 : left - 1;
-        const maxUpdateIndex = this.bufferData.signalIndex;
+        const signalLength = Math.min(this.signal.time.length, this.signal.values.length);
 
         while (left <= right) {
             const mid = Math.floor((left + right) / 2);
@@ -233,7 +233,7 @@ export class WaveformRenderObject {
             if (findStart) {
                 // For start index: find leftmost position where segment might be visible
                 // A segment at index i is visible if signal.time.valueAt(i+1) >= startTime
-                if (mid + 1 < maxUpdateIndex) {
+                if (mid + 1 < signalLength) {
                     const nextTime = this.signal.time.valueAt(mid + 1);
                     if (nextTime >= targetTime) {
                         result = mid;
@@ -261,7 +261,7 @@ export class WaveformRenderObject {
         }
 
         // Clamp result to valid range
-        return Math.max(0, Math.min(maxUpdateIndex - 1, result));
+        return Math.max(0, Math.min(signalLength - 1, result));
     }
     
     private renderSignal(
