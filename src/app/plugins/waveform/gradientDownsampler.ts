@@ -38,13 +38,6 @@ export function createGradientDownsampler(
         }
 
         if (signalIndex === seqLen && bufferOffset < maxPoints) {
-            const time = sequence.time.valueAt(seqLen - 1);
-            const value = sequence.values.valueAt(seqLen - 1);
-            if (timeBuffer[bufferOffset] !== time || valueBuffer[bufferOffset] !== value) {
-                bufferOffset++;
-                timeBuffer[bufferOffset] = time;
-                valueBuffer[bufferOffset] = value;
-            }
             bufferOffset++;
         }
 

@@ -52,18 +52,34 @@ describe('gradientDownsampler', () => {
         });
 
         it('should process all points with threshold 0 (lossless)', () => {
-            const signal = createMockSignal([0, 1, 2, 3, 4], [0, 1, 4, 9, 16]);
+            const signal = createMockSignal([0, 1, 2, 3, 396.668265], [0, 1, 4, 9, 16]);
             const result = gradientDownsampler(signal, 0, 5, 0);
 
             // Should emit all points where gradient changes (parabola has changing gradient)
             expect(result.signalIndex).toBe(5);
-            expect(result.bufferOffset).toBeGreaterThan(2);
+            expect(result.bufferOffset).toBe(5);
+            
+            // First and last points should always be included
+            expect(timeBuffer[0]).toBe(0);
+            expect(valueBuffer[0]).toBe(0);
+            // Converting from 396.668265 to float32 loses precision, so we use a Float32Array to get the exact stored value
+            expect(timeBuffer[result.bufferOffset - 1]).toBe(new Float32Array([396.668265])[0]);
+            expect(valueBuffer[result.bufferOffset - 1]).toBe(16);
+        });
+
+        it('should downsample a staight line (lossless)', () => {
+            const signal = createMockSignal([0, 1, 2, 3, 4], [0, 2, 4, 6, 8]);
+            const result = gradientDownsampler(signal, 0, 5, 0);
+
+            // Should emit first and last point
+            expect(result.signalIndex).toBe(5);
+            expect(result.bufferOffset).toBe(2);
             
             // First and last points should always be included
             expect(timeBuffer[0]).toBe(0);
             expect(valueBuffer[0]).toBe(0);
             expect(timeBuffer[result.bufferOffset - 1]).toBe(4);
-            expect(valueBuffer[result.bufferOffset - 1]).toBe(16);
+            expect(valueBuffer[result.bufferOffset - 1]).toBe(8);
         });
 
         it('should handle single point signal', () => {
