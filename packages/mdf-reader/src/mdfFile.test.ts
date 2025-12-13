@@ -173,8 +173,6 @@ describe('mdfFile v4', () => {
         expect(valueSignal).toBeDefined();
         expect(timeSignal!.name).toBe('Time');
         expect(valueSignal!.name).toBe('Signal1');
-
-        mdf.close();
     });
 
     it('should read signal data', async () => {
@@ -211,8 +209,6 @@ describe('mdfFile v4', () => {
             expect(timeData!.buffer[i]).toBeCloseTo(timeValues[i]);
             expect(voltageData!.buffer[i]).toBeCloseTo(signalValues[i]);
         }
-
-        mdf.close();
     });
 
     it('should handle multiple groups', async () => {
@@ -240,8 +236,6 @@ describe('mdfFile v4', () => {
 
         const result = await mdf.read(groups);
         expect(result.length).toBe(2);
-
-        mdf.close();
     });
 
     it('should call onProgress during file loading', async () => {
@@ -299,7 +293,5 @@ describe('mdfFile v4', () => {
         const signalData = result[0].find(d => d.signal.name === 'Signal');
         expect(timeData!.buffer).toEqual([0, 1, 2]);
         expect(signalData!.buffer).toEqual([10, 20, 30]);
-
-        mdf.close();
     });
 });
