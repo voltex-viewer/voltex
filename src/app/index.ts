@@ -63,6 +63,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initial resize and event wiring
     renderer.resizeCanvases();
     window.addEventListener('resize', () => renderer.resizeCanvases());
+    
+    // Listen for DPR changes (e.g., moving window between monitors)
+    const updateOnDprChange = () => {
+        const mqString = `(resolution: ${window.devicePixelRatio}dppx)`;
+        const mq = matchMedia(mqString);
+        mq.addEventListener('change', () => {
+            renderer.onDprChanged();
+            updateOnDprChange();
+        }, { once: true });
+    };
+    updateOnDprChange();
+    
     requestRender();
 
     // Add drag and drop file handling

@@ -358,6 +358,14 @@ export class WebGLUtilsImpl {
         }
     }
 
+    clearTextureCache(): void {
+        for (const cached of this.textureCache.values()) {
+            this.gl.deleteTexture(cached.texture);
+        }
+        this.textureCache.clear();
+        this.measureTextCache.clear();
+    }
+
     endFrame(): void {
         const keysToDelete: string[] = [];
         for (const [key, cached] of this.textureCache.entries()) {

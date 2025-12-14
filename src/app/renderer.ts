@@ -491,6 +491,11 @@ export class Renderer {
 
         this.requestRender();
     }
+
+    onDprChanged(): void {
+        this.webglUtils.clearTextureCache();
+        this.resizeCanvases();
+    }
     
     render(): boolean {
         this.renderProfiler.startFrame();

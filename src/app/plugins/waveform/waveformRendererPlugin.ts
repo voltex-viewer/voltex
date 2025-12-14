@@ -28,7 +28,7 @@ export default (context: PluginContext): void => {
     const config = context.loadConfig(
         waveformConfigSchema,
         {
-            dotSize: 6.0,
+            dotSize: 4.0,
             lineWidth: 1.5,
             dotVisibilityThreshold: 200,
             targetFps: 120,

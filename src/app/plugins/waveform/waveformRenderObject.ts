@@ -77,7 +77,7 @@ export class WaveformRenderObject {
         };
 
         const linesBindUniforms = bindUniforms(this.config.lineWidth);
-        const dotsBindUniforms = bindUniforms(this.config.dotSize);
+        const dotsBindUniforms = bindUniforms(this.config.dotSize * context.dpr);
         
         const renderMode = this.metadata.renderMode;
         if (renderMode === RenderMode.Lines) {
