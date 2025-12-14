@@ -120,7 +120,7 @@ export default (context: PluginContext): void => {
         extensions: ['.csv'],
         description: 'CSV Files (Sparse Format)',
         mimeType: 'text/csv',
-        handler: async (file: FileSystemWritableFileStream) => {
+        handler: async (file) => {
             const signals = context.getRows().flatMap(row => row.signals);
             
             if (signals.length === 0) {
@@ -130,70 +130,66 @@ export default (context: PluginContext): void => {
             const signalNames = signals.map(s => s.source.name.slice(1).join('.'));
             const header = 'timestamp,' + signalNames.join(',') + '\n';
 
-            const writer = file.getWriter();
-            try {
-                await writer.write(header);
+            await file.write(header);
 
-                const bufferSize = 1024 * 1024;
-                let buffer = '';
+            const bufferSize = 1024 * 1024;
+            let buffer = '';
 
-                const signalData = signals.map(s => ({
-                    time: s.time,
-                    values: s.values,
-                    index: 0,
-                    length: s.time.length
-                }));
+            const signalData = signals.map(s => ({
+                time: s.time,
+                values: s.values,
+                index: 0,
+                length: s.time.length
+            }));
 
-                const rows: Map<number, string[][]> = new Map();
-                
-                for (let i = 0; i < signalData.length; i++) {
-                    const data = signalData[i];
-                    for (let j = 0; j < data.length; j++) {
-                        const timestamp = data.time.valueAt(j);
-                        const value = data.values.convertedValueAt ? 
-                            data.values.convertedValueAt(j) : 
-                            data.values.valueAt(j);
-                        
-                        if (!rows.has(timestamp)) {
-                            rows.set(timestamp, []);
-                        }
-                        const timestampRows = rows.get(timestamp)!;
-                        
-                        let targetRow = timestampRows.find(row => row[i + 1] === undefined);
-                        if (!targetRow) {
-                            targetRow = new Array(signals.length + 1);
-                            targetRow[0] = timestamp.toString();
-                            timestampRows.push(targetRow);
-                        }
-                        targetRow[i + 1] = value.toString();
-                    }
-                }
-
-                const sortedTimestamps = Array.from(rows.keys()).sort((a, b) => a - b);
-                
-                for (const timestamp of sortedTimestamps) {
-                    const timestampRows = rows.get(timestamp)!;
-                    for (const row of timestampRows) {
-                        for (let i = 1; i <= signals.length; i++) {
-                            if (row[i] === undefined) {
-                                row[i] = '';
-                            }
-                        }
-                        buffer += row.join(',') + '\n';
-                    }
+            const rows: Map<number, string[][]> = new Map();
+            
+            for (let i = 0; i < signalData.length; i++) {
+                const data = signalData[i];
+                for (let j = 0; j < data.length; j++) {
+                    const timestamp = data.time.valueAt(j);
+                    const value = data.values.convertedValueAt ? 
+                        data.values.convertedValueAt(j) : 
+                        data.values.valueAt(j);
                     
-                    if (buffer.length >= bufferSize) {
-                        await writer.write(buffer);
-                        buffer = '';
+                    if (!rows.has(timestamp)) {
+                        rows.set(timestamp, []);
                     }
+                    const timestampRows = rows.get(timestamp)!;
+                    
+                    let targetRow = timestampRows.find(row => row[i + 1] === undefined);
+                    if (!targetRow) {
+                        targetRow = new Array(signals.length + 1);
+                        targetRow[0] = timestamp.toString();
+                        timestampRows.push(targetRow);
+                    }
+                    targetRow[i + 1] = value.toString();
                 }
-
-                if (buffer.length > 0) {
-                    await writer.write(buffer);
-                }
-            } finally {
-                await writer.close();
             }
+
+            const sortedTimestamps = Array.from(rows.keys()).sort((a, b) => a - b);
+            
+            for (const timestamp of sortedTimestamps) {
+                const timestampRows = rows.get(timestamp)!;
+                for (const row of timestampRows) {
+                    for (let i = 1; i <= signals.length; i++) {
+                        if (row[i] === undefined) {
+                            row[i] = '';
+                        }
+                    }
+                    buffer += row.join(',') + '\n';
+                }
+                
+                if (buffer.length >= bufferSize) {
+                    await file.write(buffer);
+                    buffer = '';
+                }
+            }
+
+            if (buffer.length > 0) {
+                await file.write(buffer);
+            }
+            await file.close();
         }
     });
 };

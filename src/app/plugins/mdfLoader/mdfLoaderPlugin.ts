@@ -207,7 +207,7 @@ export default (context: PluginContext): void => {
         extensions: ['.mf4', '.mdf'],
         description: 'MDF/MF4 Measurement Files',
         mimeType: '*/*',
-        handler: async (file: FileSystemWritableFileStream) => {
+        handler: async (file) => {
             const now = BigInt(Date.now()) * 1000000n;
             const signals = context.getRows().flatMap(row => row.signals);
             // Group signals by time sequence
@@ -349,11 +349,10 @@ export default (context: PluginContext): void => {
             };
             const serializeContext = new v4.SerializeContext();
             v4.resolveHeaderOffset(serializeContext, header);
-            const writer = file.getWriter();
             try {
-                await serializeContext.serialize(writer);
+                await serializeContext.serialize(file);
             } finally {
-                await writer.close();
+                await file.close();
             }
         }
     });

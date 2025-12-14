@@ -121,14 +121,9 @@ async function createMdf4File(groups: { name: string; channels: { name: string; 
 
     const chunks: Uint8Array[] = [];
     const mockWriter = {
-        write: async (chunk: Uint8Array) => { chunks.push(new Uint8Array(chunk)); },
+        write: async (chunk: BufferSource) => { chunks.push(new Uint8Array(chunk as ArrayBuffer)); },
         close: async () => {},
-        closed: Promise.resolve(undefined),
-        desiredSize: 0,
-        ready: Promise.resolve(undefined),
-        abort: async () => {},
-        releaseLock: () => {},
-    } as WritableStreamDefaultWriter<Uint8Array>;
+    };
 
     await context.serialize(mockWriter);
 

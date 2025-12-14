@@ -3,6 +3,10 @@ import { serializeId } from "./idBlock";
 
 type SerializeFunction<T> = (view: DataView<ArrayBuffer>, context: SerializeContext, object: T) => void;
 
+export interface WritableFile {
+    write(data: BufferSource | Blob | string): Promise<void>;
+}
+
 export class SerializeContext {
     private offset: bigint = 64n;
     private blocks: Map<unknown, [offset: bigint, metadata: GenericBlockHeader, serialize: SerializeFunction<unknown>]> = new Map([
@@ -31,7 +35,7 @@ export class SerializeContext {
         return offset;
     }
 
-    public async serialize(file: WritableStreamDefaultWriter<Uint8Array>): Promise<void> {
+    public async serialize(file: WritableFile): Promise<void> {
         // 64 KB block size is pretty good for random access on SSDs
         const buffer = new ArrayBuffer(65536);
         let bufferOffset = serializeId(new DataView(buffer, 0), {

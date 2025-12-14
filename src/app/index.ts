@@ -3,6 +3,7 @@ import { WaveformState } from "@voltex-viewer/plugin-api";
 import { Renderer } from './renderer';
 import { VerticalSidebar } from './verticalSidebar';
 import { createMenuBar } from './menuBar';
+import { fileSystemProvider } from './fileSystemProvider';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const root = document.getElementById('root');
@@ -106,17 +107,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         accelerator: 'Ctrl+O',
                         action: async () => {
                             try {
-                                // Show file picker
-                                const fileHandles = await window.showOpenFilePicker({
+                                const files = await fileSystemProvider.openFiles({
                                     multiple: false,
                                     types: renderer.pluginManager.getFileOpenTypes(),
                                 });
-                                
-                                const files = await Promise.all(fileHandles.map(fh => fh.getFile()));
                                 await renderer.pluginManager.loadFiles(...files);
                             } catch (error) {
                                 if (error instanceof Error && error.name === 'AbortError') {
-                                    // User cancelled the file picker
                                     return;
                                 }
                                 throw error;
@@ -128,21 +125,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         accelerator: 'Ctrl+S',
                         action: async () => {
                             try {
-                                // Show file picker
-                                const fileHandle = await window.showSaveFilePicker({
+                                const { name, writable } = await fileSystemProvider.saveFile({
                                     types: renderer.pluginManager.getFileSaveTypes(),
                                 });
-
-                                const writable = await fileHandle.createWritable({ keepExistingData: false });
-                                const handled = await renderer.pluginManager.handleFileSave(fileHandle.name, writable);
-                                
+                                const handled = await renderer.pluginManager.handleFileSave(name, writable);
                                 if (!handled) {
                                     await writable.close();
                                     throw Error(`No plugin found to handle file`);
                                 }
                             } catch (error) {
                                 if (error instanceof Error && error.name === 'AbortError') {
-                                    // User cancelled the file picker
                                     return;
                                 }
                                 throw error;
@@ -160,15 +152,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 const json = JSON.stringify(configs, null, 2);
                                 const blob = new Blob([json], { type: 'application/json' });
                                 
-                                const fileHandle = await window.showSaveFilePicker({
+                                const { writable } = await fileSystemProvider.saveFile({
                                     suggestedName: 'voltex-config.json',
                                     types: [{
                                         description: 'JSON Config File',
                                         accept: { 'application/json': ['.json'] }
                                     }]
                                 });
-                                
-                                const writable = await fileHandle.createWritable();
                                 await writable.write(blob);
                                 await writable.close();
                             } catch (error) {
@@ -183,16 +173,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         label: 'Import Config...',
                         action: async () => {
                             try {
-                                const fileHandles = await window.showOpenFilePicker({
+                                const files = await fileSystemProvider.openFiles({
                                     multiple: false,
                                     types: [{
                                         description: 'JSON Config File',
                                         accept: { 'application/json': ['.json'] }
                                     }]
                                 });
-                                
-                                const file = await fileHandles[0].getFile();
-                                const text = await file.text();
+                                const text = await files[0].text();
                                 const configs = JSON.parse(text);
                                 
                                 const configManager = renderer.pluginManager.getConfigManager();

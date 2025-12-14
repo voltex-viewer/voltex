@@ -1,4 +1,4 @@
-import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntryArgs, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, Command } from '@voltex-viewer/plugin-api';
+import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntryArgs, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, Command, WritableFile } from '@voltex-viewer/plugin-api';
 import { RenderObjectImpl } from './renderObject';
 import type { WebGlContext, WaveformState } from "@voltex-viewer/plugin-api";
 import { RowChangedEvent } from './rowManager';
@@ -535,7 +535,7 @@ export class PluginManager {
         return [allSupportedFiles, ...individualTypes];
     }
 
-    async handleFileSave(name: string, file: FileSystemWritableFileStream): Promise<boolean> {
+    async handleFileSave(name: string, file: WritableFile): Promise<boolean> {
         let fileExtension = name.split('.').pop()?.toLowerCase();
         if (!fileExtension) {
             return false;

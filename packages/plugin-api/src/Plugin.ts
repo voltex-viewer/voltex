@@ -153,11 +153,16 @@ export interface FileOpenHandler {
     handler: (file: File) => Promise<void>;
 }
 
+export interface WritableFile {
+    write(data: BufferSource | Blob | string): Promise<void>;
+    close(): Promise<void>;
+}
+
 export interface FileSaveHandler {
     extensions: `.${string}`[];
     description: string;
     mimeType: `${string}/${string}`;
-    handler: (file: FileSystemWritableFileStream) => Promise<void>;
+    handler: (file: WritableFile) => Promise<void>;
 }
 
 export interface SignalMetadata {
