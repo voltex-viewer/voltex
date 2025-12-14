@@ -44,8 +44,12 @@ export default async (context: PluginContext) => {
     const freq = 1;
     const time = new FunctionTimeSequence(100, 100);
 
-    const interval = setInterval(() => context.requestRender(), 100);
-    setTimeout(() => clearInterval(interval), time.duration * 1000);
+    const endTime = performance.now() + time.duration * 1000;
+    const animate = () => {
+        context.requestRender();
+        if (performance.now() < endTime) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
 
     const squareWaveSource: SignalSource = {
         name: ['Demo Signals', 'Square Wave'],
