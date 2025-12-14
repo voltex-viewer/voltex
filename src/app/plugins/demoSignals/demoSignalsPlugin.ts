@@ -1,5 +1,10 @@
 import { InMemorySequence, InMemorySignal, PluginContext, RenderMode, Signal, SignalSource } from '@voltex-viewer/plugin-api';
 import { FunctionSignal, FunctionTimeSequence, SequenceSignal } from '@voltex-viewer/plugin-api';
+import * as t from 'io-ts';
+
+const configSchema = t.type({
+    realTimeLoading: t.boolean,
+});
 
 function seededRandom(seed: number) {
     let state = seed;
@@ -9,16 +14,22 @@ function seededRandom(seed: number) {
     };
 }
 
-function wrapRealTimeSignal(signal: Signal): Signal {
+function wrapRealTimeSignal(signal: Signal, isRealTimeEnabled: () => boolean): Signal {
     const startTime = performance.now() / 1000;
+    let maxExposedLength = 1;
     
     const getExposedLength = () => {
+        if (!isRealTimeEnabled()) {
+            maxExposedLength = signal.time.length;
+            return maxExposedLength;
+        }
         const elapsed = performance.now() / 1000 - startTime;
         let count = 0;
         while (count < signal.time.length && signal.time.valueAt(count) <= elapsed) {
             count++;
         }
-        return Math.max(1, count);
+        maxExposedLength = Math.max(Math.max(maxExposedLength, count));
+        return maxExposedLength;
     };
 
     return {
@@ -41,15 +52,28 @@ function wrapRealTimeSignal(signal: Signal): Signal {
 }
 
 export default async (context: PluginContext) => {
+    const config = context.loadConfig(configSchema, { realTimeLoading: false });
+    const isRealTimeEnabled = () => config.realTimeLoading;
+
     const freq = 1;
     const time = new FunctionTimeSequence(100, 100);
 
-    const endTime = performance.now() + time.duration * 1000;
-    const animate = () => {
-        context.requestRender();
-        if (performance.now() < endTime) requestAnimationFrame(animate);
+    let animationId: number | undefined;
+    const startAnimation = () => {
+        if (animationId !== undefined) return;
+        const endTime = performance.now() + time.duration * 1000;
+        const animate = () => {
+            context.requestRender();
+            if (performance.now() < endTime && config.realTimeLoading) {
+                animationId = requestAnimationFrame(animate);
+            } else {
+                animationId = undefined;
+            }
+        };
+        animationId = requestAnimationFrame(animate);
     };
-    requestAnimationFrame(animate);
+
+    if (config.realTimeLoading) startAnimation();
 
     const squareWaveSource: SignalSource = {
         name: ['Demo Signals', 'Square Wave'],
@@ -60,7 +84,7 @@ export default async (context: PluginContext) => {
             0,
             1,
             RenderMode.Discrete
-        ))),
+        ), isRealTimeEnabled)),
     };
     
     const triangleWaveSource: SignalSource = {
@@ -72,7 +96,7 @@ export default async (context: PluginContext) => {
             -1000,
             1000,
             RenderMode.Lines,
-        ))),
+        ), isRealTimeEnabled)),
     };
     
     const sawtoothWaveSource: SignalSource = {
@@ -84,7 +108,7 @@ export default async (context: PluginContext) => {
             -1,
             1,
             RenderMode.Lines,
-        ))),
+        ), isRealTimeEnabled)),
     };
     
     const sineWaveSource: SignalSource = {
@@ -96,7 +120,7 @@ export default async (context: PluginContext) => {
             -1,
             1,
             RenderMode.Lines,
-        ))),
+        ), isRealTimeEnabled)),
     };
     
     const flatSignalSource: SignalSource = {
@@ -108,7 +132,7 @@ export default async (context: PluginContext) => {
             0,
             0,
             RenderMode.Lines,
-        ))),
+        ), isRealTimeEnabled)),
     };
     
     const random = seededRandom(42);
@@ -127,7 +151,7 @@ export default async (context: PluginContext) => {
             randomPoints,
             Array.from({ length: randomTime.length }, (_, i) => [randomTime.valueAt(i), random() * 2 - 1] as [number, number]),
             RenderMode.Lines,
-        ))),
+        ), isRealTimeEnabled)),
     };
     
     const trafficLightSource: SignalSource = {
@@ -164,7 +188,7 @@ export default async (context: PluginContext) => {
                 }
             }
             
-            return Promise.resolve(wrapRealTimeSignal(new SequenceSignal(trafficLightSource, timeSeq, valueSeq, RenderMode.Enum)));
+            return Promise.resolve(wrapRealTimeSignal(new SequenceSignal(trafficLightSource, timeSeq, valueSeq, RenderMode.Enum), isRealTimeEnabled));
         },
     };
 
