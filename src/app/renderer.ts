@@ -38,6 +38,8 @@ export class Renderer {
         bounds: RenderBounds; 
         config: MouseCaptureConfig;
     }> = new Map();
+    private lastTouchDistance: number = 0;
+    private isPinching: boolean = false;
     
     constructor(
         private state: WaveformState,
@@ -92,6 +94,7 @@ export class Renderer {
         
         // Set up mouse event handlers on the canvas
         this.setupMouseEventHandlers();
+        this.setupTouchEventHandlers();
         this.setupKeyboardEventHandlers();
     }
 
@@ -183,6 +186,88 @@ export class Renderer {
         this.canvas.addEventListener('wheel', (e): void => {
             this.dispatchMouseEvent('onWheel', this.createWheelEvent(e));
         }, { passive: false });
+    }
+
+    private setupTouchEventHandlers(): void {
+        this.canvas.addEventListener('touchstart', (e): void => {
+            e.preventDefault();
+            this.canvas.focus();
+            if (e.touches.length === 1 && !this.isPinching) {
+                this.mouseButtonsPressed |= 1;
+                this.dispatchMouseEvent('onMouseDown', this.createTouchEvent(e.touches[0]));
+            } else if (e.touches.length === 2) {
+                this.isPinching = true;
+                this.mouseButtonsPressed = 0;
+                this.mouseCaptureMap.clear();
+                this.lastTouchDistance = this.getTouchDistance(e.touches);
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchmove', (e): void => {
+            e.preventDefault();
+            if (e.touches.length === 1 && !this.isPinching) {
+                const touchEvent = this.createTouchEvent(e.touches[0]);
+                this.dispatchMouseEvent('onMouseMove', touchEvent);
+                this.updateMouseOverStates(touchEvent);
+            } else if (e.touches.length === 2) {
+                const newDistance = this.getTouchDistance(e.touches);
+                const scale = newDistance / this.lastTouchDistance;
+                this.dispatchMouseEvent('onWheel', this.createPinchWheelEvent(e.touches, (scale - 1) * -500));
+                this.lastTouchDistance = newDistance;
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchend', (e): void => {
+            e.preventDefault();
+            const touchEvent = e.changedTouches.length > 0 
+                ? this.createTouchEvent(e.changedTouches[0]) 
+                : this.createTouchEvent({ clientX: 0, clientY: 0 } as Touch);
+            if (e.touches.length === 0) {
+                const wasPinching = this.isPinching;
+                this.isPinching = false;
+                this.mouseButtonsPressed = 0;
+                this.mouseCaptureMap.clear();
+                if (!wasPinching) {
+                    this.dispatchMouseEvent('onMouseUp', touchEvent);
+                }
+                this.clearAllMouseOverStates(touchEvent);
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchcancel', (): void => {
+            this.mouseButtonsPressed = 0;
+            this.mouseCaptureMap.clear();
+            this.isPinching = false;
+            this.clearAllMouseOverStates(this.createTouchEvent({ clientX: -1, clientY: -1 } as Touch));
+        });
+    }
+
+    private getTouchDistance(touches: TouchList): number {
+        const dx = touches[1].clientX - touches[0].clientX;
+        const dy = touches[1].clientY - touches[0].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    private createTouchEvent(touch: Touch): InternalMouseEvent {
+        let stopPropagationCalled = false;
+        const canvasRect = this.canvas.getBoundingClientRect();
+        const clientX = touch.clientX - canvasRect.left;
+        const clientY = touch.clientY - canvasRect.top;
+        return {
+            clientX, clientY, offsetX: clientX, offsetY: clientY,
+            button: 0, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false,
+            get stopPropagationCalled() { return stopPropagationCalled; },
+            preventDefault: () => {},
+            stopPropagation: () => { stopPropagationCalled = true; }
+        };
+    }
+
+    private createPinchWheelEvent(touches: TouchList, deltaY: number): InternalMouseEvent & { deltaY: number; deltaX: number; deltaZ: number } {
+        const event = this.createTouchEvent({
+            clientX: (touches[0].clientX + touches[1].clientX) / 2,
+            clientY: (touches[0].clientY + touches[1].clientY) / 2
+        } as Touch);
+        return { ...event, deltaY, deltaX: 0, deltaZ: 0 };
     }
 
     private setupKeyboardEventHandlers(): void {

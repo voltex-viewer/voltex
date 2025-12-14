@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build:web": "vite build --config vite.web.config.ts",
-    "dev:web": "vite dev --config vite.web.config.ts",
+    "dev:web": "vite dev --config vite.web.config.ts --host 0.0.0.0",
     "preview:web": "vite preview --config vite.web.config.ts",
     "start": "electron-forge start",
     "start:debug": "electron-forge start -- --inspect=9229 --remote-debugging-port=9222",

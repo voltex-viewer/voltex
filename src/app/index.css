@@ -3,6 +3,58 @@
     --menu-bar-height: 24px;
 }
 
+/* Mobile touch handling */
+.waveform-main-canvas {
+    touch-action: none;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+    :root {
+        --menu-bar-height: 32px;
+    }
+    
+    .menu-bar {
+        font-size: 14px;
+    }
+    
+    .menu-item {
+        padding: 0 8px;
+    }
+    
+    .vertical-sidebar {
+        width: var(--sidebar-width, 280px);
+    }
+    
+    .vertical-sidebar:not(.expanded) {
+        width: 40px;
+    }
+    
+    .sidebar-icons {
+        width: 40px;
+        min-width: 40px;
+        max-width: 40px;
+    }
+    
+    .sidebar-icon {
+        width: 36px;
+        height: 36px;
+    }
+    
+    .hotbar-button {
+        width: 44px;
+        height: 44px;
+    }
+    
+    .hotbar {
+        height: 44px;
+    }
+    
+    .channel-label-container {
+        width: var(--label-width, 80px);
+    }
+}
+
 /* Custom Scrollbars - Dark Theme */
 ::-webkit-scrollbar {
     width: 8px;
