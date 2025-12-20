@@ -43,8 +43,6 @@ export interface MdfFile {
     read<TBuffer = Float64Array | BigInt64Array | BigUint64Array>(groups: MdfSignalGroup[], options?: ReadOptions<TBuffer>): Promise<SignalData<TBuffer>[][]>;
 }
 
-const INITIAL_BUFFER_SIZE = 1024;
-
 interface LazySignal {
     name: string;
     channelType: ChannelType;
@@ -164,10 +162,11 @@ class BigUint64GrowableBuffer implements GrowableBuffer<BigUint64Array> {
 type DefaultGrowableBuffer = Float64GrowableBuffer | BigInt64GrowableBuffer | BigUint64GrowableBuffer;
 
 function createDefaultGrowableBuffer(numberType: NumberType): DefaultGrowableBuffer {
+const initalBufferSize = 1024;
     switch (numberType) {
-        case NumberType.BigInt64: return new BigInt64GrowableBuffer(INITIAL_BUFFER_SIZE);
-        case NumberType.BigUint64: return new BigUint64GrowableBuffer(INITIAL_BUFFER_SIZE);
-        default: return new Float64GrowableBuffer(INITIAL_BUFFER_SIZE);
+        case NumberType.BigInt64: return new BigInt64GrowableBuffer(initalBufferSize);
+        case NumberType.BigUint64: return new BigUint64GrowableBuffer(initalBufferSize);
+        default: return new Float64GrowableBuffer(initalBufferSize);
     }
 }
 

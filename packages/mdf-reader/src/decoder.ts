@@ -63,8 +63,6 @@ export interface LoadOptions {
     progressInterval?: number;
 }
 
-const DEFAULT_PROGRESS_INTERVAL = 10000;
-
 export class DataGroupLoader {
     constructor(private data: AbstractDataGroup, private blocks: () => Promise<AsyncIterableIterator<DataView<ArrayBuffer>>>) {}
 
@@ -99,7 +97,7 @@ export class DataGroupLoader {
         
         let rowCount = 0;
         const totalRows = this.data.totalRows ?? 0;
-        const progressInterval = options?.progressInterval ?? DEFAULT_PROGRESS_INTERVAL;
+        const progressInterval = options?.progressInterval ?? 10000;
         let nextProgress = options?.onProgress ? progressInterval : Infinity;
         await parseData(
             this.data.recordIdSize,
