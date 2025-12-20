@@ -1,4 +1,4 @@
-import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink } from './common';
 import { DataGroupBlock, resolveDataGroupOffset } from './dataGroupBlock';
 import { FileHistoryBlock, resolveFileHistoryOffset } from './fileHistoryBlock';
 import { SerializeContext } from './serializer';
@@ -75,6 +75,9 @@ export function resolveHeaderOffset(context: SerializeContext, header: Header<'i
     );
 }
 
-export async function readHeader(link: Link<Header>, reader: BufferedFileReader): Promise<Header<'linked'>> {
-    return deserializeHeader(await readBlock(link, reader, "##HD"));
+export async function readHeader(link: NonNullLink<Header>, reader: BufferedFileReader): Promise<Header<'linked'>>;
+export async function readHeader(link: Link<Header>, reader: BufferedFileReader): Promise<Header<'linked'> | null>;
+export async function readHeader(link: Link<Header>, reader: BufferedFileReader): Promise<Header<'linked'> | null> {
+    const block = await readBlock(link, reader, "##HD");
+    return block === null ? null : deserializeHeader(block);
 }

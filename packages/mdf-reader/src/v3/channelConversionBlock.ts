@@ -1,4 +1,4 @@
-import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, NonNullLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 import { MdfView } from './mdfView';
@@ -221,6 +221,9 @@ export function resolveChannelConversionOffset(_context: SerializeContext, _bloc
     throw new Error("Not implemented");
 }
 
-export async function readChannelConversionBlock(link: Link<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'>> {
-    return deserializeChannelConversionBlock(await readBlock(link, reader, "CC"));
+export async function readChannelConversionBlock(link: NonNullLink<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'>>;
+export async function readChannelConversionBlock(link: Link<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'> | null>;
+export async function readChannelConversionBlock(link: Link<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'> | null> {
+    const block = await readBlock(link, reader, "CC");
+    return block === null ? null : deserializeChannelConversionBlock(block);
 }

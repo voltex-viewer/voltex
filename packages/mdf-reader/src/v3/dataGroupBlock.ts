@@ -1,4 +1,4 @@
-import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, NonNullLink, isNonNullLink, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 import { MdfView } from './mdfView';
@@ -80,14 +80,17 @@ export async function getDataBlocks(dataGroup: DataGroupBlock, reader: BufferedF
     })();
 }
 
-export async function readDataGroupBlock(link: Link<DataGroupBlock>, reader: BufferedFileReader): Promise<DataGroupBlock<'linked'>> {
-    return deserializeDataGroupBlock(await readBlock(link, reader, "DG"));
+export async function readDataGroupBlock(link: NonNullLink<DataGroupBlock>, reader: BufferedFileReader): Promise<DataGroupBlock<'linked'>>;
+export async function readDataGroupBlock(link: Link<DataGroupBlock>, reader: BufferedFileReader): Promise<DataGroupBlock<'linked'> | null>;
+export async function readDataGroupBlock(link: Link<DataGroupBlock>, reader: BufferedFileReader): Promise<DataGroupBlock<'linked'> | null> {
+    const block = await readBlock(link, reader, "DG");
+    return block === null ? null : deserializeDataGroupBlock(block);
 }
 
 export async function* iterateDataGroupBlocks(startLink: Link<DataGroupBlock>, reader: BufferedFileReader): AsyncIterableIterator<DataGroupBlock<'linked'>> {
     let currentLink = startLink;
     
-    while (getLink(currentLink) !== 0) {
+    while (isNonNullLink(currentLink)) {
         const dataGroup = await readDataGroupBlock(currentLink, reader);
         yield dataGroup;
         currentLink = dataGroup.dataGroupNext;

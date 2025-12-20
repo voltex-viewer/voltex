@@ -1,4 +1,4 @@
-import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, NonNullLink, isNonNullLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
@@ -97,14 +97,17 @@ export function resolveChannelOffset(context: SerializeContext, block: ChannelBl
         });
 }
 
-export async function readChannelBlock(link: Link<ChannelBlock>, reader: BufferedFileReader): Promise<ChannelBlock<'linked'>> {
-    return deserializeChannelBlock(await readBlock(link, reader, "CN"));
+export async function readChannelBlock(link: NonNullLink<ChannelBlock>, reader: BufferedFileReader): Promise<ChannelBlock<'linked'>>;
+export async function readChannelBlock(link: Link<ChannelBlock>, reader: BufferedFileReader): Promise<ChannelBlock<'linked'> | null>;
+export async function readChannelBlock(link: Link<ChannelBlock>, reader: BufferedFileReader): Promise<ChannelBlock<'linked'> | null> {
+    const block = await readBlock(link, reader, "CN");
+    return block === null ? null : deserializeChannelBlock(block);
 }
 
 export async function* iterateChannelBlocks(startLink: Link<ChannelBlock>, reader: BufferedFileReader): AsyncIterableIterator<ChannelBlock<'linked'>> {
     let currentLink = startLink;
     
-    while (getLink(currentLink) !== 0) {
+    while (isNonNullLink(currentLink)) {
         const channel = await readChannelBlock(currentLink, reader);
         yield channel;
         currentLink = channel.channelNext;

@@ -1,4 +1,4 @@
-import { Link, readBlock, GenericBlock } from './common';
+import { Link, readBlock, GenericBlock, NonNullLink } from './common';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
@@ -34,12 +34,18 @@ export function serializeMetadataBlock(view: DataView<ArrayBuffer>, context: Ser
     return serializeTextBlock(view, context, block);
 }
 
-export async function readTextBlock(link: Link<TextBlock>, reader: BufferedFileReader): Promise<TextBlock> {
-    return deserializeTextBlock(await readBlock(link, reader, "##TX"));
+export async function readTextBlock(link: NonNullLink<TextBlock>, reader: BufferedFileReader): Promise<TextBlock>;
+export async function readTextBlock(link: Link<TextBlock>, reader: BufferedFileReader): Promise<TextBlock | null>;
+export async function readTextBlock(link: Link<TextBlock>, reader: BufferedFileReader): Promise<TextBlock | null> {
+    const block = await readBlock(link, reader, "##TX");
+    return block === null ? null : deserializeTextBlock(block);
 }
 
-export async function readMetadataBlock(link: Link<MetadataBlock>, reader: BufferedFileReader): Promise<MetadataBlock> {
-    return deserializeMetadataBlock(await readBlock(link, reader, "##MD"));
+export async function readMetadataBlock(link: NonNullLink<MetadataBlock>, reader: BufferedFileReader): Promise<MetadataBlock>;
+export async function readMetadataBlock(link: Link<MetadataBlock>, reader: BufferedFileReader): Promise<MetadataBlock | null>;
+export async function readMetadataBlock(link: Link<MetadataBlock>, reader: BufferedFileReader): Promise<MetadataBlock | null> {
+    const block = await readBlock(link, reader, "##MD");
+    return block === null ? null : deserializeMetadataBlock(block);
 }
 
 function getEncodedLength(data: string): number {

@@ -5,14 +5,28 @@ export interface Link<T> {
     __brand: "<T>",
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export interface NonNullLink<T> {
+    __brand: "<T>",
+    __nonNull: true,
+}
+
 export type MaybeLinked<T, TMode extends 'linked' | 'instanced'> = TMode extends 'linked' ? Link<T> : T;
 
 export function newLink<T>(value: bigint): Link<T> {
     return value as unknown as Link<T>;
 }
 
-export function getLink<T>(link: Link<T>): bigint {
+export function newNonNullLink<T>(value: bigint): NonNullLink<T> {
+    return value as unknown as NonNullLink<T>;
+}
+
+export function getLink<T>(link: Link<T> | NonNullLink<T>): bigint {
     return link as unknown as bigint;
+}
+
+export function isNonNullLink<T>(link: Link<T>): link is NonNullLink<T> {
+    return getLink(link) !== 0n;
 }
 
 export interface GenericBlockHeader {
@@ -43,8 +57,13 @@ export async function readBlockHeader<T>(link: Link<T>, reader: BufferedFileRead
     };
 }
 
-export async function readBlock<T>(link: Link<T>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlock> {
+export async function readBlock<T>(link: NonNullLink<T>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlock>;
+export async function readBlock<T>(link: Link<T>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlock | null>;
+export async function readBlock<T>(link: Link<T> | NonNullLink<T>, reader: BufferedFileReader, expectedType?: string | string[]): Promise<GenericBlock | null> {
     const fileOffset = Number(getLink(link));
+    if (fileOffset === 0) {
+        return null;
+    }
     const header = await readBlockHeader(link, reader, expectedType);
     
     const payload = await reader.readBytes(fileOffset + 24, Number(header.length) - 24);

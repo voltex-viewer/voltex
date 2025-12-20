@@ -162,7 +162,7 @@ class BigUint64GrowableBuffer implements GrowableBuffer<BigUint64Array> {
 type DefaultGrowableBuffer = Float64GrowableBuffer | BigInt64GrowableBuffer | BigUint64GrowableBuffer;
 
 function createDefaultGrowableBuffer(numberType: NumberType): DefaultGrowableBuffer {
-const initalBufferSize = 1024;
+    const initalBufferSize = 1024;
     switch (numberType) {
         case NumberType.BigInt64: return new BigInt64GrowableBuffer(initalBufferSize);
         case NumberType.BigUint64: return new BigUint64GrowableBuffer(initalBufferSize);
@@ -209,15 +209,15 @@ class MdfFileImpl implements MdfFile {
     }
 
     private async loadGroupsV3(onProgress?: (signalCount: number) => void): Promise<void> {
-        const rootLink = v3.newLink<v3.Header>(64);
+        const rootLink = v3.newNonNullLink<v3.Header>(64);
         const header = await v3.readHeader(rootLink, this.reader);
 
-        let dgLink = header.firstDataGroup;
+        let dgLink = header.firstDataGroup as v3.Link<v3.DataGroupBlock>;
         let totalSignalCount = 0;
         let lastProgressUpdate = 0;
         
-        while (v3.getLink(dgLink) !== 0) {
-            const dgBlockLink = dgLink as v3.Link<v3.DataGroupBlock>;
+        while (v3.isNonNullLink(dgLink)) {
+            const dgBlockLink = dgLink;
             const dgBlock = await v3.readDataGroupBlock(dgBlockLink, this.reader);
             
             const abstractGroups: AbstractGroup[] = [];
@@ -229,8 +229,8 @@ class MdfFileImpl implements MdfFile {
                 const groupChannels: AbstractChannel[] = [];
                 
                 for await (const channel of v3.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
-                    const name = v3.getLink(channel.longName) !== 0
-                        ? (await v3.readTextBlock(channel.longName, this.reader)).data
+                    const name = v3.isNonNullLink(channel.longName)
+                        ? (await v3.readTextBlock(channel.longName, this.reader))?.data ?? channel.name
                         : channel.name;
                     const channelType = channel.channelType === 1 ? ChannelType.Time : 
                                         channel.channelType === 0 ? ChannelType.Signal : ChannelType.Unknown;
@@ -289,25 +289,25 @@ class MdfFileImpl implements MdfFile {
     }
 
     private async loadGroupsV4(onProgress?: (signalCount: number) => void): Promise<void> {
-        const rootLink = v4.newLink<v4.Header>(64n);
+        const rootLink = v4.newNonNullLink<v4.Header>(64n);
         const header = await v4.readHeader(rootLink, this.reader);
 
         let dgLink = header.firstDataGroup as v4.Link<v4.DataGroupBlock>;
         let totalSignalCount = 0;
         let lastProgressUpdate = 0;
         
-        while (v4.getLink(dgLink) !== 0n) {
+        while (v4.isNonNullLink(dgLink)) {
             const dgBlockLink = dgLink;
             const dgBlock = await v4.readDataGroupBlock(dgBlockLink, this.reader);
             
             const abstractGroups: AbstractGroup[] = [];
             const signalData: LazySignal[] = [];
             
-            for await (const channelGroup of v4.iterateChannelGroupBlocks(dgBlock.channelGroupFirst as v4.Link<v4.ChannelGroupBlock>, this.reader)) {
+            for await (const channelGroup of v4.iterateChannelGroupBlocks(dgBlock.channelGroupFirst, this.reader)) {
                 const groupChannels: AbstractChannel[] = [];
                 
-                for await (const channel of v4.iterateChannelBlocks(channelGroup.channelFirst as v4.Link<v4.ChannelBlock>, this.reader)) {
-                    const name = (await v4.readTextBlock(channel.txName as v4.Link<v4.TextBlock>, this.reader)).data;
+                for await (const channel of v4.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
+                    const name = (await v4.readTextBlock(channel.txName, this.reader))?.data ?? "";
                     const channelType = channel.channelType === 2 ? ChannelType.Time : 
                                         channel.channelType === 0 ? ChannelType.Signal : ChannelType.Unknown;
                     
@@ -376,7 +376,7 @@ class MdfFileImpl implements MdfFile {
         if (conversionLink === 0) {
             return { conversion: null, textValues: [] };
         }
-        const conversionBlockLinked = await v3.readChannelConversionBlock(v3.newLink(conversionLink), this.reader);
+        const conversionBlockLinked = await v3.readChannelConversionBlock(v3.newNonNullLink(conversionLink), this.reader);
         const conversionBlockInstanced = await this.instanceMdf3ConversionBlock(conversionBlockLinked);
         return v3.serializeConversion(conversionBlockInstanced);
     }
@@ -386,7 +386,7 @@ class MdfFileImpl implements MdfFile {
             return { conversion: null, textValues: [] };
         }
         const conversionMap = new Map<bigint, v4.ChannelConversionBlock<'instanced'>>();
-        const block = await this.readV4ConversionBlockRecurse(v4.newLink(conversionLink), conversionMap);
+        const block = await this.readV4ConversionBlockRecurse(v4.newNonNullLink(conversionLink), conversionMap);
         return v4.serializeConversion(block);
     }
 
@@ -412,8 +412,8 @@ class MdfFileImpl implements MdfFile {
         link: v4.Link<v4.ChannelConversionBlock>,
         conversionMap: Map<bigint, v4.ChannelConversionBlock<'instanced'>>
     ): Promise<v4.ChannelConversionBlock<'instanced'> | null> {
+        if (!v4.isNonNullLink(link)) return null;
         const linkValue = v4.getLink(link);
-        if (linkValue === 0n) return null;
         if (conversionMap.has(linkValue)) return conversionMap.get(linkValue)!;
 
         const srcBlock = await v4.readConversionBlock(link, this.reader);
@@ -428,7 +428,7 @@ class MdfFileImpl implements MdfFile {
         conversionMap.set(linkValue, block);
 
         for (const ref of srcBlock.refs) {
-            if (v4.getLink(ref) === 0n) {
+            if (!v4.isNonNullLink(ref)) {
                 (block.refs as (v4.ChannelConversionBlock<'instanced'> | v4.TextBlock | null)[]).push(null);
             } else {
                 const refBlock = await v4.readBlock(ref, this.reader);
@@ -446,7 +446,7 @@ class MdfFileImpl implements MdfFile {
             }
         }
 
-        if (v4.getLink(srcBlock.mdUnit as v4.Link<v4.TextBlock>) !== 0n) {
+        if (v4.isNonNullLink(srcBlock.mdUnit)) {
             const unit = await v4.readBlock(srcBlock.mdUnit, this.reader);
             if (unit.type === "##TX") {
                 block.mdUnit = v4.deserializeTextBlock(unit);
@@ -540,10 +540,10 @@ class MdfFileImpl implements MdfFile {
             const getDataBlocks = async () => {
                 if (this.version >= 400 && this.version < 500) {
                     const dgBlock = await v4.readDataGroupBlock(dgLink as v4.Link<v4.DataGroupBlock>, this.reader);
-                    return v4.getDataBlocks(dgBlock, this.reader);
+                    return dgBlock !== null ?  v4.getDataBlocks(dgBlock, this.reader) : Promise.resolve((async function* () {})());
                 } else {
                     const dgBlock = await v3.readDataGroupBlock(dgLink as v3.Link<v3.DataGroupBlock>, this.reader);
-                    return v3.getDataBlocks(dgBlock, this.reader);
+                    return dgBlock !== null ? v3.getDataBlocks(dgBlock, this.reader) : Promise.resolve((async function* () {})());
                 }
             };
 

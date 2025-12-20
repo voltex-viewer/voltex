@@ -1,4 +1,4 @@
-import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink } from './common';
 import { SerializeContext } from './serializer';
 import { MetadataBlock, resolveMetadataOffset } from './textBlock';
 import { BufferedFileReader } from '../bufferedFileReader';
@@ -51,6 +51,9 @@ export function resolveFileHistoryOffset(context: SerializeContext, block: FileH
         });
 }
 
-export async function readFileHistoryBlock(link: Link<FileHistoryBlock>, reader: BufferedFileReader): Promise<FileHistoryBlock<'linked'>> {
-    return deserializeFileHistoryBlock(await readBlock(link, reader, "##FH"));
+export async function readFileHistoryBlock(link: NonNullLink<FileHistoryBlock>, reader: BufferedFileReader): Promise<FileHistoryBlock<'linked'>>;
+export async function readFileHistoryBlock(link: Link<FileHistoryBlock>, reader: BufferedFileReader): Promise<FileHistoryBlock<'linked'> | null>;
+export async function readFileHistoryBlock(link: Link<FileHistoryBlock>, reader: BufferedFileReader): Promise<FileHistoryBlock<'linked'> | null> {
+    const block = await readBlock(link, reader, "##FH");
+    return block === null ? null : deserializeFileHistoryBlock(block);
 }

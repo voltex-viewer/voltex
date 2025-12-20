@@ -1,4 +1,4 @@
-import { Link, readBlock, GenericBlock, MaybeLinked } from './common';
+import { Link, readBlock, GenericBlock, MaybeLinked, NonNullLink } from './common';
 import { SerializeContext } from './serializer';
 import { TextBlock, MetadataBlock, resolveTextBlockOffset } from './textBlock';
 import { BufferedFileReader } from '../bufferedFileReader';
@@ -170,6 +170,9 @@ export function resolveChannelConversionOffset(context: SerializeContext, block:
         });
 }
 
-export async function readConversionBlock(link: Link<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'>> {
-    return deserializeConversionBlock(await readBlock(link, reader, "##CC"));
+export async function readConversionBlock(link: NonNullLink<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'>>;
+export async function readConversionBlock(link: Link<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'> | null>;
+export async function readConversionBlock(link: Link<ChannelConversionBlock>, reader: BufferedFileReader): Promise<ChannelConversionBlock<'linked'> | null> {
+    const block = await readBlock(link, reader, "##CC");
+    return block === null ? null : deserializeConversionBlock(block);
 }

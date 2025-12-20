@@ -1,4 +1,4 @@
-import { Link, readBlock, GenericBlock } from './common';
+import { Link, NonNullLink, readBlock, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 import { MdfView } from './mdfView';
@@ -19,8 +19,11 @@ export function serializeTextBlock(view: MdfView, _context: SerializeContext, bl
     view.writeString(block.data);
 }
 
-export async function readTextBlock(link: Link<TextBlock>, reader: BufferedFileReader): Promise<TextBlock> {
-    return deserializeTextBlock(await readBlock(link, reader, ["TX", "MD"]));
+export async function readTextBlock(link: NonNullLink<TextBlock>, reader: BufferedFileReader): Promise<TextBlock>;
+export async function readTextBlock(link: Link<TextBlock>, reader: BufferedFileReader): Promise<TextBlock | null>;
+export async function readTextBlock(link: Link<TextBlock>, reader: BufferedFileReader): Promise<TextBlock | null> {
+    const block = await readBlock(link, reader, ["TX", "MD"]);
+    return block === null ? null : deserializeTextBlock(block);
 }
 
 function getEncodedLength(data: string): number {

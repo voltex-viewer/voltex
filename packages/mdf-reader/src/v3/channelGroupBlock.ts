@@ -1,4 +1,4 @@
-import { Link, getLink, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, NonNullLink, isNonNullLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 import { MdfView } from './mdfView';
@@ -57,14 +57,17 @@ export function resolveChannelGroupOffset(context: SerializeContext, block: Chan
         });
 }
 
-export async function readChannelGroupBlock(link: Link<ChannelGroupBlock>, reader: BufferedFileReader): Promise<ChannelGroupBlock<'linked'>> {
-    return deserializeChannelGroupBlock(await readBlock(link, reader, "CG"));
+export async function readChannelGroupBlock(link: NonNullLink<ChannelGroupBlock>, reader: BufferedFileReader): Promise<ChannelGroupBlock<'linked'>>;
+export async function readChannelGroupBlock(link: Link<ChannelGroupBlock>, reader: BufferedFileReader): Promise<ChannelGroupBlock<'linked'> | null>;
+export async function readChannelGroupBlock(link: Link<ChannelGroupBlock>, reader: BufferedFileReader): Promise<ChannelGroupBlock<'linked'> | null> {
+    const block = await readBlock(link, reader, "CG");
+    return block === null ? null : deserializeChannelGroupBlock(block);
 }
 
 export async function* iterateChannelGroupBlocks(startLink: Link<ChannelGroupBlock>, reader: BufferedFileReader): AsyncIterableIterator<ChannelGroupBlock<'linked'>> {
     let currentLink = startLink;
     
-    while (getLink(currentLink) !== 0) {
+    while (isNonNullLink(currentLink)) {
         const channelGroup = await readChannelGroupBlock(currentLink, reader);
         yield channelGroup;
         currentLink = channelGroup.channelGroupNext;

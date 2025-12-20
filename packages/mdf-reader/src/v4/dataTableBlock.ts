@@ -1,4 +1,4 @@
-import { Link, readBlock, GenericBlock } from './common';
+import { Link, readBlock, GenericBlock, NonNullLink } from './common';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
@@ -97,6 +97,9 @@ export function resolveDataTableOffset(context: SerializeContext, block: DataTab
         serializeDataTableBlock);
 }
 
-export async function readDataTableBlock(link: Link<DataTableBlock>, reader: BufferedFileReader): Promise<DataTableBlock> {
-    return await deserializeDataTableBlock(await readBlock(link, reader, ["##DT", "##DZ"]));
+export async function readDataTableBlock(link: NonNullLink<DataTableBlock>, reader: BufferedFileReader): Promise<DataTableBlock>;
+export async function readDataTableBlock(link: Link<DataTableBlock>, reader: BufferedFileReader): Promise<DataTableBlock | null>;
+export async function readDataTableBlock(link: Link<DataTableBlock>, reader: BufferedFileReader): Promise<DataTableBlock | null> {
+    const block = await readBlock(link, reader, ["##DT", "##DZ"]);
+    return block === null ? null : await deserializeDataTableBlock(block);
 }

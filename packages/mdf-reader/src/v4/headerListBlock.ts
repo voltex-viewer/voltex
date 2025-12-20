@@ -1,4 +1,4 @@
-import { Link, readBlock, MaybeLinked, GenericBlock } from './common';
+import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink } from './common';
 import { SerializeContext } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 import { DataListBlock, resolveDataListOffset } from './dataListBlock';
@@ -43,7 +43,9 @@ export function resolveHeaderListOffset(context: SerializeContext, block: Header
         });
 }
 
-export async function readHeaderListBlock(link: Link<HeaderListBlock>, reader: BufferedFileReader): Promise<HeaderListBlock> {
+export async function readHeaderListBlock(link: NonNullLink<HeaderListBlock>, reader: BufferedFileReader): Promise<HeaderListBlock>;
+export async function readHeaderListBlock(link: Link<HeaderListBlock>, reader: BufferedFileReader): Promise<HeaderListBlock | null>;
+export async function readHeaderListBlock(link: Link<HeaderListBlock>, reader: BufferedFileReader): Promise<HeaderListBlock | null> {
     const block = await readBlock(link, reader, "##HL");
-    return deserializeHeaderListBlock(block);
+    return block === null ? null : deserializeHeaderListBlock(block);
 }
