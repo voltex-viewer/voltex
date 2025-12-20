@@ -193,7 +193,7 @@ export function deserializeChannelConversionBlock(block: GenericBlock): ChannelC
             view.readReal();
             const defaultLink = view.readLink();
             const table: [number, number, Link<TextBlock>][] = [];
-            for (let i = 0; i < size && view.byteLength > 0; i++) {
+            for (let i = 0; i < size && view.remaining > 0; i++) {
                 table.push([view.readReal(), view.readReal(), view.readLink()]);
             }
             return {

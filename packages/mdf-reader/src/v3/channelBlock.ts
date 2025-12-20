@@ -47,15 +47,15 @@ export interface ChannelBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     minimum: number;
     maximum: number;
     sampleRate: number;
-    longName: MaybeLinked<TextBlock, TMode>;
-    displayName: MaybeLinked<TextBlock, TMode>;
-    byteOffset: number;
+    longName?: MaybeLinked<TextBlock, TMode>; // MDF 2.12+
+    displayName?: MaybeLinked<TextBlock, TMode>; // MDF 3.0+
+    byteOffset?: number; // MDF 3.0+
 }
 
 export function deserializeChannelBlock(block: GenericBlock): ChannelBlock<'linked'> {
     const view = block.buffer;
 
-    return {
+    const result: ChannelBlock<'linked'> = {
         channelNext: view.readLink(),
         conversion: view.readLink(),
         extensions: view.readLink(),
@@ -71,10 +71,16 @@ export function deserializeChannelBlock(block: GenericBlock): ChannelBlock<'link
         minimum: view.readReal(),
         maximum: view.readReal(),
         sampleRate: view.readReal(),
-        longName: view.readLink(),
-        displayName: view.readLink(),
-        byteOffset: view.readUint16(),
     };
+
+    if (view.remaining < 4) return result;
+    result.longName = view.readLink(); // MDF 2.12+
+    if (view.remaining < 4) return result;
+    result.displayName = view.readLink(); // MDF 3.0+
+    if (view.remaining < 2) return result;
+    result.byteOffset = view.readUint16(); // MDF 3.0+
+
+    return result;
 }
 
 export function serializeChannelBlock(_view: MdfView, _context: SerializeContext, _block: ChannelBlock<'instanced'>) {
@@ -92,8 +98,8 @@ export function resolveChannelOffset(context: SerializeContext, block: ChannelBl
         block => {
             resolveChannelOffset(context, block.channelNext);
             resolveTextBlockOffset(context, block.comment);
-            resolveTextBlockOffset(context, block.longName);
-            resolveTextBlockOffset(context, block.displayName);
+            if (block.longName) resolveTextBlockOffset(context, block.longName);
+            if (block.displayName) resolveTextBlockOffset(context, block.displayName);
         });
 }
 

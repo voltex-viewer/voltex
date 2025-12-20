@@ -9,20 +9,22 @@ export interface Header<TMode extends 'linked' | 'instanced' = 'linked'> {
     fileComment: MaybeLinked<TextBlock, TMode>;
     programBlock: MaybeLinked<unknown, TMode>;
     dataGroupCount: number,
+    date: string,
+    time: string,
     author: string,
     organization: string,
     project: string,
     subject: string,
-    startTime?: bigint;
-    utcOffset?: number;
-    timeQuality?: number;
-    timerIdentification?: string;
+    startTime?: bigint; // MDF 3.2+
+    utcOffset?: number; // MDF 3.2+
+    timeQuality?: number; // MDF 3.2+
+    timerIdentification?: string; // MDF 3.2+
 }
 
-export function deserializeHeader(block: GenericBlock, version: number): Header {
+export function deserializeHeader(block: GenericBlock): Header {
     const view = block.buffer;
 
-    const baseline = {
+    const result: Header = {
         firstDataGroup: view.readLink(),
         fileComment: view.readLink(),
         programBlock: view.readLink(),
@@ -35,17 +37,17 @@ export function deserializeHeader(block: GenericBlock, version: number): Header 
         subject: view.readString(32),
     };
 
-    if (version < 330) {
-        return baseline;
-    } else {
-        return {
-            ...baseline,
-            startTime: view.readBigUint64(),
-            utcOffset: view.readInt16(),
-            timeQuality: view.readUint16(),
-            timerIdentification: view.readString(32),
-        };
-    }
+    // MDF 3.2+
+    if (view.remaining < 8) return result;
+    result.startTime = view.readBigUint64();
+    if (view.remaining < 2) return result;
+    result.utcOffset = view.readInt16();
+    if (view.remaining < 2) return result;
+    result.timeQuality = view.readUint16();
+    if (view.remaining < 32) return result;
+    result.timerIdentification = view.readString(32);
+
+    return result;
 }
 
 export function serializeHeader(_view: MdfView<ArrayBuffer>, _context: SerializeContext, _header: Header<'instanced'>): void {
@@ -68,5 +70,5 @@ export async function readHeader(link: NonNullLink<Header>, reader: BufferedFile
 export async function readHeader(link: Link<Header>, reader: BufferedFileReader): Promise<Header<'linked'> | null>;
 export async function readHeader(link: Link<Header>, reader: BufferedFileReader): Promise<Header<'linked'> | null> {
     const block = await readBlock(link, reader, "HD");
-    return block === null ? null : deserializeHeader(block, reader.version);
+    return block === null ? null : deserializeHeader(block);
 }

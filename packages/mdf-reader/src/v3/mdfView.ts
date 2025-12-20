@@ -20,7 +20,7 @@ export class MdfView<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike & { 
         return this.dataView.byteOffset + this.offset;
     }
 
-    get byteLength() {
+    get remaining() {
         return this.dataView.byteLength - this.offset;
     }
 

@@ -13,13 +13,13 @@ export interface ChannelGroupBlock<TMode extends 'linked' | 'instanced' = 'linke
     numberOfChannels: number;
     dataBytes: number;
     numberOfRecords: number;
-    sampleReductionFirst: MaybeLinked<TextBlock, TMode>;
+    sampleReductionFirst?: MaybeLinked<TextBlock, TMode>; // MDF 3.3+
 }
 
 export function deserializeChannelGroupBlock(block: GenericBlock): ChannelGroupBlock<'linked'> {
     const view = block.buffer;
 
-    return {
+    const result: ChannelGroupBlock<'linked'> = {
         channelGroupNext: view.readLink(),
         channelFirst: view.readLink(),
         comment: view.readLink(),
@@ -27,8 +27,12 @@ export function deserializeChannelGroupBlock(block: GenericBlock): ChannelGroupB
         numberOfChannels: view.readUint16(),
         dataBytes: view.readUint16(),
         numberOfRecords: view.readUint32(),
-        sampleReductionFirst: view.readLink(),
     };
+
+    if (view.remaining < 4) return result;
+    result.sampleReductionFirst = view.readLink(); // MDF 3.3+
+
+    return result;
 }
 
 export function serializeChannelGroupBlock(view: MdfView, context: SerializeContext, block: ChannelGroupBlock<'instanced'>) {

@@ -229,7 +229,7 @@ class MdfFileImpl implements MdfFile {
                 const groupChannels: AbstractChannel[] = [];
                 
                 for await (const channel of v3.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
-                    const name = v3.isNonNullLink(channel.longName)
+                    const name = channel.longName && v3.isNonNullLink(channel.longName)
                         ? (await v3.readTextBlock(channel.longName, this.reader))?.data ?? channel.name
                         : channel.name;
                     const channelType = channel.channelType === 1 ? ChannelType.Time : 
@@ -239,7 +239,7 @@ class MdfFileImpl implements MdfFile {
                         name: [this.filename, name],
                         type: channelType,
                         dataType: this.mdf3TypeToDataType(channel.dataType),
-                        byteOffset: channel.byteOffset + Math.floor(channel.bitOffset / 8),
+                        byteOffset: (channel.byteOffset ?? 0) + Math.floor(channel.bitOffset / 8),
                         bitOffset: channel.bitOffset % 8,
                         bitCount: channel.bitCount,
                     };

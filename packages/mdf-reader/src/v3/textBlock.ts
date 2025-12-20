@@ -8,7 +8,7 @@ export interface TextBlock {
 }
 
 export function deserializeTextBlock(block: GenericBlock): TextBlock {
-    const bytes = new Uint8Array(block.buffer.buffer, block.buffer.byteOffset, block.buffer.byteLength);
+    const bytes = new Uint8Array(block.buffer.buffer, block.buffer.byteOffset, block.buffer.remaining);
     const end = bytes.indexOf(0);
     return {
         data: new TextDecoder('utf-8').decode(bytes.subarray(0, end === -1 ? bytes.length : end))
