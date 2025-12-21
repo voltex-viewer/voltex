@@ -253,8 +253,8 @@ export default (context: PluginContext): void => {
                     syncType: index == 0 ? 1 : 0,
                     dataType: v4.DataType.FloatLe,
                     bitOffset: 0,
-                    byteOffset: index * 4,
-                    bitCount: 32,
+                    byteOffset: index * 8,
+                    bitCount: 64,
                     flags: 0,
                     invalidationBitPosition: 0,
                     precision: 0,
@@ -271,7 +271,7 @@ export default (context: PluginContext): void => {
                     channels[i].channelNext = channels[i + 1];
                 }
                 const maxBytesPerArray = 65536 - 24; // 64 KB block size minus header
-                const bytesPerSample = channels.length * Float32Array.BYTES_PER_ELEMENT;
+                const bytesPerSample = channels.length * Float64Array.BYTES_PER_ELEMENT;
                 const samplesPerArray = Math.floor(maxBytesPerArray / bytesPerSample);
                 const numArrays = Math.ceil(length / samplesPerArray);
                 const arrays: v4.DataTableBlock[] = [];
@@ -281,7 +281,7 @@ export default (context: PluginContext): void => {
                     const endSample = Math.min(startSample + samplesPerArray, length);
                     const samplesInThisArray = endSample - startSample;
                     
-                    const arr = new Float32Array(samplesInThisArray * channels.length);
+                    const arr = new Float64Array(samplesInThisArray * channels.length);
                     for (let i = 0; i < samplesInThisArray; i++) {
                         for (let j = 0; j < channelInfo.length; j++) {
                             arr[i * channels.length + j] = channelInfo[j][1].valueAt(startSample + i);
@@ -306,7 +306,7 @@ export default (context: PluginContext): void => {
                         cycleCount: BigInt(length),
                         flags: 0,
                         pathSeparator: 0,
-                        dataBytes: channelInfo.length * 4,
+                        dataBytes: channelInfo.length * 8,
                         invalidationBytes: 0,
                     },
                     data: arrays.length == 1 ? arrays[0] : {
