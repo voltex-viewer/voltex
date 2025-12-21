@@ -1,5 +1,6 @@
 import * as t from 'io-ts';
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export const DEFAULT_VALUE = Symbol('DEFAULT_VALUE');
 
 export type WithDefaults<T> = {
@@ -11,6 +12,7 @@ export interface KeybindingBrand {
     readonly Keybinding: unique symbol;
 }
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export const Keybinding = t.brand(
     t.string,
     (s): s is t.Branded<string, KeybindingBrand> => typeof s === 'string',
@@ -196,7 +198,7 @@ export interface PluginContext {
     renderProfiler: ReadOnlyRenderProfiler;
     rootRenderObject: RenderObject,
     onRowsChanged(callback: RowsChangedCallback): void;
-    onConfigChanged(callback: (pluginName: string, newConfig: any) => void): void;
+    onConfigChanged(callback: (pluginName: string, newConfig: unknown) => void): void;
     onBeforeRender(callback: () => boolean): void;
     onAfterRender(callback: () => boolean): void;
     addSidebarEntry(entry: SidebarEntryArgs): SidebarEntry;

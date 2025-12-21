@@ -1,4 +1,4 @@
-import { RenderMode, Sequence, Signal, SignalSource } from './Plugin';
+import { RenderMode, Sequence, Signal, SignalSource } from './plugin';
 
 export type ChannelPoint = [t: number, v: number];
 
