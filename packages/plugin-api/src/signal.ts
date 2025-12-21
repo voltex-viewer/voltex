@@ -78,6 +78,54 @@ export class InMemorySequence implements Sequence {
     }
 }
 
+export class InMemoryFloat64Sequence implements Sequence {
+    private _min: number;
+    private _max: number;
+    private _data: Float64Array;
+    private _length: number;
+
+    constructor() {
+        this._min = Infinity;
+        this._max = -Infinity;
+        this._data = new Float64Array(1024);
+        this._length = 0;
+    }
+
+    push(...values: number[]) {
+        for (const value of values) {
+            if (value < this._min) {
+                this._min = value;
+            }
+            if (value > this._max) {
+                this._max = value;
+            }
+            if (this._length === this._data.length) {
+                const newData = new Float64Array(Math.max(this._data.length * 2, 1024));
+                newData.set(this._data);
+                this._data = newData;
+            }
+            this._data[this._length] = value;
+            this._length++;
+        }
+    }
+
+    get min(): number {
+        return this._min == Infinity ? 0 : this._min;
+    }
+
+    get max(): number {
+        return this._max == -Infinity ? 0 : this._max;
+    }
+
+    get length(): number {
+        return this._length;
+    }
+
+    valueAt(index: number): number {
+        return this._data[index];
+    }
+}
+
 export class InMemoryBigInt64Sequence implements Sequence {
     private _min: number;
     private _max: number;

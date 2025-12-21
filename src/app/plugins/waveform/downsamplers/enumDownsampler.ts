@@ -1,64 +1,57 @@
 import type { Signal } from '@voltex-viewer/plugin-api';
 import type { Downsampler, DownsampleResult } from './types';
+import { TimeValueBuffer } from './timeValueBuffer';
 
 export function createEnumDownsampler(
     signal: Signal,
     maxPoints: number
 ): Downsampler {
-    const timeBuffer = new Float32Array(maxPoints + 1);
-    const valueBuffer = new Float32Array(maxPoints + 1);
+    const buffer = new TimeValueBuffer(maxPoints + 1);
 
     const generator = (function* (): Generator<DownsampleResult, void, void> {
         let signalIndex = 0;
-        let bufferOffset = 0;
         let lastValue = NaN;
+        let lastCommittedTime = 0;
 
         while (true) {
             let seqLen = Math.min(signal.time.length, signal.values.length);
 
             while (signalIndex >= seqLen) {
-                yield { bufferOffset, hasMore: false };
+                yield { hasMore: false };
                 seqLen = Math.min(signal.time.length, signal.values.length);
             }
 
             if (signalIndex === 0) {
                 lastValue = signal.values.valueAt(0);
-                timeBuffer[0] = signal.time.valueAt(0);
-                valueBuffer[0] = lastValue;
-                bufferOffset = 1;
+                lastCommittedTime = signal.time.valueAt(0);
+                buffer.append(lastCommittedTime, lastValue);
                 signalIndex = 1;
             }
 
             while (signalIndex < seqLen) {
                 const value = signal.values.valueAt(signalIndex);
                 if (value !== lastValue) {
-                    timeBuffer[bufferOffset] = signal.time.valueAt(signalIndex);
-                    valueBuffer[bufferOffset] = value;
-                    lastValue = value;
-                    bufferOffset++;
-                    if (bufferOffset === maxPoints + 1) {
-                        yield { bufferOffset: bufferOffset - 1, hasMore: true };
-                        timeBuffer[0] = timeBuffer[bufferOffset - 1];
-                        valueBuffer[0] = valueBuffer[bufferOffset - 1];
-                        bufferOffset = 1;
+                    if (buffer.length === maxPoints) {
+                        yield { hasMore: true };
+                        buffer.clear();
                     }
+                    lastCommittedTime = signal.time.valueAt(signalIndex);
+                    buffer.append(lastCommittedTime, value);
+                    lastValue = value;
                 }
                 signalIndex++;
             }
 
-            // Add trailing point if time advanced since last committed point
             const trailingTime = signal.time.valueAt(seqLen - 1);
-            if (trailingTime !== timeBuffer[bufferOffset - 1]) {
-                timeBuffer[bufferOffset] = trailingTime;
-                valueBuffer[bufferOffset] = lastValue;
-                bufferOffset++;
-                yield { bufferOffset, hasMore: false, overwriteNext: true };
+            if (trailingTime !== lastCommittedTime) {
+                buffer.append(trailingTime, lastValue);
+                yield { hasMore: false, overwriteNext: true };
             } else {
-                yield { bufferOffset, hasMore: false };
+                yield { hasMore: false };
             }
-            bufferOffset = 0;
+            buffer.clear();
         }
     })();
 
-    return Object.assign(generator, { timeBuffer, valueBuffer });
+    return Object.assign(generator, { buffer });
 }

@@ -272,13 +272,19 @@ export class WaveformRenderObject {
         gl.useProgram(program);
         bindUniforms(program);
         
-        // Bind time buffer to first attribute
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
-        const timeLocation = gl.getAttribLocation(program, 'timePos');
-        gl.enableVertexAttribArray(timeLocation);
-        gl.vertexAttribPointer(timeLocation, 1, gl.FLOAT, false, 0, 0);
+        // Bind time high buffer
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeHighBuffer);
+        const timeHighLocation = gl.getAttribLocation(program, 'timePosHigh');
+        gl.enableVertexAttribArray(timeHighLocation);
+        gl.vertexAttribPointer(timeHighLocation, 1, gl.FLOAT, false, 0, 0);
+
+        // Bind time low buffer
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeLowBuffer);
+        const timeLowLocation = gl.getAttribLocation(program, 'timePosLow');
+        gl.enableVertexAttribArray(timeLowLocation);
+        gl.vertexAttribPointer(timeLowLocation, 1, gl.FLOAT, false, 0, 0);
         
-        // Bind value buffer to second attribute  
+        // Bind value buffer
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const valueLocation = gl.getAttribLocation(program, 'valuePos');
         gl.enableVertexAttribArray(valueLocation);
@@ -287,7 +293,8 @@ export class WaveformRenderObject {
         gl.drawArrays(gl.POINTS, 0, this.bufferData.bufferLength);
         
         // Clean up
-        gl.disableVertexAttribArray(timeLocation);
+        gl.disableVertexAttribArray(timeHighLocation);
+        gl.disableVertexAttribArray(timeLowLocation);
         gl.disableVertexAttribArray(valueLocation);
     }
     
@@ -306,28 +313,40 @@ export class WaveformRenderObject {
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
         gl.vertexAttribDivisor(positionLocation, 0);
         
-        // Bind time buffer for pointA times (instanced data)
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
-        const pointATimeLocation = gl.getAttribLocation(program, 'pointATime');
-        gl.enableVertexAttribArray(pointATimeLocation);
-        gl.vertexAttribPointer(pointATimeLocation, 1, gl.FLOAT, false, 4, 0); // stride: 1 float, offset: 0
-        gl.vertexAttribDivisor(pointATimeLocation, 1);
+        // Bind time high buffer for pointA/pointB times (instanced data)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeHighBuffer);
+        const pointATimeHighLocation = gl.getAttribLocation(program, 'pointATimeHigh');
+        gl.enableVertexAttribArray(pointATimeHighLocation);
+        gl.vertexAttribPointer(pointATimeHighLocation, 1, gl.FLOAT, false, 4, 0);
+        gl.vertexAttribDivisor(pointATimeHighLocation, 1);
         
-        const pointBTimeLocation = gl.getAttribLocation(program, 'pointBTime');
-        gl.enableVertexAttribArray(pointBTimeLocation);
-        gl.vertexAttribPointer(pointBTimeLocation, 1, gl.FLOAT, false, 4, 4); // stride: 1 float, offset: 1 float
-        gl.vertexAttribDivisor(pointBTimeLocation, 1);
+        const pointBTimeHighLocation = gl.getAttribLocation(program, 'pointBTimeHigh');
+        gl.enableVertexAttribArray(pointBTimeHighLocation);
+        gl.vertexAttribPointer(pointBTimeHighLocation, 1, gl.FLOAT, false, 4, 4);
+        gl.vertexAttribDivisor(pointBTimeHighLocation, 1);
+
+        // Bind time low buffer for pointA/pointB times (instanced data)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeLowBuffer);
+        const pointATimeLowLocation = gl.getAttribLocation(program, 'pointATimeLow');
+        gl.enableVertexAttribArray(pointATimeLowLocation);
+        gl.vertexAttribPointer(pointATimeLowLocation, 1, gl.FLOAT, false, 4, 0);
+        gl.vertexAttribDivisor(pointATimeLowLocation, 1);
+        
+        const pointBTimeLowLocation = gl.getAttribLocation(program, 'pointBTimeLow');
+        gl.enableVertexAttribArray(pointBTimeLowLocation);
+        gl.vertexAttribPointer(pointBTimeLowLocation, 1, gl.FLOAT, false, 4, 4);
+        gl.vertexAttribDivisor(pointBTimeLowLocation, 1);
         
         // Bind value buffer for pointA/pointB values (instanced data)
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const pointAValueLocation = gl.getAttribLocation(program, 'pointAValue');
         gl.enableVertexAttribArray(pointAValueLocation);
-        gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0); // stride: 1 float, offset: 0
+        gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0);
         gl.vertexAttribDivisor(pointAValueLocation, 1);
         
         const pointBValueLocation = gl.getAttribLocation(program, 'pointBValue');
         gl.enableVertexAttribArray(pointBValueLocation);
-        gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4); // stride: 1 float, offset: 1 float
+        gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4);
         gl.vertexAttribDivisor(pointBValueLocation, 1);
         
         // Draw instanced
@@ -338,15 +357,19 @@ export class WaveformRenderObject {
         
         // Clean up divisors
         gl.vertexAttribDivisor(positionLocation, 0);
-        gl.vertexAttribDivisor(pointATimeLocation, 0);
-        gl.vertexAttribDivisor(pointBTimeLocation, 0);
+        gl.vertexAttribDivisor(pointATimeHighLocation, 0);
+        gl.vertexAttribDivisor(pointBTimeHighLocation, 0);
+        gl.vertexAttribDivisor(pointATimeLowLocation, 0);
+        gl.vertexAttribDivisor(pointBTimeLowLocation, 0);
         gl.vertexAttribDivisor(pointAValueLocation, 0);
         gl.vertexAttribDivisor(pointBValueLocation, 0);
         
         // Disable vertex attribute arrays
         gl.disableVertexAttribArray(positionLocation);
-        gl.disableVertexAttribArray(pointATimeLocation);
-        gl.disableVertexAttribArray(pointBTimeLocation);
+        gl.disableVertexAttribArray(pointATimeHighLocation);
+        gl.disableVertexAttribArray(pointBTimeHighLocation);
+        gl.disableVertexAttribArray(pointATimeLowLocation);
+        gl.disableVertexAttribArray(pointBTimeLowLocation);
         gl.disableVertexAttribArray(pointAValueLocation);
         gl.disableVertexAttribArray(pointBValueLocation);
     }
@@ -366,38 +389,55 @@ export class WaveformRenderObject {
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
         gl.vertexAttribDivisor(positionLocation, 0);
         
-        // Bind time buffer for three consecutive point times (A, B, C)
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeBuffer);
-        const pointATimeLocation = gl.getAttribLocation(program, 'pointATime');
-        gl.enableVertexAttribArray(pointATimeLocation);
-        gl.vertexAttribPointer(pointATimeLocation, 1, gl.FLOAT, false, 4, 0); // offset: 0
-        gl.vertexAttribDivisor(pointATimeLocation, 1);
+        // Bind time high buffer for three consecutive point times (A, B, C)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeHighBuffer);
+        const pointATimeHighLocation = gl.getAttribLocation(program, 'pointATimeHigh');
+        gl.enableVertexAttribArray(pointATimeHighLocation);
+        gl.vertexAttribPointer(pointATimeHighLocation, 1, gl.FLOAT, false, 4, 0);
+        gl.vertexAttribDivisor(pointATimeHighLocation, 1);
         
-        const pointBTimeLocation = gl.getAttribLocation(program, 'pointBTime');
-        gl.enableVertexAttribArray(pointBTimeLocation);
-        gl.vertexAttribPointer(pointBTimeLocation, 1, gl.FLOAT, false, 4, 4); // offset: 1 float
-        gl.vertexAttribDivisor(pointBTimeLocation, 1);
+        const pointBTimeHighLocation = gl.getAttribLocation(program, 'pointBTimeHigh');
+        gl.enableVertexAttribArray(pointBTimeHighLocation);
+        gl.vertexAttribPointer(pointBTimeHighLocation, 1, gl.FLOAT, false, 4, 4);
+        gl.vertexAttribDivisor(pointBTimeHighLocation, 1);
         
-        const pointCTimeLocation = gl.getAttribLocation(program, 'pointCTime');
-        gl.enableVertexAttribArray(pointCTimeLocation);
-        gl.vertexAttribPointer(pointCTimeLocation, 1, gl.FLOAT, false, 4, 8); // offset: 2 floats
-        gl.vertexAttribDivisor(pointCTimeLocation, 1);
+        const pointCTimeHighLocation = gl.getAttribLocation(program, 'pointCTimeHigh');
+        gl.enableVertexAttribArray(pointCTimeHighLocation);
+        gl.vertexAttribPointer(pointCTimeHighLocation, 1, gl.FLOAT, false, 4, 8);
+        gl.vertexAttribDivisor(pointCTimeHighLocation, 1);
+
+        // Bind time low buffer for three consecutive point times (A, B, C)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.timeLowBuffer);
+        const pointATimeLowLocation = gl.getAttribLocation(program, 'pointATimeLow');
+        gl.enableVertexAttribArray(pointATimeLowLocation);
+        gl.vertexAttribPointer(pointATimeLowLocation, 1, gl.FLOAT, false, 4, 0);
+        gl.vertexAttribDivisor(pointATimeLowLocation, 1);
+        
+        const pointBTimeLowLocation = gl.getAttribLocation(program, 'pointBTimeLow');
+        gl.enableVertexAttribArray(pointBTimeLowLocation);
+        gl.vertexAttribPointer(pointBTimeLowLocation, 1, gl.FLOAT, false, 4, 4);
+        gl.vertexAttribDivisor(pointBTimeLowLocation, 1);
+        
+        const pointCTimeLowLocation = gl.getAttribLocation(program, 'pointCTimeLow');
+        gl.enableVertexAttribArray(pointCTimeLowLocation);
+        gl.vertexAttribPointer(pointCTimeLowLocation, 1, gl.FLOAT, false, 4, 8);
+        gl.vertexAttribDivisor(pointCTimeLowLocation, 1);
         
         // Bind value buffer for three consecutive point values (A, B, C)
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bufferData.valueBuffer);
         const pointAValueLocation = gl.getAttribLocation(program, 'pointAValue');
         gl.enableVertexAttribArray(pointAValueLocation);
-        gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0); // offset: 0
+        gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0);
         gl.vertexAttribDivisor(pointAValueLocation, 1);
         
         const pointBValueLocation = gl.getAttribLocation(program, 'pointBValue');
         gl.enableVertexAttribArray(pointBValueLocation);
-        gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4); // offset: 1 float
+        gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4);
         gl.vertexAttribDivisor(pointBValueLocation, 1);
         
         const pointCValueLocation = gl.getAttribLocation(program, 'pointCValue');
         gl.enableVertexAttribArray(pointCValueLocation);
-        gl.vertexAttribPointer(pointCValueLocation, 1, gl.FLOAT, false, 4, 8); // offset: 2 floats
+        gl.vertexAttribPointer(pointCValueLocation, 1, gl.FLOAT, false, 4, 8);
         gl.vertexAttribDivisor(pointCValueLocation, 1);
         
         // Draw instanced bevel joins - need 3 consecutive points
@@ -408,18 +448,24 @@ export class WaveformRenderObject {
         
         // Clean up divisors
         gl.vertexAttribDivisor(positionLocation, 0);
-        gl.vertexAttribDivisor(pointATimeLocation, 0);
-        gl.vertexAttribDivisor(pointBTimeLocation, 0);
-        gl.vertexAttribDivisor(pointCTimeLocation, 0);
+        gl.vertexAttribDivisor(pointATimeHighLocation, 0);
+        gl.vertexAttribDivisor(pointBTimeHighLocation, 0);
+        gl.vertexAttribDivisor(pointCTimeHighLocation, 0);
+        gl.vertexAttribDivisor(pointATimeLowLocation, 0);
+        gl.vertexAttribDivisor(pointBTimeLowLocation, 0);
+        gl.vertexAttribDivisor(pointCTimeLowLocation, 0);
         gl.vertexAttribDivisor(pointAValueLocation, 0);
         gl.vertexAttribDivisor(pointBValueLocation, 0);
         gl.vertexAttribDivisor(pointCValueLocation, 0);
         
         // Disable vertex attribute arrays
         gl.disableVertexAttribArray(positionLocation);
-        gl.disableVertexAttribArray(pointATimeLocation);
-        gl.disableVertexAttribArray(pointBTimeLocation);
-        gl.disableVertexAttribArray(pointCTimeLocation);
+        gl.disableVertexAttribArray(pointATimeHighLocation);
+        gl.disableVertexAttribArray(pointBTimeHighLocation);
+        gl.disableVertexAttribArray(pointCTimeHighLocation);
+        gl.disableVertexAttribArray(pointATimeLowLocation);
+        gl.disableVertexAttribArray(pointBTimeLowLocation);
+        gl.disableVertexAttribArray(pointCTimeLowLocation);
         gl.disableVertexAttribArray(pointAValueLocation);
         gl.disableVertexAttribArray(pointBValueLocation);
         gl.disableVertexAttribArray(pointCValueLocation);

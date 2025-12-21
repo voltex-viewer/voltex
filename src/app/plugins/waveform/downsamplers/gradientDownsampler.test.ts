@@ -161,7 +161,7 @@ describe.each([3, 4, 5, 6, 10])('gradientDownsampler (maxPoints=%i)', (maxPoints
             while (true) {
                 const result = downsampler.next();
                 if (result.done) break;
-                expect(result.value.bufferOffset).toBeLessThanOrEqual(maxPoints + 1);
+                expect(downsampler.buffer.length).toBeLessThanOrEqual(maxPoints + 1);
                 if (!result.value.hasMore) break;
             }
         });

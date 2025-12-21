@@ -1,4 +1,4 @@
-import { InMemorySequence, InMemorySignal, PluginContext, RenderMode, Signal, SignalSource } from '@voltex-viewer/plugin-api';
+import { InMemorySequence, InMemoryFloat64Sequence, InMemorySignal, PluginContext, RenderMode, Signal, SignalSource } from '@voltex-viewer/plugin-api';
 import { FunctionSignal, FunctionTimeSequence, SequenceSignal } from '@voltex-viewer/plugin-api';
 import * as t from 'io-ts';
 
@@ -157,23 +157,32 @@ export default async (context: PluginContext) => {
     const trafficLightSource: SignalSource = {
         name: ['Demo Signals', 'Traffic Light'],
         signal: () => {
-            const timeSeq = new InMemorySequence();
+            const timeSeq = new InMemoryFloat64Sequence();
             const valueSeq = new InMemorySequence((value: number) => {
                 if (value === 0) return 'stop';
                 if (value === 1) return 'wait';
                 if (value === 2) return 'go';
+                if (value === 3) return 'transitioning';
                 return 'unknown';
             });
             
             const states = [
                 { value: 0, duration: 4.5 }, // stop - 4.5s
+                { value: 3, duration: 100e-9 }, // Small delay to test zooming
                 { value: 1, duration: 0.5 }, // wait - 0.5s
+                { value: 3, duration: 200e-9 }, // Small delay to test zooming
                 { value: 2, duration: 3 }, // go - 3s
+                { value: 3, duration: 300e-9 }, // Small delay to test zooming
                 { value: 1, duration: 0.3 }, // wait - 0.3s
+                { value: 3, duration: 500e-9 }, // Small delay to test zooming
                 { value: 0, duration: 6 }, // stop - 6s
+                { value: 3, duration: 500e-9 }, // Small delay to test zooming
                 { value: 1, duration: 0.4 }, // wait - 0.4s
+                { value: 3, duration: 600e-9 }, // Small delay to test zooming
                 { value: 2, duration: 2.5 }, // go - 2.5s
+                { value: 3, duration: 700e-9 }, // Small delay to test zooming
                 { value: 1, duration: 0.6 }, // wait - 0.6s
+                { value: 3, duration: 800e-9 }, // Small delay to test zooming
             ];
             
             let currentTime = 0;

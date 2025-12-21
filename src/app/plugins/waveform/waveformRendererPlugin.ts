@@ -10,7 +10,8 @@ import type { Downsampler } from './downsamplers/types';
 import { createRawDownsampler } from './downsamplers/rawDownsampler';
 
 export interface BufferData {
-    timeBuffer: WebGLBuffer;
+    timeHighBuffer: WebGLBuffer;
+    timeLowBuffer: WebGLBuffer;
     valueBuffer: WebGLBuffer;
     downsamplingMode: string;
     bufferCapacity: number;
@@ -132,19 +133,26 @@ export default (context: PluginContext): void => {
                 const newCapacity = Math.max(256, 1 << Math.ceil(Math.log2(seqLen)));
                 
                 // Create new buffers
-                const newTimeBuffer = gl.createBuffer()!;
+                const newTimeHighBuffer = gl.createBuffer()!;
+                const newTimeLowBuffer = gl.createBuffer()!;
                 const newValueBuffer = gl.createBuffer()!;
                 
                 // Allocate new buffers
-                gl.bindBuffer(gl.ARRAY_BUFFER, newTimeBuffer);
+                gl.bindBuffer(gl.ARRAY_BUFFER, newTimeHighBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
+                gl.bindBuffer(gl.ARRAY_BUFFER, newTimeLowBuffer);
                 gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
                 gl.bindBuffer(gl.ARRAY_BUFFER, newValueBuffer);
                 gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
                 
                 // Copy existing data on GPU if there's any
                 if (bufferData.bufferLength > 0) {
-                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.timeBuffer);
-                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newTimeBuffer);
+                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.timeHighBuffer);
+                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newTimeHighBuffer);
+                    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, bufferData.bufferLength * 4);
+
+                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.timeLowBuffer);
+                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newTimeLowBuffer);
                     gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, bufferData.bufferLength * 4);
                     
                     gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.valueBuffer);
@@ -153,9 +161,11 @@ export default (context: PluginContext): void => {
                 }
                 
                 // Delete old buffers and swap
-                gl.deleteBuffer(bufferData.timeBuffer);
+                gl.deleteBuffer(bufferData.timeHighBuffer);
+                gl.deleteBuffer(bufferData.timeLowBuffer);
                 gl.deleteBuffer(bufferData.valueBuffer);
-                bufferData.timeBuffer = newTimeBuffer;
+                bufferData.timeHighBuffer = newTimeHighBuffer;
+                bufferData.timeLowBuffer = newTimeLowBuffer;
                 bufferData.valueBuffer = newValueBuffer;
                 bufferData.bufferCapacity = newCapacity;
             }
@@ -163,17 +173,20 @@ export default (context: PluginContext): void => {
             const result = bufferData.generator.next();
             if (result.done) throw new Error('Downsampler generator unexpectedly returned');
             
-            const { bufferOffset, hasMore, overwriteNext } = result.value;
+            const { hasMore, overwriteNext } = result.value;
+            const bufferOffset = bufferData.generator.buffer.length;
 
             if (bufferData.overwriteNext && bufferOffset > 0 && bufferData.bufferLength > 0) {
                 bufferData.bufferLength--;
             }
 
             // Upload new data
-            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeBuffer);
-            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.timeBuffer.subarray(0, bufferOffset));
+            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeHighBuffer);
+            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.buffer.timeHighBuffer.subarray(0, bufferOffset));
+            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeLowBuffer);
+            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.buffer.timeLowBuffer.subarray(0, bufferOffset));
             gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
-            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.valueBuffer.subarray(0, bufferOffset));
+            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.buffer.valueBuffer.subarray(0, bufferOffset));
             bufferData.bufferLength += bufferOffset;
             
             if (bufferOffset > 0) {
@@ -240,7 +253,9 @@ export default (context: PluginContext): void => {
                 // Allocate buffer if needed
                 if (dotRenderBuffer.bufferCapacity < pointVisibilityThreshold) {
                     const gl = context.webgl.gl;
-                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeBuffer);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeHighBuffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeLowBuffer);
                     gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
                     gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
                     gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
@@ -248,16 +263,22 @@ export default (context: PluginContext): void => {
                 }
                 
                 // Copy visible points to dot buffer
-                const dotTimeArr = new Float32Array(visibleCount);
+                const dotTimeHighArr = new Float32Array(visibleCount);
+                const dotTimeLowArr = new Float32Array(visibleCount);
                 const dotValueArr = new Float32Array(visibleCount);
                 for (let i = 0; i < visibleCount; i++) {
-                    dotTimeArr[i] = channel.time.valueAt(startIdx + i);
+                    const time = channel.time.valueAt(startIdx + i);
+                    const high = Math.fround(time);
+                    dotTimeHighArr[i] = high;
+                    dotTimeLowArr[i] = time - high;
                     dotValueArr[i] = channel.values.valueAt(startIdx + i);
                 }
                 
                 const gl = context.webgl.gl;
-                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotTimeArr);
+                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeHighBuffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotTimeHighArr);
+                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeLowBuffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotTimeLowArr);
                 gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
                 gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotValueArr);
                 
@@ -275,8 +296,12 @@ export default (context: PluginContext): void => {
             for (const channel of row.signals) {
                 // Create buffers
                 if (!buffers.has(channel)) {
-                    const timeBuffer = context.webgl.gl.createBuffer();
-                    if (!timeBuffer) {
+                    const timeHighBuffer = context.webgl.gl.createBuffer();
+                    if (!timeHighBuffer) {
+                        throw new Error('Failed to create WebGL buffer for sequence');
+                    }
+                    const timeLowBuffer = context.webgl.gl.createBuffer();
+                    if (!timeLowBuffer) {
                         throw new Error('Failed to create WebGL buffer for sequence');
                     }
                     const valueBuffer = context.webgl.gl.createBuffer();
@@ -286,7 +311,8 @@ export default (context: PluginContext): void => {
                     const metadata = context.signalMetadata.get(channel);
                     const downsamplingMode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
                     buffers.set(channel, {
-                        timeBuffer,
+                        timeHighBuffer,
+                        timeLowBuffer,
                         valueBuffer,
                         downsamplingMode,
                         bufferCapacity: 0,
@@ -336,15 +362,17 @@ export default (context: PluginContext): void => {
                 );
 
                 // Create dot overlay buffers
-                const dotTimeBuffer = context.webgl.gl.createBuffer();
+                const dotTimeHighBuffer = context.webgl.gl.createBuffer();
+                const dotTimeLowBuffer = context.webgl.gl.createBuffer();
                 const dotValueBuffer = context.webgl.gl.createBuffer();
-                if (!dotTimeBuffer || !dotValueBuffer) {
+                if (!dotTimeHighBuffer || !dotTimeLowBuffer || !dotValueBuffer) {
                     throw new Error('Failed to create WebGL buffers for dot overlay');
                 }
                 
                 // Create BufferData wrapper for the dot render object
                 const dotRenderBuffer: BufferData = {
-                    timeBuffer: dotTimeBuffer,
+                    timeHighBuffer: dotTimeHighBuffer,
+                    timeLowBuffer: dotTimeLowBuffer,
                     valueBuffer: dotValueBuffer,
                     downsamplingMode: 'off',
                     bufferCapacity: 0,
@@ -409,7 +437,8 @@ export default (context: PluginContext): void => {
         
         for (const [signal, bufferData] of buffers.entries()) {
             if (!activeSignals.has(signal)) {
-                context.webgl.gl.deleteBuffer(bufferData.timeBuffer);
+                context.webgl.gl.deleteBuffer(bufferData.timeHighBuffer);
+                context.webgl.gl.deleteBuffer(bufferData.timeLowBuffer);
                 context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
                 buffers.delete(signal);
             }
@@ -417,7 +446,8 @@ export default (context: PluginContext): void => {
         
         for (const [signal, dotBufferData] of dotOverlayBuffers.entries()) {
             if (!activeSignals.has(signal)) {
-                context.webgl.gl.deleteBuffer(dotBufferData.timeBuffer);
+                context.webgl.gl.deleteBuffer(dotBufferData.timeHighBuffer);
+                context.webgl.gl.deleteBuffer(dotBufferData.timeLowBuffer);
                 context.webgl.gl.deleteBuffer(dotBufferData.valueBuffer);
                 dotOverlayBuffers.delete(signal);
             }

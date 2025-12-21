@@ -31,18 +31,20 @@ export class DownsampleCollector {
                 throw new Error('Downsampler generator unexpectedly returned');
             }
             const result = iter.value;
+            const bufferLength = downsampler.buffer.length;
 
-            if (this.lastOverwriteNext && result.bufferOffset > 0 && this.times.length > 0) {
+            if (this.lastOverwriteNext && bufferLength > 0 && this.times.length > 0) {
                 this.times.pop();
                 this.values.pop();
             }
 
-            for (let i = 0; i < result.bufferOffset; i++) {
-                this.times.push(downsampler.timeBuffer[i]);
-                this.values.push(downsampler.valueBuffer[i]);
+            for (let i = 0; i < bufferLength; i++) {
+                // Reconstruct time from high + low parts
+                this.times.push(downsampler.buffer.timeHighBuffer[i] + downsampler.buffer.timeLowBuffer[i]);
+                this.values.push(downsampler.buffer.valueBuffer[i]);
             }
 
-            if (result.bufferOffset > 0) {
+            if (bufferLength > 0) {
                 this.lastOverwriteNext = result.overwriteNext ?? false;
             }
             if (!result.hasMore) break;

@@ -1,7 +1,9 @@
 attribute vec2 position;
-attribute float pointATime;
+attribute float pointATimeHigh;
+attribute float pointATimeLow;
 attribute float pointAValue;
-attribute float pointBTime;
+attribute float pointBTimeHigh;
+attribute float pointBTimeLow;
 attribute float pointBValue;
 
 uniform vec2 u_bounds;
@@ -14,12 +16,9 @@ uniform float u_yOffset;
 uniform int u_discrete;
 
 void main() {
-    vec2 pointA = vec2(pointATime, pointAValue);
-    vec2 pointB = vec2(pointBTime, pointBValue);
-    
     // Emulated double precision
-    float diffA = (pointA.x - u_timeOffsetHigh) - u_timeOffsetLow;
-    float diffB = (pointB.x - u_timeOffsetHigh) - u_timeOffsetLow;
+    float diffA = (pointATimeHigh - u_timeOffsetHigh) + (pointATimeLow - u_timeOffsetLow);
+    float diffB = (pointBTimeHigh - u_timeOffsetHigh) + (pointBTimeLow - u_timeOffsetLow);
     
     vec2 screenPointA, screenPointB;
         
@@ -27,23 +26,23 @@ void main() {
         // For discrete signals, create horizontal line from pointA to pointB's time with pointA's value
         screenPointA = vec2(
             diffA * u_pxPerSecond,
-            (u_bounds.y - (pointA.y + u_yOffset) * u_yScale * u_bounds.y) * 0.5
+            (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5
         );
         
         screenPointB = vec2(
             diffB * u_pxPerSecond,
-            (u_bounds.y - (pointA.y + u_yOffset) * u_yScale * u_bounds.y) * 0.5  // Same Y as pointA
+            (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5  // Same Y as pointA
         );
     } else {
         // For continuous signals, use original point-to-point rendering
         screenPointA = vec2(
             diffA * u_pxPerSecond,
-            (u_bounds.y - (pointA.y + u_yOffset) * u_yScale * u_bounds.y) * 0.5
+            (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5
         );
         
         screenPointB = vec2(
             diffB * u_pxPerSecond,
-            (u_bounds.y - (pointB.y + u_yOffset) * u_yScale * u_bounds.y) * 0.5
+            (u_bounds.y - (pointBValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5
         );
     }
     

@@ -89,14 +89,16 @@ export class WaveformRowHoverOverlayRenderObject {
                 this.highlightSignals.set(signal, highlightSignal);
 
                 // Create dedicated highlight buffers for this signal
-                const highlightTimeBuffer = context.webgl.gl.createBuffer();
+                const highlightTimeHighBuffer = context.webgl.gl.createBuffer();
+                const highlightTimeLowBuffer = context.webgl.gl.createBuffer();
                 const highlightValueBuffer = context.webgl.gl.createBuffer();
-                if (!highlightTimeBuffer || !highlightValueBuffer) {
+                if (!highlightTimeHighBuffer || !highlightTimeLowBuffer || !highlightValueBuffer) {
                     throw new Error('Failed to create highlight buffers');
                 }
 
                 const bufferData: BufferData = {
-                    timeBuffer: highlightTimeBuffer,
+                    timeHighBuffer: highlightTimeHighBuffer,
+                    timeLowBuffer: highlightTimeLowBuffer,
                     valueBuffer: highlightValueBuffer,
                     downsamplingMode: 'off',
                     bufferCapacity: 0,
@@ -135,7 +137,8 @@ export class WaveformRowHoverOverlayRenderObject {
     dispose(): void {
         // Clean up highlight buffers
         for (const bufferData of this.highlightBuffers.values()) {
-            this.context.webgl.gl.deleteBuffer(bufferData.timeBuffer);
+            this.context.webgl.gl.deleteBuffer(bufferData.timeHighBuffer);
+            this.context.webgl.gl.deleteBuffer(bufferData.timeLowBuffer);
             this.context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
         }
         
@@ -237,12 +240,23 @@ export class WaveformRowHoverOverlayRenderObject {
         // Get the highlight buffer data directly from our stored references
         const highlightBufferData = this.highlightBuffers.get(signal);
         if (highlightBufferData) {
-            // Convert points to separate time and value arrays for WebGL buffers
-            const timeData = new Float32Array(timeSourceData);
+            // Convert points to separate time high/low and value arrays for WebGL buffers
+            const timeHighData = new Float32Array(timeSourceData.length);
+            const timeLowData = new Float32Array(timeSourceData.length);
             const valueData = new Float32Array(valueSourceData);
+            
+            for (let i = 0; i < timeSourceData.length; i++) {
+                const time = timeSourceData[i];
+                const high = Math.fround(time);
+                timeHighData[i] = high;
+                timeLowData[i] = time - high;
+            }
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.timeBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, timeData, gl.DYNAMIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.timeHighBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, timeHighData, gl.DYNAMIC_DRAW);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.timeLowBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, timeLowData, gl.DYNAMIC_DRAW);
 
             gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.valueBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);

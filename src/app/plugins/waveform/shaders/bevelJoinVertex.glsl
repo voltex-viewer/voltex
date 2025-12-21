@@ -1,43 +1,42 @@
 attribute vec2 position;
-attribute float pointATime;
+attribute float pointATimeHigh;
+attribute float pointATimeLow;
 attribute float pointAValue;
-attribute float pointBTime;
+attribute float pointBTimeHigh;
+attribute float pointBTimeLow;
 attribute float pointBValue;
-attribute float pointCTime;
+attribute float pointCTimeHigh;
+attribute float pointCTimeLow;
 attribute float pointCValue;
 
 uniform vec2 u_bounds;
 uniform float u_width;
-uniform float u_timeOffsetHigh;   // High precision part of time offset
-uniform float u_timeOffsetLow;    // Low precision part of time offset
+uniform float u_timeOffsetHigh;
+uniform float u_timeOffsetLow;
 uniform float u_pxPerSecond;
 uniform float u_yScale;
 uniform float u_yOffset;
 
 void main() {
-    vec2 pointA = vec2(pointATime, pointAValue);
-    vec2 pointB = vec2(pointBTime, pointBValue);
-    vec2 pointC = vec2(pointCTime, pointCValue);
-    
     // Emulated double precision
-    float diffA = (pointA.x - u_timeOffsetHigh) - u_timeOffsetLow;
-    float diffB = (pointB.x - u_timeOffsetHigh) - u_timeOffsetLow;
-    float diffC = (pointC.x - u_timeOffsetHigh) - u_timeOffsetLow;
+    float diffA = (pointATimeHigh - u_timeOffsetHigh) + (pointATimeLow - u_timeOffsetLow);
+    float diffB = (pointBTimeHigh - u_timeOffsetHigh) + (pointBTimeLow - u_timeOffsetLow);
+    float diffC = (pointCTimeHigh - u_timeOffsetHigh) + (pointCTimeLow - u_timeOffsetLow);
     
     // Transform signal points to screen coordinates
     vec2 screenPointA = vec2(
         diffA * u_pxPerSecond,
-        u_bounds.y / 2.0 - (pointA.y + u_yOffset) * u_yScale * u_bounds.y * 0.5
+        u_bounds.y / 2.0 - (pointAValue + u_yOffset) * u_yScale * u_bounds.y * 0.5
     );
     
     vec2 screenPointB = vec2(
         diffB * u_pxPerSecond,
-        u_bounds.y / 2.0 - (pointB.y + u_yOffset) * u_yScale * u_bounds.y * 0.5
+        u_bounds.y / 2.0 - (pointBValue + u_yOffset) * u_yScale * u_bounds.y * 0.5
     );
     
     vec2 screenPointC = vec2(
         diffC * u_pxPerSecond,
-        u_bounds.y / 2.0 - (pointC.y + u_yOffset) * u_yScale * u_bounds.y * 0.5
+        u_bounds.y / 2.0 - (pointCValue + u_yOffset) * u_yScale * u_bounds.y * 0.5
     );
     
     // Calculate tangent and normal vectors

@@ -1,7 +1,9 @@
 attribute vec2 position;
-attribute float pointATime;
+attribute float pointATimeHigh;
+attribute float pointATimeLow;
 attribute float pointAValue;
-attribute float pointBTime;
+attribute float pointBTimeHigh;
+attribute float pointBTimeLow;
 attribute float pointBValue;
 
 uniform vec2 u_bounds;
@@ -17,14 +19,17 @@ void main() {
     // Pass the value to fragment shader for coloring
     v_value = pointAValue;
     
-    // Interpolate time first to ensure adjacent rects share exact edge positions
-    float time = mix(pointATime, pointBTime, position.x);
-    float diff = (time - u_timeOffsetHigh) - u_timeOffsetLow;
+    // Interpolate time (high and low parts separately) to ensure adjacent rects share exact edge positions
+    float timeHigh = mix(pointATimeHigh, pointBTimeHigh, position.x);
+    float timeLow = mix(pointATimeLow, pointBTimeLow, position.x);
+    
+    // Emulated double precision: subtract offset from both parts
+    float diff = (timeHigh - u_timeOffsetHigh) + (timeLow - u_timeOffsetLow);
     float screenX = diff * u_pxPerSecond;
     
     // Calculate rect width for border detection
-    float diffA = (pointATime - u_timeOffsetHigh) - u_timeOffsetLow;
-    float diffB = (pointBTime - u_timeOffsetHigh) - u_timeOffsetLow;
+    float diffA = (pointATimeHigh - u_timeOffsetHigh) + (pointATimeLow - u_timeOffsetLow);
+    float diffB = (pointBTimeHigh - u_timeOffsetHigh) + (pointBTimeLow - u_timeOffsetLow);
     float rectWidth = (diffB - diffA) * u_pxPerSecond;
     
     // position.y ranges from -0.5 to 0.5, scale to full viewport height
