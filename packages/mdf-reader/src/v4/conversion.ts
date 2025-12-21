@@ -134,7 +134,9 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                 const cases: string[] = [];
                 for (let i = 0; i < conversion.values.length; i++) {
                     const ref = conversion.refs[i];
-                    if ('type' in ref) {
+                    if (ref === null) {
+                        continue;
+                    } else if ('type' in ref) {
                         const serialized = serialize(ref);
                         if (serialized) {
                             cases.push(`if (value === ${conversion.values[i]}) return ${serialized};`);
@@ -167,6 +169,9 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
                 const rangeData: Array<{lower: number, upper: number, result: string}> = [];
                 for (let i = 0; i < count; i++) {
                     const ref = conversion.refs[i];
+                    if (ref === null) {
+                        continue;
+                    }
                     let result: string;
                     if ('type' in ref) {
                         const serialized = serialize(ref);

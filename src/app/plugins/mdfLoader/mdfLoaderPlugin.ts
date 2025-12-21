@@ -238,14 +238,53 @@ export default (context: PluginContext): void => {
                     commonPrefix = commonPrefix.slice(0, j);
                 }
                 const channelInfo: [string[], Sequence][] = [[[...commonPrefix, "time"], time], ...signals.map(s => [s.source.name, s.values] as [string[], Sequence])];
-                const channels = channelInfo.map(([name], index) => ({
+                
+                function buildConversion(seq: Sequence, length: number): v4.ChannelConversionBlock<'instanced'> | null {
+                    if (!seq.convertedValueAt) return null;
+                    
+                    const valueToText = new Map<number, string>();
+                    for (let i = 0; i < length; i++) {
+                        const rawValue = seq.valueAt(i);
+                        const converted = seq.convertedValueAt(i);
+                        if (typeof converted === 'string' && !valueToText.has(rawValue)) {
+                            valueToText.set(rawValue, converted);
+                        }
+                    }
+                    
+                    if (valueToText.size === 0) return null;
+                    
+                    const values: number[] = [];
+                    const refs: (v4.TextBlock | null)[] = [];
+                    
+                    for (const [value, text] of valueToText) {
+                        values.push(value);
+                        refs.push({ data: text });
+                    }
+                    refs.push(null);
+                    
+                    return {
+                        type: v4.ConversionType.ValueToTextOrScale,
+                        values,
+                        refs,
+                        txName: null,
+                        mdUnit: null,
+                        mdComment: null,
+                        inverse: null,
+                        precision: 0,
+                        flags: 0,
+                        physicalRangeMinimum: 0,
+                        physicalRangeMaximum: 0,
+                    } satisfies v4.ChannelConversionBlock<'instanced'>;
+                }
+                
+                const channels = channelInfo.map(([name, seq], index) => ({
                     channelNext: null,
                     component: null,
                     txName: {
                         data: name.slice(commonPrefix.length).join('.'),
                     },
                     siSource: null,
-                    conversion: null,
+                    conversion: index === 0 ? null : buildConversion(seq, length),
                     data: null,
                     unit: null,
                     comment: null,

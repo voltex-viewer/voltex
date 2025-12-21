@@ -62,13 +62,13 @@ export interface ValueRangeToValueTable {
 export interface ValueToTextOrScale<TMode extends 'linked' | 'instanced' = 'linked'> {
     type: ConversionType.ValueToTextOrScale,
     values: number[];
-    refs: MaybeLinked<ChannelConversionBlock<TMode> | TextBlock, TMode>[];
+    refs: TMode extends 'instanced' ? (ChannelConversionBlock<TMode> | TextBlock | null)[] : Link<ChannelConversionBlock<TMode> | TextBlock>[];
 }
 
 export interface ValueRangeToTextOrScale<TMode extends 'linked' | 'instanced' = 'linked'> {
     type: ConversionType.ValueRangeToTextOrScale,
     values: number[];
-    refs: MaybeLinked<ChannelConversionBlock<TMode> | TextBlock, TMode>[];
+    refs: TMode extends 'instanced' ? (ChannelConversionBlock<TMode> | TextBlock | null)[] : Link<ChannelConversionBlock<TMode> | TextBlock>[];
 }
 
 export interface TextToValue<TMode extends 'linked' | 'instanced' = 'linked'> {
