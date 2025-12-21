@@ -1,4 +1,4 @@
-import { InMemorySequence, SequenceSignal, SignalSource, PluginContext, RenderMode, Signal } from '@voltex-viewer/plugin-api';
+import { InMemorySequence, SequenceSignal, SignalSource, PluginContext, RenderMode, Signal, InMemoryFloat64Sequence } from '@voltex-viewer/plugin-api';
 
 class CsvSource implements SignalSource {
     constructor(public readonly name: string[], private _signal: Signal) {}
@@ -30,7 +30,7 @@ export default (context: PluginContext): void => {
             const signalHeaders = headers.slice(1);
             
             const signalSequences = signalHeaders.map(() => ({
-                time: new InMemorySequence(),
+                time: new InMemoryFloat64Sequence(),
                 numericValues: [] as number[],
                 textValues: [] as (number | string)[],
                 allNumericValues: new Set<number>()
