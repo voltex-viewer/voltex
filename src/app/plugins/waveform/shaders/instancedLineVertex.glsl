@@ -16,42 +16,34 @@ uniform float u_yOffset;
 uniform int u_discrete;
 
 void main() {
-    // Emulated double precision
+    // Emulated double precision - compute time differences identically for both points
+    // This ensures pointB of instance N produces the same screen X as pointA of instance N+1
     float diffA = (pointATimeHigh - u_timeOffsetHigh) + (pointATimeLow - u_timeOffsetLow);
     float diffB = (pointBTimeHigh - u_timeOffsetHigh) + (pointBTimeLow - u_timeOffsetLow);
     
-    vec2 screenPointA, screenPointB;
-        
+    float screenXA = diffA * u_pxPerSecond;
+    float screenXB = diffB * u_pxPerSecond;
+    
+    float screenYA = (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5;
+    float screenYB;
+    
     if (u_discrete == 1) {
-        // For discrete signals, create horizontal line from pointA to pointB's time with pointA's value
-        screenPointA = vec2(
-            diffA * u_pxPerSecond,
-            (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5
-        );
-        
-        screenPointB = vec2(
-            diffB * u_pxPerSecond,
-            (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5  // Same Y as pointA
-        );
+        screenYB = screenYA;  // Same Y as pointA for discrete
     } else {
-        // For continuous signals, use original point-to-point rendering
-        screenPointA = vec2(
-            diffA * u_pxPerSecond,
-            (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5
-        );
-        
-        screenPointB = vec2(
-            diffB * u_pxPerSecond,
-            (u_bounds.y - (pointBValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5
-        );
+        screenYB = (u_bounds.y - (pointBValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5;
     }
     
-    // Calculate line direction and perpendicular for width
-    vec2 xBasis = screenPointB - screenPointA;
-    vec2 yBasis = length(xBasis) > 0.0 ? normalize(vec2(-xBasis.y, xBasis.x)) : vec2(0.0, 1.0);
+    vec2 screenPointA = vec2(screenXA, screenYA);
+    vec2 screenPointB = vec2(screenXB, screenYB);
     
-    // Create the line segment quad
-    vec2 point = screenPointA + xBasis * position.x + yBasis * u_width * position.y;
+    // Calculate perpendicular for line width
+    vec2 lineDir = screenPointB - screenPointA;
+    vec2 yBasis = length(lineDir) > 0.0 ? normalize(vec2(-lineDir.y, lineDir.x)) : vec2(0.0, 1.0);
+    
+    // Use conditional to select exact endpoint - avoids mix() precision issue
+    // where A + (B-A)*1.0 may not equal B in floating point
+    vec2 point = position.x < 0.5 ? screenPointA : screenPointB;
+    point += yBasis * u_width * position.y;
     
     // Convert to clip space
     gl_Position = vec4((point / u_bounds * 2.0 - 1.0) * vec2(1, -1), 0, 1);
