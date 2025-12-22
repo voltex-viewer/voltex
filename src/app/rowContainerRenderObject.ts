@@ -3,6 +3,7 @@ import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInser
 import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
 import { RowChangedCallback } from './rowManager';
 import { CommandManager } from './commandManager';
+import { AutoModeButton } from './autoModeButton';
 
 type ResizeState = 
     | { type: 'none' }
@@ -45,6 +46,11 @@ export class RowContainerRenderObject {
     private targetTransform: ViewTransform;
     private zoomAnchorTime: number | null = null;
     
+    // Auto mode state
+    private lastSignalMaxTime: number = -Infinity;
+    private isRealTimeTracking: boolean = false;
+    private autoModeButton: AutoModeButton;
+    
     // Constants
     private readonly minLabelWidth = 40;
     private readonly maxLabelWidth = 400;
@@ -69,11 +75,18 @@ export class RowContainerRenderObject {
         this.targetTransform = this.getCurrentTransform();
         
         this.renderObject = parent.addChild({
-            render: (_context: RenderContext, _bounds: RenderBounds): boolean => {
+            render: (_context: RenderContext, bounds: RenderBounds): boolean => {
                 this.rows.forEach(row => row.calculateOptimalScaleAndOffset());
-                return false;
+                return this.updateAutoMode(bounds);
             }
         });
+        
+        this.autoModeButton = new AutoModeButton(
+            parent,
+            this.renderObject,
+            this.scrollbarWidth,
+            () => this.setAutoMode(!this.autoModeButton.enabled)
+        );
 
         // Create a separate render object for the scrollbar
         parent.addChild({
@@ -182,6 +195,7 @@ export class RowContainerRenderObject {
                     const now = performance.now();
                     const mouseXInViewport = event.clientX - this.labelWidth;
                     
+                    this.setAutoMode(false);
                     this.state.offset = this.resizeState.startTimeAtCursor * this.state.pxPerSecond - mouseXInViewport;
                     this.targetTransform = {
                         time: this.resizeState.startTimeAtCursor - mouseXInViewport / this.targetTransform.pxPerSecond,
@@ -475,6 +489,13 @@ export class RowContainerRenderObject {
                 }
             }
         });
+
+        this.commandManager.registerCommand('@voltex-viewer/voltex', {
+            id: 'toggle-auto-mode',
+            action: () => {
+                this.setAutoMode(!this.autoModeButton.enabled);
+            }
+        });
     }
 
     private getSelectedRowsInOrder(): RowImpl[] {
@@ -651,6 +672,8 @@ export class RowContainerRenderObject {
     }
 
     private startSmoothPan(velocity: number): void {
+        this.setAutoMode(false);
+        
         const stoppingDistanceTime = velocity / (1 - this.friction) / this.targetTransform.pxPerSecond;
         
         this.targetTransform = {
@@ -668,11 +691,19 @@ export class RowContainerRenderObject {
     }
 
     private startSmoothZoom(targetPxPerSecond: number, anchorX: number): void {
-        this.zoomAnchorTime = this.targetTransform.time + anchorX / this.targetTransform.pxPerSecond;
-        this.targetTransform = {
-            time: this.zoomAnchorTime - anchorX / targetPxPerSecond,
-            pxPerSecond: targetPxPerSecond
-        };
+        if (this.autoModeButton.enabled && this.isRealTimeTracking) {
+            // Real-time tracking: only animate zoom, position handled by updateAutoMode
+            this.targetTransform.pxPerSecond = targetPxPerSecond;
+            this.zoomAnchorTime = null;
+        } else {
+            // Static signal or auto mode off: disable auto mode and anchor to mouse
+            this.setAutoMode(false);
+            this.zoomAnchorTime = this.targetTransform.time + anchorX / this.targetTransform.pxPerSecond;
+            this.targetTransform = {
+                time: this.zoomAnchorTime - anchorX / targetPxPerSecond,
+                pxPerSecond: targetPxPerSecond
+            };
+        }
         this.startUnifiedAnimation();
     }
 
@@ -1048,5 +1079,101 @@ export class RowContainerRenderObject {
         
         gl.deleteBuffer(trackBuffer);
         gl.disableVertexAttribArray(positionLocation);
+    }
+
+    private getSignalTimeRange(): { min: number; max: number } | null {
+        let minTime = Infinity;
+        let maxTime = -Infinity;
+        
+        for (const row of this.rows) {
+            for (const signal of row.signals) {
+                if (signal.time.length > 0) {
+                    minTime = Math.min(minTime, signal.time.min);
+                    maxTime = Math.max(maxTime, signal.time.max);
+                }
+            }
+        }
+        
+        if (minTime === Infinity || maxTime === -Infinity) {
+            return null;
+        }
+        return { min: minTime, max: maxTime };
+    }
+
+    private updateAutoMode(bounds: RenderBounds): boolean {
+        if (!this.autoModeButton.enabled) {
+            this.isRealTimeTracking = false;
+            return false;
+        }
+        
+        const range = this.getSignalTimeRange();
+        if (!range) {
+            this.isRealTimeTracking = false;
+            return false;
+        }
+        
+        const viewportWidth = bounds.width - this.labelWidth;
+        if (viewportWidth <= 0) return false;
+        
+        const isRealTime = range.max > this.lastSignalMaxTime;
+        this.lastSignalMaxTime = range.max;
+        this.isRealTimeTracking = isRealTime;
+        
+        const padding = 0.05;
+        if (isRealTime) {
+            // Real-time mode: position is calculated from CURRENT zoom and applied directly
+            // This avoids fighting with the animation system during zoom
+            const currentPxPerSecond = this.state.pxPerSecond;
+            const visibleDuration = viewportWidth / currentPxPerSecond;
+            const paddedRightEdge = range.max + visibleDuration * padding;
+            const correctStartTime = paddedRightEdge - visibleDuration;
+            
+            // Apply position directly to state (no animation for position)
+            this.state.offset = correctStartTime * currentPxPerSecond;
+            
+            // Keep targetTransform.time in sync so animation system doesn't fight us
+            this.targetTransform.time = correctStartTime;
+        } else {
+            // Fit-to-data mode: show entire signal range with padding
+            const timeRange = range.max - range.min;
+            const paddedRange = timeRange > 0 ? timeRange * (1 + padding * 2) : 1;
+            const targetPxPerSecond = Math.max(
+                this.minPxPerSecond,
+                Math.min(this.maxPxPerSecond, viewportWidth / paddedRange)
+            );
+            const centerTime = (range.min + range.max) / 2;
+            const targetStartTime = centerTime - (viewportWidth / 2) / targetPxPerSecond;
+            
+            // Check if we need to animate
+            const currentCenter = this.targetTransform.time + viewportWidth / (2 * this.targetTransform.pxPerSecond);
+            const zoomDiff = Math.abs(this.targetTransform.pxPerSecond - targetPxPerSecond) / targetPxPerSecond;
+            const timeDiff = Math.abs(currentCenter - centerTime) * targetPxPerSecond;
+            
+            if (zoomDiff > 0.01 || timeDiff > 1) {
+                this.targetTransform = {
+                    time: targetStartTime,
+                    pxPerSecond: targetPxPerSecond
+                };
+                this.zoomAnchorTime = null;
+                this.startUnifiedAnimation();
+            }
+        }
+        
+        return false;
+    }
+
+    private setAutoMode(enabled: boolean): void {
+        if (this.autoModeButton.enabled !== enabled) {
+            this.autoModeButton.setAutoMode(enabled);
+            if (enabled) {
+                // Set to current max time so we correctly detect real-time vs static
+                // on the next frame (only if max increases will it be real-time)
+                const range = this.getSignalTimeRange();
+                this.lastSignalMaxTime = range?.max ?? -Infinity;
+            } else {
+                this.isRealTimeTracking = false;
+            }
+            this.requestRender();
+        }
     }
 }
