@@ -344,10 +344,13 @@ export class WaveformRenderObject {
         gl.vertexAttribPointer(pointAValueLocation, 1, gl.FLOAT, false, 4, 0);
         gl.vertexAttribDivisor(pointAValueLocation, 1);
         
+        // pointBValue may be optimized out by GLSL compiler in some shaders
         const pointBValueLocation = gl.getAttribLocation(program, 'pointBValue');
-        gl.enableVertexAttribArray(pointBValueLocation);
-        gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4);
-        gl.vertexAttribDivisor(pointBValueLocation, 1);
+        if (pointBValueLocation >= 0) {
+            gl.enableVertexAttribArray(pointBValueLocation);
+            gl.vertexAttribPointer(pointBValueLocation, 1, gl.FLOAT, false, 4, 4);
+            gl.vertexAttribDivisor(pointBValueLocation, 1);
+        }
         
         // Draw instanced
         const instanceCount = this.bufferData.bufferLength - 1;
@@ -362,7 +365,9 @@ export class WaveformRenderObject {
         gl.vertexAttribDivisor(pointATimeLowLocation, 0);
         gl.vertexAttribDivisor(pointBTimeLowLocation, 0);
         gl.vertexAttribDivisor(pointAValueLocation, 0);
-        gl.vertexAttribDivisor(pointBValueLocation, 0);
+        if (pointBValueLocation >= 0) {
+            gl.vertexAttribDivisor(pointBValueLocation, 0);
+        }
         
         // Disable vertex attribute arrays
         gl.disableVertexAttribArray(positionLocation);
@@ -371,7 +376,9 @@ export class WaveformRenderObject {
         gl.disableVertexAttribArray(pointATimeLowLocation);
         gl.disableVertexAttribArray(pointBTimeLowLocation);
         gl.disableVertexAttribArray(pointAValueLocation);
-        gl.disableVertexAttribArray(pointBValueLocation);
+        if (pointBValueLocation >= 0) {
+            gl.disableVertexAttribArray(pointBValueLocation);
+        }
     }
     
     private renderBevelJoins(
