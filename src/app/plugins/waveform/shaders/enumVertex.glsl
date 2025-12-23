@@ -4,7 +4,6 @@ attribute float pointATimeLow;
 attribute float pointAValue;
 attribute float pointBTimeHigh;
 attribute float pointBTimeLow;
-attribute float pointBValue;
 
 uniform vec2 u_bounds;
 uniform float u_timeOffsetHigh;

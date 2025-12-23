@@ -13,7 +13,7 @@ uniform float u_timeOffsetLow;
 uniform float u_pxPerSecond;
 uniform float u_yScale;
 uniform float u_yOffset;
-uniform int u_discrete;
+uniform bool u_discrete;
 
 void main() {
     // Emulated double precision - compute time differences identically for both points
@@ -27,7 +27,7 @@ void main() {
     float screenYA = (u_bounds.y - (pointAValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5;
     float screenYB;
     
-    if (u_discrete == 1) {
+    if (u_discrete) {
         screenYB = screenYA;  // Same Y as pointA for discrete
     } else {
         screenYB = (u_bounds.y - (pointBValue + u_yOffset) * u_yScale * u_bounds.y) * 0.5;

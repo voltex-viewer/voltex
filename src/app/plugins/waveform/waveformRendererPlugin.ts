@@ -24,7 +24,7 @@ interface SignalBufferData extends BufferData {
 }
 
 export default (context: PluginContext): void => {
-    const waveformPrograms = new WaveformShaders(context.webgl.utils);
+    const waveformPrograms = new WaveformShaders(context.webgl.gl, context.webgl.utils);
 
     const config = context.loadConfig(
         waveformConfigSchema,
