@@ -8,7 +8,7 @@ export class WebGLUtilsImpl {
     private textureCache: Map<string, { texture: WebGLTexture; width: number; height: number; usedThisFrame: boolean }> = new Map();
     private cacheKeysUsedThisFrame: Set<string> = new Set();
     private measureTextCache: Map<string, {metrics: TextMetrics, renderWidth: number, renderHeight: number}> = new Map();
-    private cachedBodyFont: string | null = null;
+    private cachedBodyFont: { fontSize: string; fontFamily: string } | null = null;
 
     constructor(private gl: WebGL2RenderingContext) {
         const lineVertexShader = this.createShader('vertex-shader', `
@@ -140,22 +140,18 @@ export class WebGLUtilsImpl {
     }
 
     getDefaultFont(fontWeight?: string, fontSize?: string): string {
-        if (!fontWeight && !fontSize) {
-            if (!this.cachedBodyFont) {
-                const computedStyle = window.getComputedStyle(document.body);
-                const defaultFontSize = computedStyle.fontSize || '12px';
-                const fontFamily = computedStyle.fontFamily || 'sans-serif';
-                this.cachedBodyFont = `${defaultFontSize} ${fontFamily}`;
-            }
-            return this.cachedBodyFont;
+        if (!this.cachedBodyFont) {
+            const computedStyle = window.getComputedStyle(document.body);
+            this.cachedBodyFont = {
+                fontSize: computedStyle.fontSize || '12px',
+                fontFamily: computedStyle.fontFamily || 'sans-serif'
+            };
         }
         
-        const computedStyle = window.getComputedStyle(document.body);
-        const fontFamily = computedStyle.fontFamily || 'sans-serif';
-        const resolvedFontSize = fontSize || computedStyle.fontSize || '12px';
+        const resolvedFontSize = fontSize || this.cachedBodyFont.fontSize;
         const resolvedFontWeight = fontWeight || '';
         
-        return `${resolvedFontWeight} ${resolvedFontSize} ${fontFamily}`.trim();
+        return `${resolvedFontWeight} ${resolvedFontSize} ${this.cachedBodyFont.fontFamily}`.trim();
     }
 
     measureText(text: string, font?: string, padding: number = 0, strokeWidth: number = 0): {metrics: TextMetrics, renderWidth: number, renderHeight: number} {
