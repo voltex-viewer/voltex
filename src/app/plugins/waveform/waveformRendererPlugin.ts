@@ -1,4 +1,4 @@
-import { RenderMode, type PluginContext, type Row, type Signal } from '@voltex-viewer/plugin-api';
+import { RenderMode, type PluginContext, type RenderBounds, type RenderContext, type Row, type Signal } from '@voltex-viewer/plugin-api';
 import { waveformConfigSchema } from './waveformConfig';
 import { WaveformRenderObject } from './waveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './waveformRowHoverOverlayRenderObject';
@@ -8,6 +8,10 @@ import { createGradientDownsampler } from './downsamplers/gradientDownsampler';
 import { createEnumDownsampler } from './downsamplers/enumDownsampler';
 import type { Downsampler } from './downsamplers/types';
 import { createRawDownsampler } from './downsamplers/rawDownsampler';
+import {
+    binarySearchTimeIndex,
+    animationLerpFactor,
+} from './expandedEnumLayout';
 
 export interface BufferData {
     timeHighBuffer: WebGLBuffer;
@@ -36,6 +40,8 @@ export default (context: PluginContext): void => {
             formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2)))))",
             hoverEnabled: true,
             downsamplingMode: 'lossless' as const,
+            enumExpansionEnabled: true,
+            minExpandedWidth: 50,
         });
 
     // Create a single global tooltip render object
@@ -292,6 +298,7 @@ export default (context: PluginContext): void => {
     context.onRowsChanged((event) => {
         for (const row of event.added) {
             const rowSignals: Signal[] = [];
+            const enumRenderObjects = new Map<Signal, WaveformRenderObject>();
             
             for (const channel of row.signals) {
                 // Create buffers
@@ -326,40 +333,67 @@ export default (context: PluginContext): void => {
                 
                 const buffer = buffers.get(channel)!;
                 const metadata = context.signalMetadata.get(channel);
-                new WaveformRenderObject(
+                
+                // Track expanded enum state for this signal
+                const expandedState = {
+                    wasExpanded: false,
+                    progress: 0, // 0 = collapsed, 1 = fully expanded
+                };
+                
+                // Create metadata proxy that handles expanded enum mode switching
+                const enumMetadata = new Proxy(metadata, {
+                    get: (target, prop) => {
+                        if (prop === 'renderMode') {
+                            // If explicitly set to ExpandedEnum, always use it
+                            if (target.renderMode === RenderMode.ExpandedEnum) return RenderMode.ExpandedEnum;
+                            if (target.renderMode !== RenderMode.Enum) return target.renderMode;
+                            // When animating, always show expanded mode (it handles the progress)
+                            if (expandedState.progress > 0) return RenderMode.ExpandedEnum;
+                            return RenderMode.Enum;
+                        }
+                        return target[prop as keyof typeof target];
+                    }
+                });
+                
+                const enumRenderObject = new WaveformRenderObject(
                     row.mainArea,
                     config,
                     buffer,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
-                    metadata,
+                    enumMetadata,
                     waveformPrograms,
                     channel,
                     row,
                     0,
                 );
-
-                // Add the text renderer to the enum signals
-                const enumTextMetadata = new Proxy(metadata, {
-                    get: (target, prop) => {
-                        if (prop === 'renderMode') {
-                            return target.renderMode === RenderMode.Enum ? RenderMode.Text : RenderMode.Off;
+                enumRenderObjects.set(channel, enumRenderObject);
+                
+                // Mode switching render object - decides when to enter/exit expanded mode
+                row.mainArea.addChild({
+                    zIndex: -1,
+                    render: (ctx: RenderContext, bounds: RenderBounds) => {
+                        if (metadata.renderMode !== RenderMode.Enum && metadata.renderMode !== RenderMode.ExpandedEnum) {
+                            expandedState.progress = 0;
+                            expandedState.wasExpanded = false;
+                            enumRenderObject.expandedModeProgress = 0;
+                            return false;
                         }
-                        return target[prop as keyof typeof target];
+                        
+                        // ExpandedEnum always expands, Enum uses heuristic
+                        const shouldBeExpanded = metadata.renderMode === RenderMode.ExpandedEnum ||
+                            (config.enumExpansionEnabled && shouldUseExpandedMode(channel, ctx, bounds, expandedState.wasExpanded, config.minExpandedWidth));
+                        
+                        const targetProgress = shouldBeExpanded ? 1 : 0;
+                        expandedState.wasExpanded = shouldBeExpanded;
+                        
+                        const lerped = expandedState.progress + (targetProgress - expandedState.progress) * animationLerpFactor;
+                        expandedState.progress = Math.abs(lerped - targetProgress) < 0.01 ? targetProgress : lerped;
+                        
+                        enumRenderObject.expandedModeProgress = expandedState.progress;
+                        return expandedState.progress !== targetProgress;
                     }
                 });
-                new WaveformRenderObject(
-                    row.mainArea,
-                    config,
-                    buffer,
-                    sharedInstanceGeometryBuffer,
-                    sharedBevelJoinGeometryBuffer,
-                    enumTextMetadata,
-                    waveformPrograms,
-                    channel,
-                    row,
-                    100,
-                );
 
                 // Create dot overlay buffers
                 const dotTimeHighBuffer = context.webgl.gl.createBuffer();
@@ -415,7 +449,8 @@ export default (context: PluginContext): void => {
                         buffers,
                         sharedInstanceGeometryBuffer,
                         sharedBevelJoinGeometryBuffer,
-                        waveformPrograms
+                        waveformPrograms,
+                        enumRenderObjects
                     ));
             }
         }
@@ -454,3 +489,52 @@ export default (context: PluginContext): void => {
         }
     });
 };
+
+function shouldUseExpandedMode(
+    signal: Signal,
+    context: RenderContext,
+    bounds: RenderBounds,
+    wasExpanded: boolean,
+    minExpandedWidth: number
+): boolean {
+    const { state } = context;
+    const startTime = state.offset / state.pxPerSecond;
+    const endTime = (state.offset + bounds.width) / state.pxPerSecond;
+
+    const maxUpdateIndex = Math.min(signal.time.length, signal.values.length);
+
+    const startIndex = binarySearchTimeIndex(signal, startTime, 0, maxUpdateIndex - 1, true);
+    const endIndex = binarySearchTimeIndex(signal, endTime, startIndex, maxUpdateIndex - 1, false);
+
+    let visibleTransitions = 1;
+    let hasNarrowSegment = false;
+    let lastValue = signal.values.valueAt(startIndex);
+    let segmentStartTime = signal.time.valueAt(startIndex);
+
+    for (let i = startIndex + 1; i <= endIndex + 1 && i < maxUpdateIndex; i++) {
+        const val = signal.values.valueAt(i);
+        const isLast = i > endIndex;
+
+        if (val !== lastValue || isLast) {
+            const segmentEndTime = signal.time.valueAt(i);
+            const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
+            if (segmentWidth < minExpandedWidth) {
+                hasNarrowSegment = true;
+            }
+
+            if (val !== lastValue) {
+                visibleTransitions++;
+                lastValue = val;
+                segmentStartTime = segmentEndTime;
+            }
+        }
+    }
+
+    const maxTransitionsForExpansion = Math.floor(bounds.width / minExpandedWidth);
+    const maxTransitionsHysteresis = 5;
+
+    const threshold = wasExpanded
+        ? maxTransitionsForExpansion + maxTransitionsHysteresis
+        : maxTransitionsForExpansion;
+    return visibleTransitions <= threshold && visibleTransitions > 0 && hasNarrowSegment;
+}

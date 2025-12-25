@@ -65,7 +65,7 @@ export enum RenderMode {
     Discrete = 'discrete',
     Dots = 'dots',
     Enum = 'enum',
-    Text = 'text',
+    ExpandedEnum = 'expanded-enum',
     Off = 'off',
 }
 

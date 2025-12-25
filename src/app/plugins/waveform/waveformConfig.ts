@@ -14,6 +14,8 @@ export const waveformConfigSchema = t.type({
         t.literal('lossless'),
         t.literal('off')
     ]),
+    enumExpansionEnabled: t.boolean,
+    minExpandedWidth: t.number,
 });
 
 export type WaveformConfig = t.TypeOf<typeof waveformConfigSchema>;

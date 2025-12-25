@@ -101,7 +101,7 @@ export default (context: PluginContext): void => {
                 // Create a closed-over function that knows about this specific row
                 const calculateGridPositionsForRow = (bounds: { height: number }) => 
                     calculateGridLinePositions(row, bounds);
-                const visible = () => row.signals.some(s => context.signalMetadata.get(s).renderMode != RenderMode.Enum);
+                const visible = () => row.signals.some(s => ![RenderMode.Enum, RenderMode.ExpandedEnum].includes(context.signalMetadata.get(s).renderMode));
 
                 // Add grid lines with lower z-index
                 new HorizontalGridRenderObject(row.mainArea, calculateGridPositionsForRow, visible);

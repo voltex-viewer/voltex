@@ -2,6 +2,7 @@ precision mediump float;
 uniform vec4 u_color;
 uniform float u_nullValue;
 uniform bool u_hasNullValue;
+uniform float u_borderWidth;
 
 varying float v_value;
 varying vec2 v_rectPosition;
@@ -31,12 +32,11 @@ void main() {
     // Mix with base color for consistency
     vec3 finalColor = mix(u_color.rgb, rgbColor, 0.6);
     
-    // Check if fragment is within 2px of any edge for border
-    float borderWidth = 1.0;
-    bool isLeftEdge = v_rectPosition.x < borderWidth;
-    bool isRightEdge = v_rectPosition.x > v_rectSize.x - borderWidth;
-    bool isTopEdge = v_rectPosition.y < borderWidth;
-    bool isBottomEdge = v_rectPosition.y > v_rectSize.y - borderWidth;
+    // Check if fragment is within border width of any edge
+    bool isLeftEdge = v_rectPosition.x < u_borderWidth;
+    bool isRightEdge = v_rectPosition.x > v_rectSize.x - u_borderWidth;
+    bool isTopEdge = v_rectPosition.y < u_borderWidth;
+    bool isBottomEdge = v_rectPosition.y > v_rectSize.y - u_borderWidth;
     bool isBorder = isLeftEdge || isRightEdge || isTopEdge || isBottomEdge;
     
     if (isBorder) {

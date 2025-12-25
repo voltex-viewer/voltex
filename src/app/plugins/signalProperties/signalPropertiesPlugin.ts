@@ -8,7 +8,7 @@ const signalPropertyRuleSchema = t.partial({
         t.literal(RenderMode.Discrete),
         t.literal(RenderMode.Dots),
         t.literal(RenderMode.Enum),
-        t.literal(RenderMode.Text),
+        t.literal(RenderMode.ExpandedEnum),
     ]),
     display: t.union([t.literal('decimal'), t.literal('hex')]),
 });
