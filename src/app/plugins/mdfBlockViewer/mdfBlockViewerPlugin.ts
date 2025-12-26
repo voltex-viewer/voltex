@@ -415,12 +415,14 @@ export default (context: PluginContext): void => {
 
         while (toVisit.length > 0) {
             const address = toVisit.pop()!;
-            if (visited.has(address) || address === 0n) continue;
+            if (visited.has(address)) continue;
+            const link = v4.newLink(address);
+            if (!v4.isNonNullLink(link)) continue;
             if (Number(address) >= file.size) continue;
             visited.add(address);
 
             try {
-                const block = await v4.readBlock(v4.newLink(address), reader);
+                const block = await v4.readBlock(link, reader);
                 const data = deserializeBlock(block);
                 const linkAddresses = extractLinks(block);
                 
