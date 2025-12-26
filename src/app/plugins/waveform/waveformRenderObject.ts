@@ -73,6 +73,130 @@ export class WaveformRenderObject {
         return null;
     }
 
+    getIndexForPosition(screenX: number, screenY: number, boundsHeight: number, pxPerSecond: number, offset: number): number {
+        const renderMode = this.metadata.renderMode;
+        const signalLength = Math.min(this.signal.time.length, this.signal.values.length);
+        if (signalLength === 0) return 0;
+
+        if (renderMode === RenderMode.ExpandedEnum && this.currentExpandedSegments && this.currentExpandedSegments.length > 0) {
+            return this.getIndexForExpandedPosition(screenX, screenY, boundsHeight, pxPerSecond, offset);
+        }
+
+        // For all other modes, convert screenX to time and find index
+        const time = (offset + screenX) / pxPerSecond;
+
+        // Binary search to find the closest data point
+        let left = 0;
+        let right = signalLength - 1;
+        while (left < right) {
+            const mid = Math.floor((left + right) / 2);
+            if (this.signal.time.valueAt(mid) < time) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+
+        if (renderMode === RenderMode.Enum) {
+            // For enum signals, find the last data point <= mouse time
+            if (left < signalLength && this.signal.time.valueAt(left) > time && left > 0) {
+                return left - 1;
+            }
+            return left < signalLength ? left : signalLength - 1;
+        }
+
+        // For non-enum signals, use closest point
+        if (left > 0) {
+            const distToLeft = Math.abs(this.signal.time.valueAt(left) - time);
+            const distToPrev = Math.abs(this.signal.time.valueAt(left - 1) - time);
+            if (distToPrev < distToLeft) {
+                return left - 1;
+            }
+        }
+        return left < signalLength ? left : signalLength - 1;
+    }
+
+    private getIndexForExpandedPosition(screenX: number, screenY: number, boundsHeight: number, pxPerSecond: number, offset: number): number {
+        const segments = this.currentExpandedSegments!;
+        const progress = this.expandedModeProgress;
+
+        // Determine Y region
+        const topEndY = boundsHeight * topHeightRatio;
+        const bottomStartY = boundsHeight * (topHeightRatio + trapezoidHeightRatio);
+
+        let t: number; // 0 = top (original coords), 1 = bottom (expanded coords)
+        if (screenY <= topEndY) {
+            t = 0;
+        } else if (screenY >= bottomStartY) {
+            t = 1;
+        } else {
+            t = (screenY - topEndY) / (bottomStartY - topEndY);
+        }
+        // Apply animation progress
+        t *= progress;
+
+        // Search through segments using interpolated X boundaries
+        let accumulatedX = segments[0].expandedStartX;
+        let closestSegIndex = 0;
+        let closestDist = Infinity;
+
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            const startTime = this.signal.time.valueAt(seg.startBufferIndex);
+            const endTime = this.signal.time.valueAt(seg.endBufferIndex);
+
+            const topStartX = startTime * pxPerSecond - offset;
+            const topEndX = endTime * pxPerSecond - offset;
+
+            let expandedStartX = accumulatedX;
+            if (i === 0 && expandedStartX > topStartX) {
+                expandedStartX = topStartX;
+            }
+            accumulatedX += seg.expandedWidth;
+            let expandedEndX = accumulatedX;
+            if (i === segments.length - 1 && expandedEndX < topEndX) {
+                expandedEndX = topEndX;
+            }
+
+            // Interpolate between top (original) and bottom (expanded) coords
+            const leftX = topStartX + (expandedStartX - topStartX) * t;
+            const rightX = topEndX + (expandedEndX - topEndX) * t;
+
+            if (screenX >= leftX && screenX < rightX) {
+                // Map screen position to original time to find exact index
+                const segmentWidth = rightX - leftX;
+                if (segmentWidth <= 0) return seg.startBufferIndex;
+                
+                const ratio = (screenX - leftX) / segmentWidth;
+                const originalX = topStartX + ratio * (topEndX - topStartX);
+                const originalTime = (originalX + offset) / pxPerSecond;
+                
+                // Find the index at this time within the segment's range
+                let left = seg.startBufferIndex;
+                let right = seg.endBufferIndex - 1;
+                while (left < right) {
+                    const mid = Math.floor((left + right) / 2);
+                    if (this.signal.time.valueAt(mid + 1) <= originalTime) {
+                        left = mid + 1;
+                    } else {
+                        right = mid;
+                    }
+                }
+                return left;
+            }
+            
+            // Track closest segment for fallback
+            const centerX = (leftX + rightX) / 2;
+            const dist = Math.abs(screenX - centerX);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestSegIndex = i;
+            }
+        }
+        // Fallback to closest segment
+        return segments[closestSegIndex].startBufferIndex;
+    }
+
     render(context: RenderContext, bounds: RenderBounds): boolean {
         const { render, state } = context;
         const { gl } = render;

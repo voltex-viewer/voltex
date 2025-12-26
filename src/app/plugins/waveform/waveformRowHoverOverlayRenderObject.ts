@@ -25,7 +25,7 @@ class HighlightSignal implements Signal {
 }
 
 export class WaveformRowHoverOverlayRenderObject {
-    private mouse: { offsetX: number; clientX: number; clientY: number } | null = null;
+    private mouse: { offsetX: number; offsetY: number; clientX: number; clientY: number } | null = null;
     private readonly highlightSignals: Map<Signal, HighlightSignal> = new Map();
     private readonly highlightBuffers: Map<Signal, BufferData> = new Map();
     private _tooltipData: TooltipData | null = null;
@@ -58,6 +58,7 @@ export class WaveformRowHoverOverlayRenderObject {
             onMouseMove: ((event: PluginMouseEvent) => {
                 this.mouse = {
                     offsetX: event.offsetX,
+                    offsetY: event.offsetY,
                     clientX: event.clientX,
                     clientY: event.clientY,
                 }
@@ -66,6 +67,7 @@ export class WaveformRowHoverOverlayRenderObject {
             onMouseEnter: ((event: PluginMouseEvent) => {
                 this.mouse = {
                     offsetX: event.offsetX,
+                    offsetY: event.offsetY,
                     clientX: event.clientX,
                     clientY: event.clientY,
                 }
@@ -186,7 +188,7 @@ export class WaveformRowHoverOverlayRenderObject {
         return `#${toHex(tintedR)}${toHex(tintedG)}${toHex(tintedB)}`;
     }
 
-    render(context: RenderContext, _bounds: RenderBounds): boolean {
+    render(context: RenderContext, bounds: RenderBounds): boolean {
         this.expandedHighlightData = null;
         
         if (this.mouse === null) {
@@ -201,17 +203,26 @@ export class WaveformRowHoverOverlayRenderObject {
         }
 
         const { state } = context;
-
-        // Calculate time at mouse position using the same coordinate system as WaveformRenderObject
-        const mouseTimeDouble = (state.offset + this.mouse.offsetX) / state.pxPerSecond;
         
         // Aggregate tooltip data
         const signalData: Array<SignalTooltipData> = [];
 
-        // Find data for all signals at this time and render highlight dots
+        // Find data for all signals at this position and render highlight dots
         for (const signal of this.signals) {
             const signalMetadata = this.context.signalMetadata.get(signal);
-            const dataPoint = this.getSignalValueAtTime(signal, mouseTimeDouble, signalMetadata);
+            const mainRenderObject = this.mainRenderObjects.get(signal);
+            
+            if (!mainRenderObject) continue;
+            
+            const dataIndex = mainRenderObject.getIndexForPosition(
+                this.mouse.offsetX,
+                this.mouse.offsetY,
+                bounds.height,
+                state.pxPerSecond,
+                state.offset
+            );
+            
+            const dataPoint = this.getSignalValueAtIndex(signal, dataIndex, signalMetadata);
             if (dataPoint !== null && dataPoint.display !== "null") {
                 signalData.push({
                     ...dataPoint,
@@ -318,66 +329,21 @@ export class WaveformRowHoverOverlayRenderObject {
         }
     }
 
-    private getSignalValueAtTime(signal: Signal, time: number, signalMetadata: SignalMetadata): { time: number; value: number; display: string; dataIndex: number } | null {
+    private getSignalValueAtIndex(signal: Signal, dataIndex: number, signalMetadata: SignalMetadata): { time: number; value: number; display: string; dataIndex: number } | null {
         const signalLength = Math.min(signal.time.length, signal.values.length);
-        if (signalLength === 0) return null;
+        if (signalLength === 0 || dataIndex < 0 || dataIndex >= signalLength) return null;
 
-        // Use binary search to find the closest data point
-        let left = 0;
-        let right = signalLength - 1;
-        
-        while (left < right) {
-            const mid = Math.floor((left + right) / 2);
-            const midTime = signal.time.valueAt(mid);
-            
-            if (midTime < time) {
-                left = mid + 1;
-            } else {
-                right = mid;
-            }
-        }
-        
-        let closestIndex = left;
-        
-        if (signalMetadata.renderMode === RenderMode.Enum) {
-            // For enum signals, always look leftwards (backwards in time)
-            // Find the last data point that is <= the mouse time
-            if (left < signalLength) {
-                if (signal.time.valueAt(left) > time && left > 0) {
-                    // If the found point is after the mouse time, go back one
-                    closestIndex = left - 1;
-                }
-            } else {
-                // If we're past the end, use the last point
-                closestIndex = signalLength - 1;
-            }
-        } else {
-            // For non-enum signals, use the closest-point
-            if (left > 0) {
-                const distToLeft = Math.abs(signal.time.valueAt(left) - time);
-                const distToPrev = Math.abs(signal.time.valueAt(left - 1) - time);
-                
-                if (distToPrev < distToLeft) {
-                    closestIndex = left - 1;
-                }
-            }
-            
-            if (left >= signalLength) {
-                closestIndex = signalLength - 1;
-            }
-        }
-
-        const dataTime = signal.time.valueAt(closestIndex);
-        const value = signal.values.valueAt(closestIndex);
+        const dataTime = signal.time.valueAt(dataIndex);
+        const value = signal.values.valueAt(dataIndex);
         let display: number | bigint | string = value;
         if (signal.values.convertedValueAt) {
-            display = signal.values.convertedValueAt(closestIndex);
+            display = signal.values.convertedValueAt(dataIndex);
         }
         return {
             time: dataTime,
             value,
             display: formatValueForDisplay(display, signalMetadata.display),
-            dataIndex: closestIndex,
+            dataIndex,
         };
     }
 
