@@ -1,5 +1,5 @@
 #version 300 es
-precision mediump float;
+precision highp float;
 
 // Constants
 const float GOLDEN_RATIO_CONJUGATE = 0.618034;
