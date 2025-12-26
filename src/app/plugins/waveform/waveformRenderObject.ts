@@ -359,7 +359,6 @@ export class WaveformRenderObject {
                 gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, instanceCount);
             }
             prog.unbind();
-            this.renderEnumText(context, bounds);
         } else if (renderMode === RenderMode.ExpandedEnum) {
             return this.renderExpandedEnum(context, bounds);
         }
@@ -734,9 +733,12 @@ export class WaveformRenderObject {
     }
 
     private renderExpandedTextPass(context: RenderContext, bounds: RenderBounds): boolean {
-        if (!this.expandedTextRenderState) return false;
-        const { segments, bottomY, bottomHeight } = this.expandedTextRenderState;
-        this.renderExpandedText(context, bounds, segments, bottomY, bottomHeight);
+        if (this.metadata.renderMode === RenderMode.Enum) {
+            this.renderEnumText(context, bounds);
+        } else if (this.metadata.renderMode === RenderMode.ExpandedEnum && this.expandedTextRenderState) {
+            const { segments, bottomY, bottomHeight } = this.expandedTextRenderState;
+            this.renderExpandedText(context, bounds, segments, bottomY, bottomHeight);
+        }
         return false;
     }
 
