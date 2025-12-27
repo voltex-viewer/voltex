@@ -13,10 +13,13 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
     private arrayConstructor: TypedArrayConstructor;
     private toNumber: (value: ArrayValue<T>) => number;
 
+    public readonly unit?: string;
+
     constructor(
         buffer: SharedArrayBuffer,
         arrayConstructor: TypedArrayConstructor,
-        conversion?: (value: ArrayValue<T>) => number | string
+        conversion: ((value: ArrayValue<T>) => number | string) | undefined,
+        unit: string | null,
     ) {
         this.arrayConstructor = arrayConstructor;
         // TypeScript has trouble with union-typed constructors, but this is safe at runtime
@@ -24,6 +27,9 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
         this._length = 0;
         if (conversion) {
             this.conversion = conversion;
+        }
+        if (unit) {
+            this.unit = unit;
         }
         this.toNumber = (arrayConstructor === Float64Array 
             ? (v: ArrayValue<T>) => v as number 

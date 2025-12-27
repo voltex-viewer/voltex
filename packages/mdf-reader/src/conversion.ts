@@ -11,6 +11,7 @@ export interface SerializableConversion {
 export interface SerializableConversionData {
     conversion: SerializableConversion | null;
     textValues: TextValue[];
+    unit: string | null;
 }
 
 export function deserializeConversion(data: SerializableConversionData): undefined | ((value: number) => number | string) {

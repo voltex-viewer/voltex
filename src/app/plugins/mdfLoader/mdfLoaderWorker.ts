@@ -101,9 +101,11 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
             
             const { mdfFile, group, signal, timeSignal } = signalData;
             
-            const [valuesConversion, timeConversion] = await Promise.all([
+            const [valuesConversion, timeConversion, timeUnit, valueUnit] = await Promise.all([
                 signal.getConversion(),
-                timeSignal?.getConversion() ?? Promise.resolve({ conversion: null, textValues: [] } as SerializableConversionData),
+                timeSignal?.getConversion() ?? Promise.resolve({ conversion: null, textValues: [], unit: null } as SerializableConversionData),
+                timeSignal?.getUnit() ?? Promise.resolve(null),
+                signal.getUnit(),
             ]);
             
             let cached = groupCache.get(group);
@@ -155,6 +157,8 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 length: Math.min(timeSeq?.length() ?? valuesSeq.length(), valuesSeq.length()),
                 timeConversion,
                 valuesConversion,
+                timeUnit,
+                valueUnit,
                 renderMode: (valuesConversion?.textValues.length ?? 0) >= 2 ? RenderMode.Enum : RenderMode.Lines,
             };
             self.postMessage(startResponse);

@@ -9,6 +9,7 @@ export interface MdfSignal {
     readonly channelType: ChannelType;
     readonly numberType: NumberType;
     getConversion(): Promise<SerializableConversionData>;
+    getUnit(): Promise<string | null>;
 }
 
 export interface MdfSignalGroup {
@@ -48,6 +49,7 @@ interface LazySignal {
     channelType: ChannelType;
     channel: AbstractChannel;
     conversionLink: number | bigint;
+    unitLink: number | bigint;
 }
 
 interface CachedGroup {
@@ -61,6 +63,7 @@ class MdfSignalImpl implements MdfSignal {
     readonly numberType: NumberType;
     readonly lazy: LazySignal;
     private mdf: MdfFileImpl;
+    private cachedConversion: SerializableConversionData | null = null;
 
     constructor(lazy: LazySignal, mdf: MdfFileImpl) {
         this.name = lazy.name;
@@ -71,7 +74,18 @@ class MdfSignalImpl implements MdfSignal {
     }
 
     async getConversion(): Promise<SerializableConversionData> {
-        return this.mdf.loadConversion(this.lazy.conversionLink);
+        if (!this.cachedConversion) {
+            this.cachedConversion = await this.mdf.loadConversion(this.lazy.conversionLink);
+        }
+        return this.cachedConversion;
+    }
+
+    async getUnit(): Promise<string | null> {
+        if (this.lazy.unitLink !== 0 && this.lazy.unitLink !== 0n) {
+            return this.mdf.loadTextBlock(this.lazy.unitLink);
+        }
+        const conversion = await this.getConversion();
+        return conversion.unit;
     }
 }
 
@@ -250,6 +264,7 @@ class MdfFileImpl implements MdfFile {
                         channelType,
                         channel: abstractChannel,
                         conversionLink: v3.getLink(channel.conversion),
+                        unitLink: 0,
                     });
 
                     if (onProgress) {
@@ -326,6 +341,7 @@ class MdfFileImpl implements MdfFile {
                         channelType,
                         channel: abstractChannel,
                         conversionLink: v4.getLink(channel.conversion as v4.Link<unknown>),
+                        unitLink: v4.getLink(channel.unit as v4.Link<unknown>),
                     });
 
                     if (onProgress) {
@@ -372,9 +388,18 @@ class MdfFileImpl implements MdfFile {
         }
     }
 
+    async loadTextBlock(link: number | bigint): Promise<string | null> {
+        if (this.version >= 400 && this.version < 500) {
+            if (link === 0n) return null;
+            const block = await v4.readTextBlock(v4.newNonNullLink(link as bigint), this.reader);
+            return block.data;
+        }
+        return null;
+    }
+
     private async loadConversionV3(conversionLink: number): Promise<SerializableConversionData> {
         if (conversionLink === 0) {
-            return { conversion: null, textValues: [] };
+            return { conversion: null, textValues: [], unit: null };
         }
         const conversionBlockLinked = await v3.readChannelConversionBlock(v3.newNonNullLink(conversionLink), this.reader);
         const conversionBlockInstanced = await this.instanceMdf3ConversionBlock(conversionBlockLinked);
@@ -383,7 +408,7 @@ class MdfFileImpl implements MdfFile {
 
     private async loadConversionV4(conversionLink: bigint): Promise<SerializableConversionData> {
         if (conversionLink === 0n) {
-            return { conversion: null, textValues: [] };
+            return { conversion: null, textValues: [], unit: null };
         }
         const conversionMap = new Map<bigint, v4.ChannelConversionBlock<'instanced'>>();
         const block = await this.readV4ConversionBlockRecurse(v4.newNonNullLink(conversionLink), conversionMap);

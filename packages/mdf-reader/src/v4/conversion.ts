@@ -215,9 +215,12 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
     }
     
     const fnBody = serialize(conversion);
+
+    const mdUnit = conversion?.mdUnit;
     
     return {
         conversion: fnBody ? { fnBody: `return ${fnBody};`, context } : null,
         textValues,
+        unit: mdUnit && 'data' in mdUnit ? mdUnit.data : null,
     };
 }

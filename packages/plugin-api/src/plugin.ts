@@ -262,6 +262,8 @@ export interface Sequence {
     length: number;
     /** Optional value representing null/missing data */
     null?: number;
+    /** Unit of measurement for the sequence values */
+    unit?: string;
     /** Returns the value at the specified index used for plotting */
     valueAt(index: number): number;
     /** Returns the converted/formatted value at the specified index used for tooltips/display */

@@ -9,6 +9,7 @@ export interface SignalTooltipData {
     display: string;
     dataIndex: number;
     color: string;
+    units: string;
 }
 
 export interface TooltipData {
@@ -33,13 +34,13 @@ export class WaveformTooltipRenderObject {
 
     private formatValue(signalData: SignalTooltipData, yScale: number): string {
         try {
-            const { signal, value, time, color, dataIndex, display } = signalData;
+            const { signal, value, time, color, dataIndex, display, units } = signalData;
             const name = signal.source.name;
                         
             const formatFunction = new Function(
-                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'display',
+                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'display', 'units',
                 `return ${this.config.formatTooltip}`);
-            return String(formatFunction(value, time, name, color, dataIndex, yScale, display));
+            return String(formatFunction(value, time, name, color, dataIndex, yScale, display, units));
         } catch (error) {
             console.warn('Error in custom tooltip formatter:', error);
             return "Error";

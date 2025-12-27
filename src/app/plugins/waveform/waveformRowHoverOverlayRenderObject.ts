@@ -228,6 +228,7 @@ export class WaveformRowHoverOverlayRenderObject {
                     ...dataPoint,
                     signal: signal,
                     color: signalMetadata.color,
+                    units: signal.values.unit || '',
                 });
                 
                 this.updateHighlightSignal(signal, dataPoint.dataIndex, context, signalMetadata.renderMode);

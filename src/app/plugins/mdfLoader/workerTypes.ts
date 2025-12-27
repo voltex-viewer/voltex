@@ -31,6 +31,8 @@ export type WorkerResponse = {
     length: number;
     timeConversion: SerializableConversionData;
     valuesConversion: SerializableConversionData;
+    timeUnit: string | null| null;
+    valueUnit: string | null;
     renderMode: RenderMode;
 } | {
     type: 'signalLoadingProgress';

@@ -170,9 +170,9 @@ export default (context: PluginContext): void => {
                             }
                         }
                         
-                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(startResponse.timeConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
+                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(startResponse.timeConversion)) as ((value: number | bigint) => string | number) | undefined, startResponse.timeUnit) as AnySequence;
                         time.updateLength(startResponse.length);
-                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(startResponse.valuesConversion)) as ((value: number | bigint) => string | number) | undefined) as AnySequence;
+                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(startResponse.valuesConversion)) as ((value: number | bigint) => string | number) | undefined, startResponse.valueUnit) as AnySequence;
                         values.updateLength(startResponse.length);
                         
                         // Register with the persistent handler

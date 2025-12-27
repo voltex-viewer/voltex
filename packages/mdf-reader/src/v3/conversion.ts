@@ -197,5 +197,6 @@ export function serializeConversion(conversion: ChannelConversionBlock<'instance
     return {
         conversion: serialize(conversion),
         textValues,
+        unit: conversion?.unit || null,
     };
 }

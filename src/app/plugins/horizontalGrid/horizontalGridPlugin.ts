@@ -106,7 +106,7 @@ export default (context: PluginContext): void => {
                 // Add grid lines with lower z-index
                 new HorizontalGridRenderObject(row.mainArea, calculateGridPositionsForRow, visible);
                 // Add labels with higher z-index to render on top
-                new HorizontalGridLabelRenderObject(row.mainArea, calculateGridPositionsForRow, visible);
+                new HorizontalGridLabelRenderObject(row.mainArea, row.signals, calculateGridPositionsForRow, visible);
             }
         }
     });

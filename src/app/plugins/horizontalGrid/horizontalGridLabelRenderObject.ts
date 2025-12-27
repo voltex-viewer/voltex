@@ -1,9 +1,10 @@
-import { RenderObject, type RenderBounds, type RenderContext } from "@voltex-viewer/plugin-api";
+import { RenderObject, Signal, type RenderBounds, type RenderContext } from "@voltex-viewer/plugin-api";
 import { GridLinePosition } from './horizontalGridPlugin';
 
 export class HorizontalGridLabelRenderObject {
     constructor(
         parent: RenderObject,
+        private signals: Signal[],
         private calculateGridPositions: (bounds: { height: number }) => GridLinePosition[],
         private visible: () => boolean,
     ) {
@@ -101,9 +102,12 @@ export class HorizontalGridLabelRenderObject {
         // Collect background rectangles for all labels
         const backgroundVertices: number[] = [];
         const labelData: { label: string; x: number; y: number }[] = [];
+
+        const signalUnit = getUnits(this.signals);
+        const displayUnit = signalUnit ? unit + signalUnit : unit;
         
         for (const position of gridPositions) {
-            const label = this.formatValue(position.value, unit, scale, decimalPlaces);
+            const label = this.formatValue(position.value, displayUnit, scale, decimalPlaces);
             const { renderWidth } = utils.measureText(label);
             
             const x = 5;
@@ -165,4 +169,18 @@ export class HorizontalGridLabelRenderObject {
 
         return false;
     }
+}
+
+
+function getUnits(signals: Signal[]): string | null {
+    let unit = null;
+    for (const signal of signals) {
+        if (signal.values.unit) {
+            if (unit && unit !== signal.values.unit) {
+                return null; // Mixed units - do not display
+            }
+            unit = signal.values.unit;
+        }
+    }
+    return unit;
 }

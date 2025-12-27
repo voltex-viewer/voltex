@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { openMdfFile, type MdfFile } from './mdfFile';
+import { openMdfFile } from './mdfFile';
 import { ChannelType } from './decoder';
 import { SerializeContext } from './v4/serializer';
 import { resolveHeaderOffset } from './v4/headerBlock';

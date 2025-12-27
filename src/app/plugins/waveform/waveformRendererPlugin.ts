@@ -37,7 +37,7 @@ export default (context: PluginContext): void => {
             lineWidth: 1.5,
             dotVisibilityThreshold: 200,
             targetFps: 120,
-            formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2)))))",
+            formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2))))) + units",
             hoverEnabled: true,
             downsamplingMode: 'lossless' as const,
             enumExpansionEnabled: true,

@@ -237,7 +237,7 @@ export class CursorSidebar {
             
             const nameCell = document.createElement('td');
             nameCell.className = 'signal-name';
-            nameCell.textContent = signalInfo.name[signalInfo.name.length - 1] || '';
+            nameCell.textContent = signalInfo.name[signalInfo.name.length - 1] + (signalInfo.signal.values.unit ? ` (${signalInfo.signal.values.unit})` : '');
             signalRow.appendChild(nameCell);
 
             for (const cursor of this.cursors) {
