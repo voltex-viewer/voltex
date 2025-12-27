@@ -23,6 +23,8 @@ export type InstancedLineUniforms = {
     u_yOffset: number;
     u_color: Vec4;
     u_discrete: boolean;
+    u_nullValue: number;
+    u_hasNullValue: boolean;
 };
 
 export type EnumLineUniforms = {
@@ -60,6 +62,8 @@ export type DotUniforms = {
     u_yScale: number;
     u_yOffset: number;
     u_color: Vec4;
+    u_nullValue: number;
+    u_hasNullValue: boolean;
 };
 
 export type InstancedLineAttributes = {

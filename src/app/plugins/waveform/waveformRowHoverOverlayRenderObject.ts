@@ -334,17 +334,45 @@ export class WaveformRowHoverOverlayRenderObject {
         const signalLength = Math.min(signal.time.length, signal.values.length);
         if (signalLength === 0 || dataIndex < 0 || dataIndex >= signalLength) return null;
 
-        const dataTime = signal.time.valueAt(dataIndex);
-        const value = signal.values.valueAt(dataIndex);
+        const nullValue = "null" in signal.values ? signal.values.null : null;
+        const hasNull = nullValue !== null;
+
+        // If the value at dataIndex is null, find the nearest non-null value
+        let actualIndex = dataIndex;
+        if (hasNull) {
+            const isNull = (idx: number) => Math.abs(signal.values.valueAt(idx) - nullValue) < 0.001;
+            if (isNull(actualIndex)) {
+                // Search outward from dataIndex to find nearest non-null
+                let left = dataIndex - 1;
+                let right = dataIndex + 1;
+                while (left >= 0 || right < signalLength) {
+                    if (left >= 0 && !isNull(left)) {
+                        actualIndex = left;
+                        break;
+                    }
+                    if (right < signalLength && !isNull(right)) {
+                        actualIndex = right;
+                        break;
+                    }
+                    left--;
+                    right++;
+                }
+                // If no non-null value found, return null
+                if (isNull(actualIndex)) return null;
+            }
+        }
+
+        const dataTime = signal.time.valueAt(actualIndex);
+        const value = signal.values.valueAt(actualIndex);
         let display: number | bigint | string = value;
         if (signal.values.convertedValueAt) {
-            display = signal.values.convertedValueAt(dataIndex);
+            display = signal.values.convertedValueAt(actualIndex);
         }
         return {
             time: dataTime,
             value,
             display: formatValueForDisplay(display, signalMetadata.display),
-            dataIndex,
+            dataIndex: actualIndex,
         };
     }
 

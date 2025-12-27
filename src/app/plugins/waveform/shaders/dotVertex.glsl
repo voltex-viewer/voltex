@@ -8,8 +8,16 @@ uniform float u_timeOffsetLow;
 uniform float u_pxPerSecond;
 uniform float u_yScale;
 uniform float u_yOffset;
+uniform float u_nullValue;
+uniform bool u_hasNullValue;
 
 void main() {
+    // Discard points with null values
+    if (u_hasNullValue && abs(valuePos - u_nullValue) < 0.001) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        gl_PointSize = 0.0;
+        return;
+    }
     // Emulated double precision
     float diff = (timePosHigh - u_timeOffsetHigh) + (timePosLow - u_timeOffsetLow);
     

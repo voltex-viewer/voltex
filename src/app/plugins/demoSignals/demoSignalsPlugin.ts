@@ -32,7 +32,7 @@ function wrapRealTimeSignal(signal: Signal, isRealTimeEnabled: () => boolean): S
         return maxExposedLength;
     };
 
-    return {
+    const wrapped: Signal = {
         source: signal.source,
         time: {
             get length() { return getExposedLength(); },
@@ -49,6 +49,10 @@ function wrapRealTimeSignal(signal: Signal, isRealTimeEnabled: () => boolean): S
         },
         renderHint: signal.renderHint,
     };
+    if (signal.values.null !== undefined) {
+        wrapped.values.null = signal.values.null;
+    }
+    return wrapped;
 }
 
 export default async (context: PluginContext) => {
@@ -201,7 +205,31 @@ export default async (context: PluginContext) => {
         },
     };
 
-    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, flatSignalSource, randomPoints, trafficLightSource];
+    const sineWithGapsSource: SignalSource = {
+        name: ['Demo Signals', 'Sine with Gaps'],
+        signal: () => {
+            const timeSeq = new InMemoryFloat64Sequence();
+            const valueSeq = new InMemorySequence();
+            const nullValue = 999;
+            valueSeq.null = nullValue;
+            
+            for (let i = 0; i < time.length; i++) {
+                const t = time.valueAt(i);
+                timeSeq.push(t);
+                // Create gaps every 2 seconds for 0.5 seconds
+                const cyclePos = t % 2;
+                if (cyclePos > 1.5 && cyclePos < 2.0) {
+                    valueSeq.push(nullValue);
+                } else {
+                    valueSeq.push(Math.sin(2 * Math.PI * freq * t));
+                }
+            }
+            
+            return Promise.resolve(wrapRealTimeSignal(new SequenceSignal(sineWithGapsSource, timeSeq, valueSeq, RenderMode.Lines), isRealTimeEnabled));
+        },
+    };
+
+    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, sineWithGapsSource, flatSignalSource, randomPoints, trafficLightSource];
     
     context.signalSources.add(sources);
     context.createRows(...await Promise.all(sources.map(async source => ({ channels: [await source.signal()] }))));

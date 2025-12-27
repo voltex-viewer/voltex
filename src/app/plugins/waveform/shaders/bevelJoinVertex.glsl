@@ -16,8 +16,15 @@ uniform float u_timeOffsetLow;
 uniform float u_pxPerSecond;
 uniform float u_yScale;
 uniform float u_yOffset;
+uniform float u_nullValue;
+uniform bool u_hasNullValue;
 
 void main() {
+    // Discard bevel joins connected to null values
+    if (u_hasNullValue && (abs(pointAValue - u_nullValue) < 0.001 || abs(pointBValue - u_nullValue) < 0.001 || abs(pointCValue - u_nullValue) < 0.001)) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+    }
     // Emulated double precision
     float diffA = (pointATimeHigh - u_timeOffsetHigh) + (pointATimeLow - u_timeOffsetLow);
     float diffB = (pointBTimeHigh - u_timeOffsetHigh) + (pointBTimeLow - u_timeOffsetLow);

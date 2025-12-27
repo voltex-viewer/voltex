@@ -270,6 +270,8 @@ export class WaveformRenderObject {
                 u_yOffset: this.row.yOffset,
                 u_color: [r, g, b, a],
                 u_discrete: renderMode === RenderMode.Discrete,
+                u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
+                u_hasNullValue: "null" in this.signal.values,
             }, this.lineVAO);
             const instanceCount = this.bufferData.bufferLength - 1;
             if (instanceCount > 0) {
@@ -303,6 +305,8 @@ export class WaveformRenderObject {
                     u_yOffset: this.row.yOffset,
                     u_color: [r, g, b, a],
                     u_discrete: false,
+                    u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
+                    u_hasNullValue: "null" in this.signal.values,
                 }, this.bevelVAO);
                 const bevelInstanceCount = this.bufferData.bufferLength - 2;
                 if (bevelInstanceCount > 0) {
@@ -328,6 +332,8 @@ export class WaveformRenderObject {
                 u_yScale: this.row.yScale,
                 u_yOffset: this.row.yOffset,
                 u_color: [r, g, b, a],
+                u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
+                u_hasNullValue: "null" in this.signal.values,
             }, this.dotVAO);
             gl.drawArrays(gl.POINTS, 0, this.bufferData.bufferLength);
             prog.unbind();

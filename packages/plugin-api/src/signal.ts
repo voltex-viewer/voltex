@@ -20,6 +20,7 @@ export class InMemorySequence implements Sequence {
     private _max: number;
     private _data: Float32Array;
     private _length: number;
+    null?: number;
 
     constructor(private conversion?: (value: number) => number | string) {
         this._min = Infinity;
@@ -30,13 +31,6 @@ export class InMemorySequence implements Sequence {
 
     push(...values: number[]) {
         for (const value of values) {
-            const numberValue = convertToNumber(value, this.conversion);
-            if (numberValue < this._min) {
-                this._min = numberValue;
-            }
-            if (numberValue > this._max) {
-                this._max = numberValue;
-            }
             if (this._length === this._data.length) {
                 const newData = new Float32Array(Math.max(this._data.length * 2, 1024));
                 newData.set(this._data);
@@ -44,6 +38,18 @@ export class InMemorySequence implements Sequence {
             }
             this._data[this._length] = value;
             this._length++;
+            
+            // Skip null values when calculating min/max
+            if (this.null !== undefined && value === this.null) {
+                continue;
+            }
+            const numberValue = convertToNumber(value, this.conversion);
+            if (numberValue < this._min) {
+                this._min = numberValue;
+            }
+            if (numberValue > this._max) {
+                this._max = numberValue;
+            }
         }
     }
 
@@ -305,12 +311,19 @@ export class FunctionTimeSequence implements Sequence {
 }
 
 export class FunctionValueSequence implements Sequence {
+    null?: number;
+
     constructor(
         private generator: (time: number) => number,
         private time: Sequence,
         private minVal: number,
-        private maxVal: number
-    ) {}
+        private maxVal: number,
+        private nullValue?: number,
+    ) {
+        if (typeof this.nullValue !== 'undefined') {
+            this.null = nullValue;
+        }
+    }
 
     get min(): number {
         return this.minVal;
@@ -335,10 +348,10 @@ export class FunctionSignal implements Signal {
     public readonly time: Sequence;
     public readonly values: FunctionValueSequence;
     
-    constructor(source: SignalSource, time: Sequence, generator: (time: number) => number, minValue: number, maxValue: number, public renderHint: RenderMode) {
+    constructor(source: SignalSource, time: Sequence, generator: (time: number) => number, minValue: number, maxValue: number, public renderHint: RenderMode, nullValue?: number) {
         this.source = source;
         this._generator = generator;
         this.time = time;
-        this.values = new FunctionValueSequence(this._generator, this.time, minValue, maxValue);
+        this.values = new FunctionValueSequence(this._generator, this.time, minValue, maxValue, nullValue);
     }
 }

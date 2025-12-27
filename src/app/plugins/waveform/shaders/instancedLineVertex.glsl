@@ -14,8 +14,15 @@ uniform float u_pxPerSecond;
 uniform float u_yScale;
 uniform float u_yOffset;
 uniform bool u_discrete;
+uniform float u_nullValue;
+uniform bool u_hasNullValue;
 
 void main() {
+    // Discard line segments connected to null values
+    if (u_hasNullValue && (abs(pointAValue - u_nullValue) < 0.001 || abs(pointBValue - u_nullValue) < 0.001)) {
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+    }
     // Emulated double precision - compute time differences identically for both points
     // This ensures pointB of instance N produces the same screen X as pointA of instance N+1
     float diffA = (pointATimeHigh - u_timeOffsetHigh) + (pointATimeLow - u_timeOffsetLow);
