@@ -6,7 +6,6 @@ export default (context: PluginContext): void => {
     const frameData: Array<{ timestamp: number; frameTime: number }> = [];
     const flameGraphData: MeasureInfo[][][] = [];
     let firstFrameTimestamp = 0;
-    const maxFrames = 1000;
     const maxFlameGraphs = 100;
     let minFrameTime = Infinity;
     let maxFrameTime = -Infinity;
@@ -19,7 +18,7 @@ export default (context: PluginContext): void => {
             source: signalSource,
             time: new ProfilerTimeSequence(frameData),
             values: new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
-            renderHint: RenderMode.Enum,
+            renderHint: RenderMode.Lines,
         }),
     };
     
@@ -111,26 +110,6 @@ export default (context: PluginContext): void => {
             // Update running min/max values
             minFrameTime = Math.min(minFrameTime, lastFrame.frameTime);
             maxFrameTime = Math.max(maxFrameTime, lastFrame.frameTime);
-            
-            if (frameData.length > maxFrames) {
-                const removedFrame = frameData.shift()!;
-                // Update first frame timestamp when we remove the oldest frame
-                if (frameData.length > 0) {
-                    // Recalculate firstFrameTimestamp based on the new first frame
-                    const newFirstFrame = frameData[0];
-                    firstFrameTimestamp = lastFrame.endTime - (newFirstFrame.timestamp * 1000);
-                }
-                
-                // If we removed the min or max value, we need to recompute
-                if (removedFrame.frameTime === minFrameTime || removedFrame.frameTime === maxFrameTime) {
-                    minFrameTime = Infinity;
-                    maxFrameTime = -Infinity;
-                    for (const frame of frameData) {
-                        minFrameTime = Math.min(minFrameTime, frame.frameTime);
-                        maxFrameTime = Math.max(maxFrameTime, frame.frameTime);
-                    }
-                }
-            }
         }
         return false; // Don't request additional renders
     });
