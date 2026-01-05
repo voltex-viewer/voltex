@@ -1,19 +1,19 @@
-export interface FileOpenOptions {
+interface FileOpenOptions {
     multiple?: boolean;
     types?: FilePickerAcceptType[];
 }
 
-export interface FileSaveOptions {
+interface FileSaveOptions {
     suggestedName?: string;
     types?: FilePickerAcceptType[];
 }
 
-export interface WritableFile {
+interface WritableFile {
     write(data: BufferSource | Blob | string): Promise<void>;
     close(): Promise<void>;
 }
 
-export interface FileSystemProvider {
+interface FileSystemProvider {
     openFiles(options: FileOpenOptions): Promise<File[]>;
     saveFile(options: FileSaveOptions): Promise<{ name: string; writable: WritableFile }>;
 }

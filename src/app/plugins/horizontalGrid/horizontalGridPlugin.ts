@@ -7,7 +7,7 @@ export interface GridLinePosition {
     y: number;
 }
 
-export function calculateGridLinePositions(
+function calculateGridLinePositions(
     row: Row,
     bounds: { height: number }
 ): GridLinePosition[] {

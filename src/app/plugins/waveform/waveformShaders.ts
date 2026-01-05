@@ -95,8 +95,6 @@ export type DotAttributes = {
     valuePos: { buffer: WebGLBuffer; size: 1; };
 };
 
-export type EnumLineAttributes = InstancedLineAttributes;
-
 export type ExpandedEnumAttributes = {
     position: { buffer: WebGLBuffer; size: 2; };
     pointATimeHigh: { buffer: WebGLBuffer; size: 1; stride: number; offset: number; divisor: 1; };
