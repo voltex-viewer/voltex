@@ -155,6 +155,9 @@ function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bi
                         return `return view.getBig${type}64(${byteOffset}, ${littleEndian});`;
                     }
                 }
+                if (bitCount === 0) {
+                    return "return 0;";
+                }
                 // Complex case - with masking and/or shifting
                 const useBigInt = bitCount > maxSafeBits;
                 const numberConversion = (v: string) => useBigInt ? `BigInt(${v})` : v;
