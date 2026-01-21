@@ -11,9 +11,21 @@ function getGitCommitHash(): string {
   }
 }
 
+function coiServiceWorkerPlugin() {
+  return {
+    name: 'coi-serviceworker',
+    transformIndexHtml(html: string) {
+      return html.replace(
+        '<head>',
+        '<head>\n    <script src="coi-serviceworker.js"></script>'
+      );
+    }
+  };
+}
+
 // https://vitejs.dev/config
 export default defineConfig({
-  plugins: [eslint({ emitErrorAsWarning: false })],
+  plugins: [eslint({ emitErrorAsWarning: false }), coiServiceWorkerPlugin()],
   root: '.', // Use project root instead of src/app
   base: './', // Use relative paths for GitHub Pages compatibility
   publicDir: 'assets',
