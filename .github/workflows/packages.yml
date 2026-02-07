@@ -1,17 +1,19 @@
-name: Plugin API CI/CD
+name: Packages CI/CD
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'packages/plugin-api/**'
-      - '.github/workflows/plugin-api.yml'
+      - 'packages/mdf-reader/**'
+      - '.github/workflows/packages.yml'
       - 'package-lock.json'
   pull_request:
     branches: [ main ]
     paths:
       - 'packages/plugin-api/**'
-      - '.github/workflows/plugin-api.yml'
+      - 'packages/mdf-reader/**'
+      - '.github/workflows/packages.yml'
   release:
     types: [ published ]
 
@@ -36,20 +38,40 @@ jobs:
       working-directory: packages/plugin-api
       run: npm run build
 
-    - name: Validate package
+    - name: Build mdf-reader
+      working-directory: packages/mdf-reader
+      run: npm run build
+
+    - name: Validate plugin-api package
       working-directory: packages/plugin-api
       run: npm pack --dry-run
 
-    - name: Upload build artifacts
+    - name: Validate mdf-reader package
+      working-directory: packages/mdf-reader
+      run: npm pack --dry-run
+
+    - name: Upload plugin-api artifacts
       uses: actions/upload-artifact@v4
       with:
         name: plugin-api-dist
         path: packages/plugin-api/dist/
         retention-days: 7
 
-    - name: Dry-run publish
+    - name: Upload mdf-reader artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: mdf-reader-dist
+        path: packages/mdf-reader/dist/
+        retention-days: 7
+
+    - name: Dry-run publish plugin-api
       if: github.event_name == 'pull_request'
       working-directory: packages/plugin-api
+      run: npm publish --dry-run
+
+    - name: Dry-run publish mdf-reader
+      if: github.event_name == 'pull_request'
+      working-directory: packages/mdf-reader
       run: npm publish --dry-run
 
   publish:
@@ -74,9 +96,16 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Update version from tag
+    - name: Update plugin-api version from tag
       if: startsWith(github.event.release.tag_name, 'v')
       working-directory: packages/plugin-api
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        npm version $VERSION --no-git-tag-version
+
+    - name: Update mdf-reader version from tag
+      if: startsWith(github.event.release.tag_name, 'v')
+      working-directory: packages/mdf-reader
       run: |
         VERSION=${GITHUB_REF_NAME#v}
         npm version $VERSION --no-git-tag-version
@@ -85,8 +114,18 @@ jobs:
       working-directory: packages/plugin-api
       run: npm run build
 
-    - name: Publish to NPM
+    - name: Build mdf-reader
+      working-directory: packages/mdf-reader
+      run: npm run build
+
+    - name: Publish plugin-api to NPM
       working-directory: packages/plugin-api
+      run: npm publish --access public --provenance
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Publish mdf-reader to NPM
+      working-directory: packages/mdf-reader
       run: npm publish --access public --provenance
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
