@@ -101,28 +101,17 @@ export class ExpandedEnumTextRenderer {
         progress: number
     ): number[] {
         const textBoundaryX: number[] = [];
-        let accumulatedX = segments[0].expandedStartX;
 
-        for (let i = 0; i < segments.length; i++) {
-            const seg = segments[i];
+        for (const seg of segments) {
             const startTime = signal.time.valueAt(seg.startBufferIndex);
-            const currentTopX = startTime * pxPerSecond - offset;
-            let expandedX = accumulatedX;
-            if (i === 0 && expandedX > currentTopX) {
-                expandedX = currentTopX;
-            }
-            textBoundaryX.push(currentTopX + (expandedX - currentTopX) * progress);
-            accumulatedX += seg.expandedWidth;
+            const topX = startTime * pxPerSecond - offset;
+            textBoundaryX.push(topX + (seg.renderStartX - topX) * progress);
         }
 
         const lastSeg = segments[segments.length - 1];
         const lastEndTime = signal.time.valueAt(lastSeg.endBufferIndex);
-        const lastCurrentTopEndX = lastEndTime * pxPerSecond - offset;
-        let lastExpandedEndX = accumulatedX;
-        if (lastExpandedEndX < lastCurrentTopEndX) {
-            lastExpandedEndX = lastCurrentTopEndX;
-        }
-        textBoundaryX.push(lastCurrentTopEndX + (lastExpandedEndX - lastCurrentTopEndX) * progress);
+        const lastTopX = lastEndTime * pxPerSecond - offset;
+        textBoundaryX.push(lastTopX + (lastSeg.renderEndX - lastTopX) * progress);
 
         return textBoundaryX;
     }

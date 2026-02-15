@@ -145,7 +145,6 @@ export class ExpandedEnumGeometryRenderer {
 
         const { timeData, dataData, timeBuffer, dataBuffer } = instanceBuffers;
 
-        let accumulatedX = segments[0].expandedStartX;
         for (let i = 0; i < segments.length; i++) {
             const seg = segments[i];
 
@@ -154,21 +153,10 @@ export class ExpandedEnumGeometryRenderer {
             const startHigh = Math.fround(startTime);
             const endHigh = Math.fround(endTime);
 
-            const currentTopX = startTime * pxPerSecond - offset;
-            let expandedX = accumulatedX;
-            if (seg.isFirst && expandedX > currentTopX) {
-                expandedX = currentTopX;
-            }
-            const bottomLeftX = currentTopX + (expandedX - currentTopX) * progress;
-
-            accumulatedX += seg.expandedWidth;
-
-            const currentTopEndX = endTime * pxPerSecond - offset;
-            let expandedEndX = accumulatedX;
-            if (seg.isLast && expandedEndX < currentTopEndX) {
-                expandedEndX = currentTopEndX;
-            }
-            const bottomRightX = currentTopEndX + (expandedEndX - currentTopEndX) * progress;
+            const topLeftX = startTime * pxPerSecond - offset;
+            const topRightX = endTime * pxPerSecond - offset;
+            const bottomLeftX = topLeftX + (seg.renderStartX - topLeftX) * progress;
+            const bottomRightX = topRightX + (seg.renderEndX - topRightX) * progress;
 
             const timeOff = i * 5;
             timeData[timeOff + 0] = startHigh;

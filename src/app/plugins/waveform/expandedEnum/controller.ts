@@ -69,15 +69,15 @@ export class ExpandedEnumController {
             }
         }
         
-        for (let e = 0; e < extraSegments && endIndex < maxUpdateIndex - 2; e++) {
+        for (let e = 0; e < extraSegments && endIndex < maxUpdateIndex - 1; e++) {
             const currentValue = this.signal.values.valueAt(endIndex);
-            while (endIndex < maxUpdateIndex - 2 && this.signal.values.valueAt(endIndex + 1) === currentValue) {
+            while (endIndex < maxUpdateIndex - 1 && this.signal.values.valueAt(endIndex + 1) === currentValue) {
                 endIndex++;
             }
-            if (endIndex < maxUpdateIndex - 2) {
+            if (endIndex < maxUpdateIndex - 1) {
                 endIndex++;
                 const newValue = this.signal.values.valueAt(endIndex);
-                while (endIndex < maxUpdateIndex - 2 && this.signal.values.valueAt(endIndex + 1) === newValue) {
+                while (endIndex < maxUpdateIndex - 1 && this.signal.values.valueAt(endIndex + 1) === newValue) {
                     endIndex++;
                 }
             }
@@ -160,7 +160,6 @@ export class ExpandedEnumController {
         if (this.currentSegments.length === 0) return null;
         const timeX = time * pxPerSecond - offset;
         for (const seg of this.currentSegments) {
-            // Handle zero-width segments (last sample)
             if (seg.originalStartX === seg.originalEndX) {
                 if (timeX === seg.originalStartX) {
                     return seg;
@@ -196,7 +195,6 @@ export class ExpandedEnumController {
         }
         t *= progress;
 
-        let accumulatedX = segments[0].expandedStartX;
         let closestSegIndex = 0;
         let closestDist = Infinity;
 
@@ -208,18 +206,8 @@ export class ExpandedEnumController {
             const topStartX = startTime * pxPerSecond - offset;
             const topEndX = endTime * pxPerSecond - offset;
 
-            let expandedStartX = accumulatedX;
-            if (i === 0 && expandedStartX > topStartX) {
-                expandedStartX = topStartX;
-            }
-            accumulatedX += seg.expandedWidth;
-            let expandedEndX = accumulatedX;
-            if (i === segments.length - 1 && expandedEndX < topEndX) {
-                expandedEndX = topEndX;
-            }
-
-            const leftX = topStartX + (expandedStartX - topStartX) * t;
-            const rightX = topEndX + (expandedEndX - topEndX) * t;
+            const leftX = topStartX + (seg.renderStartX - topStartX) * t;
+            const rightX = topEndX + (seg.renderEndX - topEndX) * t;
 
             if (screenX >= leftX && screenX < rightX) {
                 const segmentWidth = rightX - leftX;

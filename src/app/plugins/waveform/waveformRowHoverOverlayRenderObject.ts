@@ -388,7 +388,7 @@ export class WaveformRowHoverOverlayRenderObject {
             return false;
         }
         
-        // Construct sub-segment: narrow original bounds (specific data index) + full expanded bounds
+        // Construct sub-segment: narrow original bounds (specific data index) + full segment render bounds
         const { state } = context;
         const signalLength = Math.min(signal.time.length, signal.values.length);
         const highlightStartTime = signal.time.valueAt(dataIndex);
@@ -396,16 +396,17 @@ export class WaveformRowHoverOverlayRenderObject {
             ? signal.time.valueAt(dataIndex + 1) 
             : highlightStartTime;
         
+        const highlightOrigStartX = highlightStartTime * state.pxPerSecond - state.offset;
+        const highlightOrigEndX = highlightEndTime * state.pxPerSecond - state.offset;
+        
         const highlightSegment: ExpandedSegment = {
             startBufferIndex: dataIndex,
             endBufferIndex: Math.min(dataIndex + 1, signalLength - 1),
-            originalStartX: highlightStartTime * state.pxPerSecond - state.offset,
-            originalEndX: highlightEndTime * state.pxPerSecond - state.offset,
-            expandedStartX: updatedSegment.expandedStartX,
-            expandedWidth: updatedSegment.expandedWidth,
+            originalStartX: highlightOrigStartX,
+            originalEndX: highlightOrigEndX,
+            renderStartX: updatedSegment.renderStartX,
+            renderEndX: updatedSegment.renderEndX,
             value: updatedSegment.value,
-            isFirst: false,
-            isLast: false,
         };
         
         // Create renderer lazily

@@ -48,7 +48,8 @@ export class ExpandedEnumAnimationState {
         }
 
         for (const seg of segments) {
-            seg.expandedStartX += this.bottomOffset;
+            seg.renderStartX += this.bottomOffset;
+            seg.renderEndX += this.bottomOffset;
         }
 
         return this.bottomOffset !== 0 || this.progress !== targetProgress;

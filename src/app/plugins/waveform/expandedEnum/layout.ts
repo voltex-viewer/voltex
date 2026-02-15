@@ -5,11 +5,9 @@ export interface ExpandedSegment {
     endBufferIndex: number;
     originalStartX: number;
     originalEndX: number;
-    expandedStartX: number;
-    expandedWidth: number;
+    renderStartX: number;
+    renderEndX: number;
     value: number;
-    isFirst: boolean;
-    isLast: boolean;
 }
 
 export function binarySearchTimeIndex(
@@ -83,9 +81,7 @@ export function computeExpandedLayout(
     const createSegment = (segStartIdx: number, segEndIdx: number): ExpandedSegment | null => {
         if (segStartIdx >= maxUpdateIndex || segEndIdx > maxUpdateIndex) return null;
         
-        // For the last sample, use the same time for start and end (zero-width segment)
-        const isLastSample = segEndIdx >= maxUpdateIndex;
-        const actualEndIdx = isLastSample ? segStartIdx : segEndIdx;
+        const actualEndIdx = Math.min(segEndIdx, maxUpdateIndex - 1);
         
         const value = signal.values.valueAt(segStartIdx);
         const segmentStartTime = signal.time.valueAt(segStartIdx);
@@ -99,18 +95,16 @@ export function computeExpandedLayout(
             endBufferIndex: actualEndIdx,
             originalStartX,
             originalEndX,
-            expandedStartX: 0,
-            expandedWidth: originalWidth,
+            renderStartX: 0,
+            renderEndX: originalWidth,
             value,
-            isFirst: false,
-            isLast: false,
         };
 
         const isNullValue = "null" in signal.values && value === signal.values.null;
         if (!isNullValue && originalWidth < minExpandedWidth) {
             const extraNeeded = minExpandedWidth - originalWidth;
             totalExtraNeeded += extraNeeded;
-            seg.expandedWidth = minExpandedWidth;
+            seg.renderEndX = minExpandedWidth;
         } else if (isNullValue && originalWidth > 1) {
             totalShrinkable += originalWidth - 1;
         } else if (originalWidth > minExpandedWidth) {
@@ -183,7 +177,7 @@ export function computeExpandedLayout(
             const minWidth = isNullSeg ? 1 : minExpandedWidth;
             if (originalWidth > minWidth) {
                 const shrinkable = originalWidth - minWidth;
-                seg.expandedWidth = originalWidth - shrinkable * shrinkRatio;
+                seg.renderEndX = originalWidth - shrinkable * shrinkRatio;
             }
         }
     }
@@ -215,28 +209,32 @@ export function computeExpandedLayout(
 
     let expandedBeforeCenter = 0;
     for (let i = 0; i < centerSegmentIndex; i++) {
-        expandedBeforeCenter += segments[i].expandedWidth;
+        expandedBeforeCenter += segments[i].renderEndX;
     }
-    const expandedCenterOffset = t * (centerSegForLayout?.expandedWidth ?? 0);
+    const expandedCenterOffset = t * (centerSegForLayout?.renderEndX ?? 0);
     const firstExpandedStart = clampedCenterX - expandedBeforeCenter - expandedCenterOffset;
 
     let currentX = firstExpandedStart;
     for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
-        seg.expandedStartX = currentX;
-        currentX += seg.expandedWidth;
+        const expandedWidth = seg.renderEndX;
+        
+        let startX = currentX;
+        let endX = currentX + expandedWidth;
+        
+        if (i === 0 && startX > seg.originalStartX) {
+            startX = seg.originalStartX;
+        }
+        if (i === segments.length - 1 && endX < seg.originalEndX) {
+            endX = seg.originalEndX;
+        }
+        
+        seg.renderStartX = startX;
+        seg.renderEndX = endX;
+        currentX += expandedWidth;
     }
 
-    // Filter out zero-width segments (e.g., null values with no duration)
-    const visibleSegments = segments.filter(seg => seg.expandedWidth > 0);
-    
-    // Update isFirst/isLast flags after filtering
-    for (let i = 0; i < visibleSegments.length; i++) {
-        visibleSegments[i].isFirst = i === 0;
-        visibleSegments[i].isLast = i === visibleSegments.length - 1;
-    }
-
-    return visibleSegments;
+    return segments.filter(seg => seg.renderEndX > seg.renderStartX);
 }
 
 export function binarySearchExpandedSegment(
@@ -276,8 +274,8 @@ export function interpolateSegmentBounds(
 ): { leftX: number; rightX: number; topLeftX: number; topRightX: number } {
     const topLeftX = segment.originalStartX;
     const topRightX = segment.originalEndX;
-    const bottomLeftX = segment.expandedStartX;
-    const bottomRightX = segment.expandedStartX + segment.expandedWidth;
+    const bottomLeftX = segment.renderStartX;
+    const bottomRightX = segment.renderEndX;
 
     const leftX = topLeftX + (bottomLeftX - topLeftX) * progress;
     const rightX = topRightX + (bottomRightX - topRightX) * progress;
@@ -294,10 +292,11 @@ export function getExpandedXForTime(
     const timeX = time * pxPerSecond - offset;
     for (const seg of segments) {
         if (timeX >= seg.originalStartX && timeX <= seg.originalEndX) {
-            const t = (seg.originalEndX - seg.originalStartX) > 0
-                ? (timeX - seg.originalStartX) / (seg.originalEndX - seg.originalStartX)
+            const originalWidth = seg.originalEndX - seg.originalStartX;
+            const t = originalWidth > 0
+                ? (timeX - seg.originalStartX) / originalWidth
                 : 0.5;
-            return seg.expandedStartX + t * seg.expandedWidth;
+            return seg.renderStartX + t * (seg.renderEndX - seg.renderStartX);
         }
     }
     return null;

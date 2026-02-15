@@ -511,6 +511,7 @@ function shouldUseExpandedMode(
     const endTime = (state.offset + bounds.width) / state.pxPerSecond;
 
     const maxUpdateIndex = Math.min(signal.time.length, signal.values.length);
+    if (maxUpdateIndex === 0) return false;
 
     const startIndex = binarySearchTimeIndex(signal, startTime, 0, maxUpdateIndex - 1, true);
     const endIndex = binarySearchTimeIndex(signal, endTime, startIndex, maxUpdateIndex - 1, false);
@@ -520,35 +521,52 @@ function shouldUseExpandedMode(
     const maxPossibleThreshold = maxTransitionsForExpansion + maxTransitionsHysteresis;
 
     const nullValue = "null" in signal.values ? signal.values.null : null;
-    let visibleTransitions = 1;
+    let visibleTransitions = 0;
     let hasNarrowSegment = false;
-    let segmentStartTime = signal.time.valueAt(startIndex);
-    let segmentValue = signal.values.valueAt(startIndex);
 
-    for (let i = startIndex + 1; i <= maxUpdateIndex && i <= endIndex + 1; i++) {
-        const isAtEnd = i >= maxUpdateIndex;
-        const val = isAtEnd ? null : signal.values.valueAt(i);
-        const isValueChange = val !== segmentValue;
-        const isPastViewport = i > endIndex;
+    let segStart = startIndex;
+    const firstValue = signal.values.valueAt(startIndex);
+    while (segStart > 0 && signal.values.valueAt(segStart - 1) === firstValue) {
+        segStart--;
+    }
 
-        if (isValueChange || isPastViewport) {
-            const segmentEndTime = isAtEnd ? segmentStartTime : signal.time.valueAt(i);
+    let segmentStartTime = signal.time.valueAt(segStart);
+    let segmentValue = firstValue;
+
+    for (let i = startIndex; i <= endIndex && i < maxUpdateIndex; i++) {
+        const val = signal.values.valueAt(i);
+        if (val !== segmentValue) {
+            const segmentEndTime = signal.time.valueAt(i);
             const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
             const isNullSegment = nullValue !== null && segmentValue === nullValue;
             if (!isNullSegment && segmentWidth < minExpandedWidth) {
                 hasNarrowSegment = true;
             }
-
-            if (isValueChange && !isAtEnd) {
-                visibleTransitions++;
-                if (visibleTransitions > maxPossibleThreshold) {
-                    return false;
-                }
-                segmentValue = val!;
-                segmentStartTime = segmentEndTime;
+            
+            visibleTransitions++;
+            if (visibleTransitions > maxPossibleThreshold) {
+                return false;
             }
+            
+            segmentStartTime = segmentEndTime;
+            segmentValue = val;
         }
     }
+
+    // Find true end of last segment
+    let segEnd = endIndex;
+    while (segEnd + 1 < maxUpdateIndex && signal.values.valueAt(segEnd + 1) === segmentValue) {
+        segEnd++;
+    }
+    const segmentEndTime = segEnd + 1 < maxUpdateIndex 
+        ? signal.time.valueAt(segEnd + 1) 
+        : signal.time.valueAt(segEnd);
+    const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
+    const isNullSegment = nullValue !== null && segmentValue === nullValue;
+    if (!isNullSegment && segmentWidth < minExpandedWidth) {
+        hasNarrowSegment = true;
+    }
+    visibleTransitions++;
 
     const threshold = wasExpanded ? maxPossibleThreshold : maxTransitionsForExpansion;
     return visibleTransitions <= threshold && hasNarrowSegment;
