@@ -1,0 +1,166 @@
+.signal-manager-root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.signal-manager-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.search-container {
+    position: relative;
+    flex-shrink: 0;
+    padding: 0;
+    margin-bottom: 8px;
+}
+
+.search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-35%);
+    color: #6b7280;
+    font-size: 14px;
+    pointer-events: none;
+    filter: grayscale(100%);
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px 10px 10px 36px;
+    background: #2c313a;
+    border: 1px solid #444;
+    color: #e5e7eb;
+    border-radius: 6px;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #6366f1;
+}
+
+.search-input::placeholder {
+    color: #6b7280;
+}
+
+.virtual-list-scroll-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+}
+
+.virtual-list-viewport {
+    position: relative;
+}
+
+.virtual-list-spacer {
+    width: 1px;
+}
+
+.virtual-list-items {
+    display: flex;
+    flex-direction: column;
+}
+
+.virtual-list-empty {
+    color: #6b7280;
+    padding: 16px;
+    text-align: center;
+}
+
+.signal-item {
+    position: absolute;
+    left: 0;
+    right: 0;
+}
+
+.signal-item.hidden {
+    display: none;
+}
+
+.tree-node {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+    color: #e5e7eb;
+    font-size: 13px;
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: calc(8px + var(--indent, 0px));
+}
+
+.tree-node:hover {
+    background: #2a2d3a;
+}
+
+.tree-node.expandable {
+    cursor: pointer;
+}
+
+.tree-node.leaf {
+    cursor: pointer;
+}
+
+.tree-node.leaf:hover {
+    background: #2a2d3a;
+}
+
+.tree-toggle {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tree-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.tree-label {
+    flex: 1;
+    user-select: none;
+    white-space: nowrap;
+    overflow: visible;
+    line-height: 1;
+}
+
+.tree-label mark {
+    background: #fbbf24;
+    color: #1f2937;
+    padding: 0;
+    border-radius: 2px;
+    display: inline;
+    line-height: inherit;
+}
+
+.tree-remove-btn {
+    width: 18px;
+    height: 18px;
+    margin-left: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #9ca3af;
+    transition: all 0.1s;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.tree-remove-btn:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
