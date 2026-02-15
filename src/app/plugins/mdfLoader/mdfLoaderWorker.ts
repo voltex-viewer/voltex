@@ -53,10 +53,10 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
             let signalId = 0;
             
             for (const group of mdfFile.getGroups()) {
-                const timeSignal = group.signals.find((s: MdfSignal) => s.channelType === ChannelType.Time);
-                
-                for (const signal of group.signals) {
-                    if (signal.channelType === ChannelType.Signal) {
+                for (const channelGroup of group.channelGroups) {
+                    const timeSignal = channelGroup.signals.find(s => s.channelType === ChannelType.Time);
+                    for (const signal of channelGroup.signals) {
+                        if (signal.channelType !== ChannelType.Signal) continue;
                         signalDataMap.set(signalId, {
                             mdfFile,
                             group,

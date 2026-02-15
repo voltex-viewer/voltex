@@ -19,7 +19,8 @@
     "removeComments": false,
     "preserveConstEnums": true,
     "paths": {
-      "@voltex-viewer/plugin-api": ["./packages/plugin-api/src/index.ts"]
+      "@voltex-viewer/plugin-api": ["./packages/plugin-api/src/index.ts"],
+      "@voltex-viewer/mdf-reader": ["./packages/mdf-reader/src/index.ts"]
     }
   },
   "include": [

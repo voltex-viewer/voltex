@@ -12,7 +12,12 @@ export interface MdfSignal {
     getUnit(): Promise<string | null>;
 }
 
+export interface MdfChannelGroup {
+    readonly signals: MdfSignal[];
+}
+
 export interface MdfSignalGroup {
+    readonly channelGroups: MdfChannelGroup[];
     readonly signals: MdfSignal[];
 }
 
@@ -89,10 +94,18 @@ class MdfSignalImpl implements MdfSignal {
     }
 }
 
-class MdfSignalGroupImpl implements MdfSignalGroup {
+class MdfChannelGroupImpl implements MdfChannelGroup {
     readonly signals: MdfSignalImpl[] = [];
+}
+
+class MdfSignalGroupImpl implements MdfSignalGroup {
+    readonly channelGroups: MdfChannelGroupImpl[] = [];
     
     constructor(public cachedGroup: CachedGroup) {}
+
+    get signals(): MdfSignalImpl[] {
+        return this.channelGroups.flatMap(cg => cg.signals);
+    }
 }
 
 class Float64GrowableBuffer implements GrowableBuffer<Float64Array> {
@@ -235,12 +248,13 @@ class MdfFileImpl implements MdfFile {
             const dgBlock = await v3.readDataGroupBlock(dgBlockLink, this.reader);
             
             const abstractGroups: AbstractGroup[] = [];
-            const signalData: LazySignal[] = [];
+            const channelGroupImpls: MdfChannelGroupImpl[] = [];
             let totalRows = 0;
             
             for await (const channelGroup of v3.iterateChannelGroupBlocks(dgBlock.channelGroupFirst, this.reader)) {
                 totalRows += channelGroup.numberOfRecords;
                 const groupChannels: AbstractChannel[] = [];
+                const cgImpl = new MdfChannelGroupImpl();
                 
                 for await (const channel of v3.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
                     const name = channel.longName && v3.isNonNullLink(channel.longName)
@@ -259,13 +273,14 @@ class MdfFileImpl implements MdfFile {
                     };
                     groupChannels.push(abstractChannel);
                     
-                    signalData.push({
+                    const lazy: LazySignal = {
                         name,
                         channelType,
                         channel: abstractChannel,
                         conversionLink: v3.getLink(channel.conversion),
                         unitLink: 0,
-                    });
+                    };
+                    cgImpl.signals.push(new MdfSignalImpl(lazy, this));
 
                     if (onProgress) {
                         totalSignalCount++;
@@ -276,6 +291,8 @@ class MdfFileImpl implements MdfFile {
                         }
                     }
                 }
+                
+                channelGroupImpls.push(cgImpl);
                 
                 abstractGroups.push({
                     recordId: Number(channelGroup.recordId),
@@ -289,10 +306,7 @@ class MdfFileImpl implements MdfFile {
                 dataGroup: { recordIdSize: dgBlock.recordIdType === 0 ? 0 : 1, totalRows, groups: abstractGroups },
                 dgLink: dgBlockLink,
             });
-            
-            for (const lazy of signalData) {
-                group.signals.push(new MdfSignalImpl(lazy, this));
-            }
+            group.channelGroups.push(...channelGroupImpls);
             
             this.groups.push(group);
             dgLink = dgBlock.dataGroupNext;
@@ -316,10 +330,11 @@ class MdfFileImpl implements MdfFile {
             const dgBlock = await v4.readDataGroupBlock(dgBlockLink, this.reader);
             
             const abstractGroups: AbstractGroup[] = [];
-            const signalData: LazySignal[] = [];
+            const channelGroupImpls: MdfChannelGroupImpl[] = [];
             
             for await (const channelGroup of v4.iterateChannelGroupBlocks(dgBlock.channelGroupFirst, this.reader)) {
                 const groupChannels: AbstractChannel[] = [];
+                const cgImpl = new MdfChannelGroupImpl();
                 
                 for await (const channel of v4.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
                     const name = (await v4.readTextBlock(channel.txName, this.reader))?.data ?? "";
@@ -336,13 +351,14 @@ class MdfFileImpl implements MdfFile {
                     };
                     groupChannels.push(abstractChannel);
                     
-                    signalData.push({
+                    const lazy: LazySignal = {
                         name,
                         channelType,
                         channel: abstractChannel,
                         conversionLink: v4.getLink(channel.conversion as v4.Link<unknown>),
                         unitLink: v4.getLink(channel.unit as v4.Link<unknown>),
-                    });
+                    };
+                    cgImpl.signals.push(new MdfSignalImpl(lazy, this));
 
                     if (onProgress) {
                         totalSignalCount++;
@@ -353,6 +369,8 @@ class MdfFileImpl implements MdfFile {
                         }
                     }
                 }
+                
+                channelGroupImpls.push(cgImpl);
                 
                 abstractGroups.push({
                     recordId: Number(channelGroup.recordId),
@@ -366,10 +384,7 @@ class MdfFileImpl implements MdfFile {
                 dataGroup: { recordIdSize: dgBlock.recordIdSize, groups: abstractGroups },
                 dgLink: dgBlockLink,
             });
-            
-            for (const lazy of signalData) {
-                group.signals.push(new MdfSignalImpl(lazy, this));
-            }
+            group.channelGroups.push(...channelGroupImpls);
             
             this.groups.push(group);
             dgLink = dgBlock.dataGroupNext as v4.Link<v4.DataGroupBlock>;
