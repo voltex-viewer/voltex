@@ -229,7 +229,23 @@ export default async (context: PluginContext) => {
         },
     };
 
-    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, sineWithGapsSource, flatSignalSource, randomPoints, trafficLightSource];
+    const blipSource: SignalSource = {
+        name: ['Demo Signals', 'Blip'],
+        signal: () => {
+            const timeSeq = new InMemoryFloat64Sequence();
+            const valueSeq = new InMemorySequence((value: number) => {
+                if (value === 0) return 'blip';
+                return 'unknown';
+            });
+            
+            timeSeq.push(0);
+            valueSeq.push(0);
+            
+            return Promise.resolve(wrapRealTimeSignal(new SequenceSignal(blipSource, timeSeq, valueSeq, RenderMode.Enum), isRealTimeEnabled));
+        },
+    };
+
+    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, sineWithGapsSource, flatSignalSource, randomPoints, trafficLightSource, blipSource];
     
     context.signalSources.add(sources);
     context.createRows(...await Promise.all(sources.map(async source => ({ channels: [await source.signal()] }))));

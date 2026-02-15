@@ -2,12 +2,13 @@ import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, 
 import { type WaveformConfig } from './waveformConfig';
 import type { SignalTooltipData, TooltipData } from './waveformTooltipRenderObject';
 import type { BufferData } from './waveformRendererPlugin';
-import type { WaveformShaders, ExpandedEnumAttributes } from './waveformShaders';
+import type { WaveformShaders } from './waveformShaders';
 import { WaveformRenderObject } from './waveformRenderObject';
-import type { TypedVAO } from './typedProgram';
-import { expandedGeometry, topHeightRatio, trapezoidHeightRatio, borderWidth } from './expandedEnumLayout';
-
-type ExpandedEnumVAO = TypedVAO<ExpandedEnumAttributes>;
+import {
+    type ExpandedSegment,
+    type ExpandedEnumResources,
+    ExpandedEnumGeometryRenderer,
+} from './expandedEnum';
 
 class HighlightSignal implements Signal {
     constructor(
@@ -30,14 +31,9 @@ export class WaveformRowHoverOverlayRenderObject {
     private readonly highlightBuffers: Map<Signal, BufferData> = new Map();
     private _tooltipData: TooltipData | null = null;
     
-    // Expanded mode highlight resources
-    private expandedHighlight: {
-        vao: ExpandedEnumVAO;
-        positionBuffer: WebGLBuffer;
-        dataBuffer: WebGLBuffer;
-        timeBuffer: WebGLBuffer;
-    } | null = null;
-    private expandedHighlightData: { signal: Signal; dataIndex: number; value: number } | null = null;
+    // Expanded mode highlight
+    private expandedHighlightRenderer: ExpandedEnumGeometryRenderer | null = null;
+    private expandedHighlightData: { signal: Signal; segment: ExpandedSegment; dataIndex: number } | null = null;
 
     constructor(
         parent: RenderObject,
@@ -50,6 +46,7 @@ export class WaveformRowHoverOverlayRenderObject {
         sharedBevelJoinGeometryBuffer: WebGLBuffer,
         private readonly waveformPrograms: WaveformShaders,
         private readonly mainRenderObjects: Map<Signal, WaveformRenderObject>,
+        private readonly expandedResources: ExpandedEnumResources,
         zIndex: number = 90
     ) {
         parent.addChild({
@@ -138,14 +135,16 @@ export class WaveformRowHoverOverlayRenderObject {
 
                 new WaveformRenderObject(
                     parent,
+                    context.webgl.gl,
                     highlightConfig,
                     bufferData,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     highlightMetadata,
                     waveformPrograms,
-                    highlightSignal, // Use the highlight signal instead of the original
+                    highlightSignal,
                     row,
+                    null, // No expanded enum resources for highlight
                     95
                 );
             }
@@ -164,12 +163,9 @@ export class WaveformRowHoverOverlayRenderObject {
             this.context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
         }
         
-        // Clean up expanded highlight resources
-        if (this.expandedHighlight) {
-            this.context.webgl.gl.deleteBuffer(this.expandedHighlight.positionBuffer);
-            this.context.webgl.gl.deleteBuffer(this.expandedHighlight.dataBuffer);
-            this.context.webgl.gl.deleteBuffer(this.expandedHighlight.timeBuffer);
-            this.expandedHighlight.vao.delete();
+        // Clean up expanded highlight renderer
+        if (this.expandedHighlightRenderer) {
+            this.expandedHighlightRenderer.dispose();
         }
         
         this.highlightSignals.clear();
@@ -273,14 +269,12 @@ export class WaveformRowHoverOverlayRenderObject {
                 highlightBufferData.bufferLength = 0;
             }
             
-            if (dataIndex >= signalLength - 1) return;
-            
-            // Store minimal data - positions will be queried each frame during render
-            this.expandedHighlightData = {
-                signal,
-                dataIndex,
-                value: signal.values.valueAt(dataIndex),
-            };
+            // Get the expanded segment for this data point
+            const startTime = signal.time.valueAt(dataIndex);
+            const segment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state.pxPerSecond, context.state.offset);
+            if (segment) {
+                this.expandedHighlightData = { signal, segment, dataIndex };
+            }
             return;
         }
 
@@ -379,108 +373,62 @@ export class WaveformRowHoverOverlayRenderObject {
     private renderExpandedHighlight(context: RenderContext, bounds: RenderBounds): boolean {
         if (!this.expandedHighlightData) return false;
         
-        const { gl } = context.render;
-        const { state } = context;
-        const { signal, dataIndex, value } = this.expandedHighlightData;
+        const { signal, segment, dataIndex } = this.expandedHighlightData;
         
-        // Re-query expanded segment positions each frame to track animation
         const mainRenderObject = this.mainRenderObjects.get(signal);
         if (!mainRenderObject || mainRenderObject.expandedModeProgress <= 0) {
             this.expandedHighlightData = null;
             return false;
         }
         
-        const progress = mainRenderObject.expandedModeProgress;
-        const topStartTime = signal.time.valueAt(dataIndex);
-        const topEndTime = signal.time.valueAt(dataIndex + 1);
-        
-        // Calculate collapsed (time-based) positions for bottom
-        const collapsedStartX = topStartTime * state.pxPerSecond - state.offset;
-        const collapsedEndX = topEndTime * state.pxPerSecond - state.offset;
-        
-        // Get expanded positions
-        const expandedSeg = mainRenderObject.getExpandedSegmentForTime(topStartTime, state.pxPerSecond, state.offset);
-        if (!expandedSeg) {
+        // Re-query the segment position for current frame (tracks animation)
+        const startTime = signal.time.valueAt(segment.startBufferIndex);
+        const updatedSegment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state.pxPerSecond, context.state.offset);
+        if (!updatedSegment) {
             return false;
         }
-        const expandedStartX = expandedSeg.expandedStartX;
-        const expandedEndX = expandedSeg.expandedStartX + expandedSeg.expandedWidth;
         
-        // Interpolate between collapsed and expanded positions
-        const bottomStartX = collapsedStartX + (expandedStartX - collapsedStartX) * progress;
-        const bottomEndX = collapsedEndX + (expandedEndX - collapsedEndX) * progress;
+        // Construct sub-segment: narrow original bounds (specific data index) + full expanded bounds
+        const { state } = context;
+        const signalLength = Math.min(signal.time.length, signal.values.length);
+        const highlightStartTime = signal.time.valueAt(dataIndex);
+        const highlightEndTime = dataIndex + 1 < signalLength 
+            ? signal.time.valueAt(dataIndex + 1) 
+            : highlightStartTime;
+        
+        const highlightSegment: ExpandedSegment = {
+            startBufferIndex: dataIndex,
+            endBufferIndex: Math.min(dataIndex + 1, signalLength - 1),
+            originalStartX: highlightStartTime * state.pxPerSecond - state.offset,
+            originalEndX: highlightEndTime * state.pxPerSecond - state.offset,
+            expandedStartX: updatedSegment.expandedStartX,
+            expandedWidth: updatedSegment.expandedWidth,
+            value: updatedSegment.value,
+            isFirst: false,
+            isLast: false,
+        };
+        
+        // Create renderer lazily
+        if (!this.expandedHighlightRenderer) {
+            this.expandedHighlightRenderer = new ExpandedEnumGeometryRenderer(
+                this.context.webgl.gl,
+                this.waveformPrograms,
+                this.expandedResources
+            );
+        }
         
         const signalMetadata = this.context.signalMetadata.get(signal);
         const highlightColor = this.createHighlightColor(signalMetadata.color);
-        const [r, g, b, a] = hexToRgba(highlightColor);
         
-        // Calculate double precision time offset
-        const leftTimeDouble = state.offset / state.pxPerSecond;
-        const timeOffsetHigh = Math.fround(leftTimeDouble);
-        const timeOffsetLow = leftTimeDouble - timeOffsetHigh;
+        this.expandedHighlightRenderer.renderHighlight(
+            context,
+            bounds,
+            highlightSegment,
+            signal,
+            highlightColor,
+            mainRenderObject.expandedModeProgress
+        );
         
-        // Create buffers and VAO if needed
-        if (!this.expandedHighlight) {
-            const positionBuffer = gl.createBuffer()!;
-            const dataBuffer = gl.createBuffer()!;
-            const timeBuffer = gl.createBuffer()!;
-            
-            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, expandedGeometry, gl.STATIC_DRAW);
-            
-            const prog = this.waveformPrograms.expandedEnum;
-            const vao = prog.createVAO({
-                position: { buffer: positionBuffer, size: 2 },
-                pointATimeHigh: { buffer: timeBuffer, size: 1, stride: 4, offset: 0, divisor: 1 },
-                pointBTimeHigh: { buffer: timeBuffer, size: 1, stride: 4, offset: 4, divisor: 1 },
-                pointATimeLow: { buffer: timeBuffer, size: 1, stride: 4, offset: 8, divisor: 1 },
-                pointBTimeLow: { buffer: timeBuffer, size: 1, stride: 4, offset: 12, divisor: 1 },
-                pointAValue: { buffer: timeBuffer, size: 1, stride: 4, offset: 16, divisor: 1 },
-                bottomLeftX: { buffer: dataBuffer, size: 1, stride: 8, offset: 0, divisor: 1 },
-                bottomRightX: { buffer: dataBuffer, size: 1, stride: 8, offset: 4, divisor: 1 },
-            });
-            
-            this.expandedHighlight = { vao, positionBuffer, dataBuffer, timeBuffer };
-        }
-        
-        // Convert time values for top edge to double precision
-        const topStartTimeHigh = Math.fround(topStartTime);
-        const topStartTimeLow = topStartTime - topStartTimeHigh;
-        const topEndTimeHigh = Math.fround(topEndTime);
-        const topEndTimeLow = topEndTime - topEndTimeHigh;
-        
-        // Upload time data
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.expandedHighlight.timeBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-            topStartTimeHigh, topEndTimeHigh, topStartTimeLow, topEndTimeLow, value,
-        ]), gl.DYNAMIC_DRAW);
-        
-        // Upload instance data
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.expandedHighlight.dataBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([bottomStartX, bottomEndX]), gl.DYNAMIC_DRAW);
-        
-        const prog = this.waveformPrograms.expandedEnum;
-        
-        const topHeight = bounds.height * topHeightRatio;
-        const bottomY = bounds.height * (topHeightRatio + trapezoidHeightRatio);
-        const bottomHeight = bounds.height * (1 - topHeightRatio - trapezoidHeightRatio);
-        
-        prog.bind({
-            u_bounds: [bounds.width, bounds.height],
-            u_topY: 0,
-            u_topHeight: topHeight,
-            u_bottomY: bottomY,
-            u_bottomHeight: bottomHeight,
-            u_timeOffsetHigh: timeOffsetHigh,
-            u_timeOffsetLow: timeOffsetLow,
-            u_pxPerSecond: state.pxPerSecond,
-            u_color: [r, g, b, a],
-            u_nullValue: "null" in signal.values ? signal.values.null : signal.values.max + 1.0,
-            u_hasNullValue: "null" in signal.values,
-            u_borderWidth: borderWidth,
-        }, this.expandedHighlight.vao);
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, 18, 1);
-        prog.unbind();
         return false;
     }
 }

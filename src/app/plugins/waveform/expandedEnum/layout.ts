@@ -1,11 +1,5 @@
 import type { Signal } from "@voltex-viewer/plugin-api";
 
-// Expanded enum view constants
-export const topHeightRatio = 0.2;
-export const trapezoidHeightRatio = 0.2;
-export const animationLerpFactor = 0.3;
-export const borderWidth = 1.0;
-
 export interface ExpandedSegment {
     startBufferIndex: number;
     endBufferIndex: number;
@@ -14,34 +8,10 @@ export interface ExpandedSegment {
     expandedStartX: number;
     expandedWidth: number;
     value: number;
+    isFirst: boolean;
+    isLast: boolean;
 }
 
-const topEnd = topHeightRatio;
-const bottomStart = topHeightRatio + trapezoidHeightRatio;
-
-// Pre-computed geometry for expanded enum trapezoid shape (6 triangles = 18 vertices)
-export const expandedGeometry = new Float32Array([
-    // Top rectangle
-    0, 0, 1, 0, 1, topEnd,
-    0, 0, 1, topEnd, 0, topEnd,
-    // Trapezoid
-    0, topEnd, 1, topEnd, 1, bottomStart,
-    0, topEnd, 1, bottomStart, 0, bottomStart,
-    // Bottom rectangle
-    0, bottomStart, 1, bottomStart, 1, 1,
-    0, bottomStart, 1, 1, 0, 1,
-]);
-
-/**
- * Binary search to find the appropriate index for a given time.
- * @param signal The signal to search in
- * @param targetTime The time to search for
- * @param left The left boundary of the search range
- * @param right The right boundary of the search range
- * @param findStart If true, finds the leftmost index where time >= targetTime (for start).
- *                  If false, finds the rightmost index where time <= targetTime (for end).
- * @returns The appropriate index
- */
 export function binarySearchTimeIndex(
     signal: Signal,
     targetTime: number,
@@ -101,38 +71,39 @@ export function computeExpandedLayout(
     const maxUpdateIndex = Math.min(signal.time.length, signal.values.length);
     if (startIndex >= maxUpdateIndex) return [];
 
-    // Calculate max segments needed to cover viewport (with buffer for animation)
     const maxSegmentsForViewport = Math.ceil(viewportWidth / minExpandedWidth) + 4;
-
-    // First, find the center time and corresponding index
     const centerTime = (viewportCenterX + offset) / pxPerSecond;
     const centerIndex = binarySearchTimeIndex(signal, centerTime, startIndex, endIndex, true);
 
-    // Build segments expanding outward from center
     const leftSegments: ExpandedSegment[] = [];
     const rightSegments: ExpandedSegment[] = [];
     let totalExtraNeeded = 0;
     let totalShrinkable = 0;
 
     const createSegment = (segStartIdx: number, segEndIdx: number): ExpandedSegment | null => {
-        // Don't create segment if end index is at or past the last valid point
-        // (we need endIdx to have a valid time for the segment's end)
-        if (segStartIdx >= maxUpdateIndex - 1 || segEndIdx >= maxUpdateIndex) return null;
+        if (segStartIdx >= maxUpdateIndex || segEndIdx > maxUpdateIndex) return null;
+        
+        // For the last sample, use the same time for start and end (zero-width segment)
+        const isLastSample = segEndIdx >= maxUpdateIndex;
+        const actualEndIdx = isLastSample ? segStartIdx : segEndIdx;
+        
         const value = signal.values.valueAt(segStartIdx);
         const segmentStartTime = signal.time.valueAt(segStartIdx);
-        const segmentEndTime = signal.time.valueAt(segEndIdx);
+        const segmentEndTime = signal.time.valueAt(actualEndIdx);
         const originalStartX = segmentStartTime * pxPerSecond - offset;
         const originalEndX = segmentEndTime * pxPerSecond - offset;
         const originalWidth = originalEndX - originalStartX;
 
         const seg: ExpandedSegment = {
             startBufferIndex: segStartIdx,
-            endBufferIndex: segEndIdx,
+            endBufferIndex: actualEndIdx,
             originalStartX,
             originalEndX,
             expandedStartX: 0,
             expandedWidth: originalWidth,
-            value
+            value,
+            isFirst: false,
+            isLast: false,
         };
 
         const isNullValue = "null" in signal.values && value === signal.values.null;
@@ -149,14 +120,8 @@ export function computeExpandedLayout(
         return seg;
     };
 
-    // Find segment boundaries by scanning for value changes
-    // Start by finding the segment containing centerIndex, but clamp to valid range
-    // We need centerIndex to be before the last point (need at least one more point for end time)
-    const adjustedCenterIndex = Math.min(centerIndex, maxUpdateIndex - 2);
-    if (adjustedCenterIndex < startIndex) {
-        // No valid segments in range
-        return [];
-    }
+    const adjustedCenterIndex = Math.min(centerIndex, maxUpdateIndex - 1);
+    if (adjustedCenterIndex < startIndex) return [];
 
     let currentSegStart = adjustedCenterIndex;
     const centerValue = signal.values.valueAt(adjustedCenterIndex);
@@ -165,24 +130,20 @@ export function computeExpandedLayout(
     }
 
     let currentSegEnd = adjustedCenterIndex + 1;
-    // Don't extend past maxUpdateIndex - 1 (need valid end time)
-    while (currentSegEnd < endIndex + 1 && currentSegEnd < maxUpdateIndex - 1 && signal.values.valueAt(currentSegEnd) === centerValue) {
+    while (currentSegEnd < endIndex + 1 && currentSegEnd < maxUpdateIndex && signal.values.valueAt(currentSegEnd) === centerValue) {
         currentSegEnd++;
     }
 
-    // Add center segment
     const centerSeg = createSegment(currentSegStart, currentSegEnd);
     if (!centerSeg) return [];
     rightSegments.push(centerSeg);
 
-    // Interleave left and right expansion to distribute segments evenly around center
     let leftIdx = currentSegStart;
     let rightIdx = currentSegEnd;
     let canExpandLeft = leftIdx > startIndex;
-    let canExpandRight = rightIdx <= endIndex && rightIdx < maxUpdateIndex - 1;
+    let canExpandRight = rightIdx <= endIndex && rightIdx < maxUpdateIndex;
 
     while ((canExpandLeft || canExpandRight) && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
-        // Expand left
         if (canExpandLeft && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
             leftIdx--;
             const value = signal.values.valueAt(leftIdx);
@@ -196,23 +157,20 @@ export function computeExpandedLayout(
             canExpandLeft = leftIdx > startIndex;
         }
 
-        // Expand right
         if (canExpandRight && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
             const value = signal.values.valueAt(rightIdx);
             let segEnd = rightIdx + 1;
-            while (segEnd <= endIndex + 1 && segEnd < maxUpdateIndex - 1 && signal.values.valueAt(segEnd) === value) {
+            while (segEnd <= endIndex + 1 && segEnd < maxUpdateIndex && signal.values.valueAt(segEnd) === value) {
                 segEnd++;
             }
             const seg = createSegment(rightIdx, segEnd);
             if (seg) rightSegments.push(seg);
             rightIdx = segEnd;
-            canExpandRight = rightIdx <= endIndex && rightIdx < maxUpdateIndex - 1;
+            canExpandRight = rightIdx <= endIndex && rightIdx < maxUpdateIndex;
         }
     }
 
-    // Combine: left segments are in reverse order
     const segments = [...leftSegments.reverse(), ...rightSegments];
-
     if (segments.length === 0) return [];
 
     const nullValue = "null" in signal.values ? signal.values.null : null;
@@ -230,12 +188,10 @@ export function computeExpandedLayout(
         }
     }
 
-    // Position expanded segments so they align with original at the clamped center point
     const firstSeg = segments[0];
     const lastSeg = segments[segments.length - 1];
     const clampedCenterX = Math.max(firstSeg.originalStartX, Math.min(lastSeg.originalEndX, viewportCenterX));
 
-    // Find which segment contains clampedCenterX
     let centerSegmentIndex = 0;
     for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
@@ -262,16 +218,71 @@ export function computeExpandedLayout(
         expandedBeforeCenter += segments[i].expandedWidth;
     }
     const expandedCenterOffset = t * (centerSegForLayout?.expandedWidth ?? 0);
-
     const firstExpandedStart = clampedCenterX - expandedBeforeCenter - expandedCenterOffset;
 
     let currentX = firstExpandedStart;
-    for (const seg of segments) {
+    for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
         seg.expandedStartX = currentX;
         currentX += seg.expandedWidth;
     }
 
-    return segments;
+    // Filter out zero-width segments (e.g., null values with no duration)
+    const visibleSegments = segments.filter(seg => seg.expandedWidth > 0);
+    
+    // Update isFirst/isLast flags after filtering
+    for (let i = 0; i < visibleSegments.length; i++) {
+        visibleSegments[i].isFirst = i === 0;
+        visibleSegments[i].isLast = i === visibleSegments.length - 1;
+    }
+
+    return visibleSegments;
+}
+
+export function binarySearchExpandedSegment(
+    segments: ExpandedSegment[],
+    screenX: number,
+    progress: number,
+    pxPerSecond: number,
+    offset: number
+): ExpandedSegment | null {
+    if (segments.length === 0) return null;
+
+    let left = 0;
+    let right = segments.length - 1;
+
+    while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        const seg = segments[mid];
+        const bounds = interpolateSegmentBounds(seg, progress, pxPerSecond, offset);
+
+        if (screenX < bounds.leftX) {
+            right = mid - 1;
+        } else if (screenX > bounds.rightX) {
+            left = mid + 1;
+        } else {
+            return seg;
+        }
+    }
+
+    return null;
+}
+
+export function interpolateSegmentBounds(
+    segment: ExpandedSegment,
+    progress: number,
+    _pxPerSecond: number,
+    _offset: number
+): { leftX: number; rightX: number; topLeftX: number; topRightX: number } {
+    const topLeftX = segment.originalStartX;
+    const topRightX = segment.originalEndX;
+    const bottomLeftX = segment.expandedStartX;
+    const bottomRightX = segment.expandedStartX + segment.expandedWidth;
+
+    const leftX = topLeftX + (bottomLeftX - topLeftX) * progress;
+    const rightX = topRightX + (bottomRightX - topRightX) * progress;
+
+    return { leftX, rightX, topLeftX, topRightX };
 }
 
 export function getExpandedXForTime(

@@ -11,7 +11,8 @@ import { createRawDownsampler } from './downsamplers/rawDownsampler';
 import {
     binarySearchTimeIndex,
     animationLerpFactor,
-} from './expandedEnumLayout';
+    ExpandedEnumResources,
+} from './expandedEnum';
 
 export interface BufferData {
     timeHighBuffer: WebGLBuffer;
@@ -83,6 +84,9 @@ export default (context: PluginContext): void => {
     }
     context.webgl.gl.bindBuffer(context.webgl.gl.ARRAY_BUFFER, sharedBevelJoinGeometryBuffer);
     context.webgl.gl.bufferData(context.webgl.gl.ARRAY_BUFFER, bevelJoinInstanceGeometry, context.webgl.gl.STATIC_DRAW);
+
+    // Create shared expanded enum resources
+    const expandedEnumResources = new ExpandedEnumResources(context.webgl.gl);
 
     // Frame timing variables
     let frameStartTime = 0;
@@ -357,6 +361,7 @@ export default (context: PluginContext): void => {
                 
                 const enumRenderObject = new WaveformRenderObject(
                     row.mainArea,
+                    context.webgl.gl,
                     config,
                     buffer,
                     sharedInstanceGeometryBuffer,
@@ -365,6 +370,7 @@ export default (context: PluginContext): void => {
                     waveformPrograms,
                     channel,
                     row,
+                    expandedEnumResources,
                     0,
                 );
                 enumRenderObjects.set(channel, enumRenderObject);
@@ -424,6 +430,7 @@ export default (context: PluginContext): void => {
                 // Create a WaveformRenderObject for rendering the dots
                 new WaveformRenderObject(
                     row.mainArea,
+                    context.webgl.gl,
                     config,
                     dotRenderBuffer,
                     sharedInstanceGeometryBuffer,
@@ -432,6 +439,7 @@ export default (context: PluginContext): void => {
                     waveformPrograms,
                     channel,
                     row,
+                    null, // No expanded enum resources for dot overlay
                     2 // Higher zIndex to render on top
                 );
             }
@@ -450,7 +458,8 @@ export default (context: PluginContext): void => {
                         sharedInstanceGeometryBuffer,
                         sharedBevelJoinGeometryBuffer,
                         waveformPrograms,
-                        enumRenderObjects
+                        enumRenderObjects,
+                        expandedEnumResources
                     ));
             }
         }
@@ -506,35 +515,41 @@ function shouldUseExpandedMode(
     const startIndex = binarySearchTimeIndex(signal, startTime, 0, maxUpdateIndex - 1, true);
     const endIndex = binarySearchTimeIndex(signal, endTime, startIndex, maxUpdateIndex - 1, false);
 
+    const maxTransitionsForExpansion = Math.floor(bounds.width / minExpandedWidth);
+    const maxTransitionsHysteresis = 5;
+    const maxPossibleThreshold = maxTransitionsForExpansion + maxTransitionsHysteresis;
+
+    const nullValue = "null" in signal.values ? signal.values.null : null;
     let visibleTransitions = 1;
     let hasNarrowSegment = false;
-    let lastValue = signal.values.valueAt(startIndex);
     let segmentStartTime = signal.time.valueAt(startIndex);
+    let segmentValue = signal.values.valueAt(startIndex);
 
-    for (let i = startIndex + 1; i <= endIndex + 1 && i < maxUpdateIndex; i++) {
-        const val = signal.values.valueAt(i);
-        const isLast = i > endIndex;
+    for (let i = startIndex + 1; i <= maxUpdateIndex && i <= endIndex + 1; i++) {
+        const isAtEnd = i >= maxUpdateIndex;
+        const val = isAtEnd ? null : signal.values.valueAt(i);
+        const isValueChange = val !== segmentValue;
+        const isPastViewport = i > endIndex;
 
-        if (val !== lastValue || isLast) {
-            const segmentEndTime = signal.time.valueAt(i);
+        if (isValueChange || isPastViewport) {
+            const segmentEndTime = isAtEnd ? segmentStartTime : signal.time.valueAt(i);
             const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
-            if (segmentWidth < minExpandedWidth) {
+            const isNullSegment = nullValue !== null && segmentValue === nullValue;
+            if (!isNullSegment && segmentWidth < minExpandedWidth) {
                 hasNarrowSegment = true;
             }
 
-            if (val !== lastValue) {
+            if (isValueChange && !isAtEnd) {
                 visibleTransitions++;
-                lastValue = val;
+                if (visibleTransitions > maxPossibleThreshold) {
+                    return false;
+                }
+                segmentValue = val!;
                 segmentStartTime = segmentEndTime;
             }
         }
     }
 
-    const maxTransitionsForExpansion = Math.floor(bounds.width / minExpandedWidth);
-    const maxTransitionsHysteresis = 5;
-
-    const threshold = wasExpanded
-        ? maxTransitionsForExpansion + maxTransitionsHysteresis
-        : maxTransitionsForExpansion;
-    return visibleTransitions <= threshold && visibleTransitions > 0 && hasNarrowSegment;
+    const threshold = wasExpanded ? maxPossibleThreshold : maxTransitionsForExpansion;
+    return visibleTransitions <= threshold && hasNarrowSegment;
 }
