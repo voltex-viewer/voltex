@@ -7,6 +7,7 @@ export interface TreeNodeCallbacks {
     onToggle: (entry: TreeEntry) => void;
     onLeafClick: (entry: TreeEntry) => void;
     onRemove: (entry: TreeEntry) => void;
+    onFileDrop: (entry: TreeEntry, files: File[]) => void;
 }
 
 function createSvgIcon(path: string, size = 16): SVGSVGElement {
@@ -91,6 +92,30 @@ export function createTreeNode(
             callbacks.onRemove(entry);
         });
         treeNodeDiv.appendChild(removeBtn);
+
+        treeNodeDiv.addEventListener('dragover', (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            treeNodeDiv.classList.add('drop-target');
+        });
+        treeNodeDiv.addEventListener('dragenter', (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            treeNodeDiv.classList.add('drop-target');
+        });
+        treeNodeDiv.addEventListener('dragleave', (e: DragEvent) => {
+            e.stopPropagation();
+            treeNodeDiv.classList.remove('drop-target');
+        });
+        treeNodeDiv.addEventListener('drop', (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            treeNodeDiv.classList.remove('drop-target');
+            const files = Array.from(e.dataTransfer?.files || []);
+            if (files.length > 0) {
+                callbacks.onFileDrop(entry, files);
+            }
+        });
     }
 
     container.appendChild(treeNodeDiv);

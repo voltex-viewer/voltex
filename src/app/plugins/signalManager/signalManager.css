@@ -103,6 +103,12 @@
     background: #2a2d3a;
 }
 
+.tree-node.drop-target {
+    background: #3b82f6;
+    outline: 2px solid #60a5fa;
+    outline-offset: -2px;
+}
+
 .tree-node.expandable {
     cursor: pointer;
 }

@@ -476,6 +476,7 @@ export default (context: PluginContext): void => {
         mimeType: '*/*',
         handler: async (file: File) => {
             await loadFile(file);
+            return [];
         }
     });
 }

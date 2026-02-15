@@ -152,7 +152,7 @@ export interface FileOpenHandler {
     extensions: `.${string}`[];
     description: string;
     mimeType: `${string}/${string}`;
-    handler: (file: File) => Promise<void>;
+    handler: (file: File) => Promise<SignalSource[]>;
 }
 
 export interface WritableFile {
@@ -208,6 +208,7 @@ export interface PluginContext {
     getRows(): Row[];
     loadConfig<A, O = A, I = unknown>(schema: t.Type<A, O, I>, defaultConfig: O): A;
     getEnvironment(): 'electron' | 'browser';
+    loadFiles(...files: File[]): Promise<SignalSource[]>;
     registerFileOpenHandler(handler: FileOpenHandler): void;
     registerFileSaveHandler(handler: FileSaveHandler): void;
     registerCommand(command: Command): void;

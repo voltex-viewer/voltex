@@ -43,6 +43,7 @@ export default (pluginContext: PluginContext): void => {
         mimeType: 'application/zip',
         handler: async (file: File) => {
             await handleVxpkgUpload(file);
+            return [];
         }
     });
     

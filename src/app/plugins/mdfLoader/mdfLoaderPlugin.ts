@@ -192,6 +192,7 @@ export default (context: PluginContext): void => {
                 }));
                 
                 context.signalSources.add(sources);
+                return sources;
             } finally {
                 clearTimeout(showOverlayTimeout);
                 if (loadingOverlay) {

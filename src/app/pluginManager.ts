@@ -189,6 +189,9 @@ export class PluginManager {
             registerCommand: (command: Command) => {
                 this.commandManager.registerCommand(plugin.metadata.name, command);
             },
+            loadFiles: async (...files: File[]): Promise<SignalSource[]> => {
+                return this.loadFiles(...files);
+            },
         };
 
         plugin.context = context;
@@ -455,8 +458,9 @@ export class PluginManager {
         };
     }
 
-    async loadFiles(...files: File[]): Promise<void> {
+    async loadFiles(...files: File[]): Promise<SignalSource[]> {
         const errors: string[] = [];
+        const allSources: SignalSource[] = [];
         for (const file of files) {
             let fileExtension = file.name.split('.').pop()?.toLowerCase();
             if (!fileExtension) {
@@ -473,7 +477,8 @@ export class PluginManager {
                 for (const handler of data.fileExtensionHandlers) {
                     if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
                         try {
-                            await handler.handler(file);
+                            const sources = await handler.handler(file);
+                            bigPush(allSources, sources);
                             handled = true;
                         } catch (error) {
                             console.error(error);
@@ -493,6 +498,7 @@ export class PluginManager {
         if (errors.length > 0) {
             alert(`Errors occurred while loading file(s):\n${errors.join('\n')}`);
         }
+        return allSources;
     }
 
     getFileOpenTypes(): FilePickerAcceptType[] {

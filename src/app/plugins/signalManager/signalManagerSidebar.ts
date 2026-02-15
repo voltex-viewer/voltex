@@ -11,6 +11,7 @@ export interface SignalManagerCallbacks {
     onLeafClick: (entry: TreeEntry) => void;
     onRemove: (entry: TreeEntry) => void;
     onPlotFiltered: () => void;
+    onFileDrop: (targetEntry: TreeEntry, files: File[]) => void;
 }
 
 export class SignalManagerSidebar {
@@ -74,6 +75,7 @@ export class SignalManagerSidebar {
             },
             onLeafClick: (entry) => this.callbacks.onLeafClick(entry),
             onRemove: (entry) => this.callbacks.onRemove(entry),
+            onFileDrop: (entry, files) => this.callbacks.onFileDrop(entry, files),
         };
 
         this.virtualList.setRenderFn((item) => {
