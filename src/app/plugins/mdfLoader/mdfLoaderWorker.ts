@@ -93,6 +93,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
         }
     } else if (message.type === 'loadSignal') {
         try {
+            const start = performance.now();
             const signalData = signalDataMap.get(message.signalId);
             if (!signalData) {
                 throw new Error(`Signal ${message.signalId} not found`);
@@ -108,6 +109,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
             ]);
             
             let cached = groupCache.get(group);
+            const cacheHit = cached != null;
             
             if (!cached) {
                 cached = {
@@ -154,6 +156,11 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
             if (cached.loading) {
                 await cached.loading;
             }
+            
+            const sampleCount = valuesSeq.length();
+            const groupSignalCount = cached.buffers.size;
+            const duration = performance.now() - start;
+            console.log(`Loaded signal "${signal.name}" from ${mdfFile.filename}: ${sampleCount.toLocaleString()} samples, ${groupSignalCount} signals in group,${duration.toFixed(1)} ms${cacheHit ? ' (group cached)' : ''}`);
             
             const completeResponse: WorkerResponse = {
                 type: 'signalLoadingComplete',
