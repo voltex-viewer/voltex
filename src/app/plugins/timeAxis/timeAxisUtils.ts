@@ -29,7 +29,9 @@ export function getGridSpacing(pxPerSecond: number): number {
         86400, // 1 day
         864000, // 10 days
         8640000, // 100 days
-        31536000 // 1 year
+        31536000, // 1 year
+        315360000, // 10 years
+        3153600000 // 100 years
     ];
     
     return candidates.reduce((best, spacing) => {
