@@ -1114,7 +1114,7 @@ export class RowContainerRenderObject {
                     time: targetStartTime,
                     pxPerSecond: targetPxPerSecond
                 };
-                this.zoomAnchorTime = null;
+                this.zoomAnchorTime = centerTime;
                 this.startUnifiedAnimation();
             }
         }
