@@ -14,7 +14,7 @@ export default (context: PluginContext): void => {
                 'zoom-out': Keybinding,
                 'pan-left': Keybinding,
                 'pan-right': Keybinding,
-                'fit-to-signal': Keybinding,
+                'enable-auto-fit': Keybinding,
             })
         }), {
         keybindings: {
@@ -27,7 +27,7 @@ export default (context: PluginContext): void => {
             'zoom-out': 's',
             'pan-left': 'a',
             'pan-right': 'd',
-            'fit-to-signal': 'f',
+            'enable-auto-fit': 'f',
         }
     });
 };

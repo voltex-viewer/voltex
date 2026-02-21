@@ -3,7 +3,7 @@ import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInser
 import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
 import { RowChangedCallback } from './rowManager';
 import { CommandManager } from './commandManager';
-import { AutoModeButton } from './autoModeButton';
+import { AutoFitButton } from './autoFitButton';
 
 type ResizeState = 
     | { type: 'none' }
@@ -46,10 +46,10 @@ export class RowContainerRenderObject {
     private targetTransform: ViewTransform;
     private zoomAnchorTime: number | null = null;
     
-    // Auto mode state
+    // Auto fit state
     private lastSignalMaxTime: number = -Infinity;
     private isRealTimeTracking: boolean = false;
-    private autoModeButton: AutoModeButton;
+    private autoFitButton: AutoFitButton;
     
     // Constants
     private readonly minLabelWidth = 40;
@@ -77,15 +77,15 @@ export class RowContainerRenderObject {
         this.renderObject = parent.addChild({
             render: (_context: RenderContext, bounds: RenderBounds): boolean => {
                 this.rows.forEach(row => row.calculateOptimalScaleAndOffset());
-                return this.updateAutoMode(bounds);
+                return this.updateAutoFit(bounds);
             }
         });
         
-        this.autoModeButton = new AutoModeButton(
+        this.autoFitButton = new AutoFitButton(
             parent,
             this.renderObject,
             this.scrollbarWidth,
-            () => this.setAutoMode(!this.autoModeButton.enabled)
+            () => this.setAutoFit(!this.autoFitButton.enabled)
         );
 
         // Create a separate render object for the scrollbar
@@ -195,7 +195,7 @@ export class RowContainerRenderObject {
                     const now = performance.now();
                     const mouseXInViewport = event.clientX - this.labelWidth;
                     
-                    this.setAutoMode(false);
+                    this.setAutoFit(false);
                     this.state.offset = this.resizeState.startTimeAtCursor * this.state.pxPerSecond - mouseXInViewport;
                     this.targetTransform = {
                         time: this.resizeState.startTimeAtCursor - mouseXInViewport / this.targetTransform.pxPerSecond,
@@ -451,49 +451,9 @@ export class RowContainerRenderObject {
         });
 
         this.commandManager.registerCommand('@voltex-viewer/voltex', {
-            id: 'fit-to-signal',
+            id: 'enable-auto-fit',
             action: () => {
-                const selectedRowsArray = this.getSelectedRowsInOrder();
-                const rowsToCheck = selectedRowsArray.length > 0 ? selectedRowsArray : this.rows;
-                
-                let minTime = Infinity;
-                let maxTime = -Infinity;
-                
-                for (const row of rowsToCheck) {
-                    for (const signal of row.signals) {
-                        if (signal.time.length > 0) {
-                            minTime = Math.min(minTime, signal.time.min);
-                            maxTime = Math.max(maxTime, signal.time.max);
-                        }
-                    }
-                }
-                
-                if (minTime !== Infinity && maxTime !== -Infinity) {
-                    const timeRange = maxTime - minTime;
-                    const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
-                    
-                    if (viewportWidth > 0) {
-                        console.log('Fitting to signal range:', minTime, maxTime);
-                        const centerTime = (minTime + maxTime) / 2;
-                        const targetPxPerSecond = timeRange > 0 
-                            ? Math.max(this.minPxPerSecond, Math.min(this.maxPxPerSecond, viewportWidth / timeRange))
-                            : this.state.pxPerSecond;
-                        
-                        this.targetTransform = {
-                            time: centerTime - (viewportWidth / 2) / targetPxPerSecond,
-                            pxPerSecond: targetPxPerSecond
-                        };
-                        this.zoomAnchorTime = null;
-                        this.startUnifiedAnimation();
-                    }
-                }
-            }
-        });
-
-        this.commandManager.registerCommand('@voltex-viewer/voltex', {
-            id: 'toggle-auto-mode',
-            action: () => {
-                this.setAutoMode(!this.autoModeButton.enabled);
+                this.setAutoFit(true);
             }
         });
     }
@@ -672,7 +632,7 @@ export class RowContainerRenderObject {
     }
 
     private startSmoothPan(velocity: number): void {
-        this.setAutoMode(false);
+        this.setAutoFit(false);
         
         const stoppingDistanceTime = velocity / (1 - this.friction) / this.targetTransform.pxPerSecond;
         
@@ -691,13 +651,13 @@ export class RowContainerRenderObject {
     }
 
     private startSmoothZoom(targetPxPerSecond: number, anchorX: number): void {
-        if (this.autoModeButton.enabled && this.isRealTimeTracking) {
-            // Real-time tracking: only animate zoom, position handled by updateAutoMode
+        if (this.autoFitButton.enabled && this.isRealTimeTracking) {
+            // Real-time tracking: only animate zoom, position handled by updateAutoFit
             this.targetTransform.pxPerSecond = targetPxPerSecond;
             this.zoomAnchorTime = null;
         } else {
-            // Static signal or auto mode off: disable auto mode and anchor to mouse
-            this.setAutoMode(false);
+            // Static signal or auto fit off: disable auto fit and anchor to mouse
+            this.setAutoFit(false);
             this.zoomAnchorTime = this.targetTransform.time + anchorX / this.targetTransform.pxPerSecond;
             this.targetTransform = {
                 time: this.zoomAnchorTime - anchorX / targetPxPerSecond,
@@ -1100,8 +1060,8 @@ export class RowContainerRenderObject {
         return { min: minTime, max: maxTime };
     }
 
-    private updateAutoMode(bounds: RenderBounds): boolean {
-        if (!this.autoModeButton.enabled) {
+    private updateAutoFit(bounds: RenderBounds): boolean {
+        if (!this.autoFitButton.enabled) {
             this.isRealTimeTracking = false;
             return false;
         }
@@ -1162,9 +1122,9 @@ export class RowContainerRenderObject {
         return false;
     }
 
-    private setAutoMode(enabled: boolean): void {
-        if (this.autoModeButton.enabled !== enabled) {
-            this.autoModeButton.setAutoMode(enabled);
+    private setAutoFit(enabled: boolean): void {
+        if (this.autoFitButton.enabled !== enabled) {
+            this.autoFitButton.setAutoFit(enabled);
             if (enabled) {
                 // Set to current max time so we correctly detect real-time vs static
                 // on the next frame (only if max increases will it be real-time)

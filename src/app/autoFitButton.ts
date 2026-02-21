@@ -1,8 +1,8 @@
 import type { RenderObject, RenderBounds, RenderContext, MouseEvent } from "@voltex-viewer/plugin-api";
 import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
 
-export class AutoModeButton {
-    private autoMode: boolean = true;
+export class AutoFitButton {
+    private autoFit: boolean = true;
     private cachedBuffers: {
         bgVertices: WebGLBuffer;
         borderVertices: WebGLBuffer;
@@ -51,11 +51,11 @@ export class AutoModeButton {
     }
 
     get enabled(): boolean {
-        return this.autoMode;
+        return this.autoFit;
     }
 
-    setAutoMode(enabled: boolean): void {
-        this.autoMode = enabled;
+    setAutoFit(enabled: boolean): void {
+        this.autoFit = enabled;
     }
 
     private ensureBuffers(gl: WebGL2RenderingContext, size: number): void {
@@ -155,7 +155,7 @@ export class AutoModeButton {
         // Draw background
         gl.bindBuffer(gl.ARRAY_BUFFER, this.cachedBuffers.bgVertices);
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-        if (this.autoMode) {
+        if (this.autoFit) {
             gl.uniform4f(colorLocation, 0.14, 0.16, 0.20, 0.95);
         } else {
             gl.uniform4f(colorLocation, 0.12, 0.14, 0.18, 0.8);
@@ -165,20 +165,20 @@ export class AutoModeButton {
         // Draw border
         gl.bindBuffer(gl.ARRAY_BUFFER, this.cachedBuffers.borderVertices);
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-        const borderColor = this.autoMode
+        const borderColor = this.autoFit
             ? [0.3, 0.5, 0.7, 0.8]
             : [0.25, 0.27, 0.32, 0.6];
         gl.uniform4f(colorLocation, borderColor[0], borderColor[1], borderColor[2], borderColor[3]);
         gl.drawArrays(gl.LINE_STRIP, 0, this.cachedBuffers.borderVertexCount);
 
-        // Draw icon (dynamic based on autoMode state)
+        // Draw icon (dynamic based on autoFit state)
         this.renderIcon(gl, positionLocation, colorLocation, size);
 
         gl.disableVertexAttribArray(positionLocation);
     }
 
     private renderIcon(gl: WebGL2RenderingContext, positionLocation: number, colorLocation: WebGLUniformLocation | null, size: number): void {
-        const iconColor = this.autoMode
+        const iconColor = this.autoFit
             ? [0.45, 0.75, 1.0, 1.0]
             : [0.4, 0.42, 0.47, 0.8];
         gl.uniform4f(colorLocation, iconColor[0], iconColor[1], iconColor[2], iconColor[3]);
