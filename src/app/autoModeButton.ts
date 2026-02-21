@@ -132,7 +132,7 @@ export class AutoModeButton {
                 vertices.push(corner.cx + Math.cos(angle) * r, corner.cy + Math.sin(angle) * r);
             }
         }
-        vertices.push(vertices[1], vertices[2]);
+        vertices.push(vertices[2], vertices[3]);
         return vertices;
     }
 
