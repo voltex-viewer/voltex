@@ -1,10 +1,14 @@
 import { Sequence } from '@voltex-viewer/plugin-api';
 
+const headerBytes = 8;
+
 type TypedArray = Float64Array | BigInt64Array | BigUint64Array;
 type TypedArrayConstructor = Float64ArrayConstructor | BigInt64ArrayConstructor | BigUint64ArrayConstructor;
 type ArrayValue<T> = T extends Float64Array ? number : bigint;
 
 export class SharedBufferBackedSequence<T extends TypedArray> implements Sequence {
+    private buffer: SharedArrayBuffer;
+    private lengthView: Int32Array;
     private array: T;
     private _length: number = 0;
     private _min: number = Infinity;
@@ -21,10 +25,10 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
         conversion: ((value: ArrayValue<T>) => number | string) | undefined,
         unit: string | null,
     ) {
+        this.buffer = buffer;
         this.arrayConstructor = arrayConstructor;
-        // TypeScript has trouble with union-typed constructors, but this is safe at runtime
-        this.array = new (arrayConstructor as unknown as { new(buffer: SharedArrayBuffer): T })(buffer);
-        this._length = 0;
+        this.lengthView = new Int32Array(buffer, 0, 1);
+        this.array = new (arrayConstructor as unknown as { new(buffer: SharedArrayBuffer, byteOffset: number): T })(buffer, headerBytes);
         if (conversion) {
             this.conversion = conversion;
         }
@@ -36,26 +40,17 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
             : (v: ArrayValue<T>) => Number(v)) as (value: ArrayValue<T>) => number;
     }
 
-    updateBuffer(newBuffer: SharedArrayBuffer, newLength: number): void {
-        // TypeScript has trouble with union-typed constructors, but this is safe at runtime
-        this.array = new (this.arrayConstructor as unknown as { new(buffer: SharedArrayBuffer): T })(newBuffer);
-        for (let i = this._length; i < newLength; i++) {
+    update(): void {
+        const currentLength = Atomics.load(this.lengthView, 0);
+        if (currentLength > this.array.length) {
+            this.array = new (this.arrayConstructor as unknown as { new(buffer: SharedArrayBuffer, byteOffset: number): T })(this.buffer, headerBytes);
+        }
+        for (let i = this._length; i < currentLength; i++) {
             const value = this.valueAt(i);
             if (value < this._min) this._min = value;
             if (value > this._max) this._max = value;
         }
-        this._length = newLength;
-    }
-
-    updateLength(newLength: number): void {
-        const oldLength = this._length;
-        this._length = newLength;
-        
-        for (let i = oldLength; i < newLength; i++) {
-            const value = this.valueAt(i);
-            if (value < this._min) this._min = value;
-            if (value > this._max) this._max = value;
-        }
+        this._length = currentLength;
     }
 
     get min(): number {

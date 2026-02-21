@@ -28,24 +28,14 @@ export type WorkerResponse = {
     signalId: number;
     timeBuffer: SharedArrayBuffer;
     valuesBuffer: SharedArrayBuffer;
-    length: number;
     timeConversion: SerializableConversionData;
     valuesConversion: SerializableConversionData;
     timeUnit: string | null| null;
     valueUnit: string | null;
     renderMode: RenderMode;
 } | {
-    type: 'signalLoadingProgress';
-    signalId: number;
-    timeBuffer?: SharedArrayBuffer;
-    valuesBuffer?: SharedArrayBuffer;
-    length: number;
-} | {
     type: 'signalLoadingComplete';
     signalId: number;
-    timeBuffer?: SharedArrayBuffer;
-    valuesBuffer?: SharedArrayBuffer;
-    length: number;
 } | {
     type: 'error';
     error: string;

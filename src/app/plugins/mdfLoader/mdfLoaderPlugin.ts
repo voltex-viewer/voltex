@@ -4,16 +4,30 @@ import { SharedBufferBackedSequence } from './sharedBufferBackedSequence';
 import type { WorkerMessage, WorkerResponse } from './workerTypes';
 import { loadingOverlayRenderObject } from './loadingOverlayRenderObject';
 
-type AnySequence = SharedBufferBackedSequence<Float64Array> | SharedBufferBackedSequence<BigInt64Array> | SharedBufferBackedSequence<BigUint64Array>;
-
 export default (context: PluginContext): void => {
 
-    const activeSignalLoaders = new Map<number, {
-        timeSequence: AnySequence;
-        valuesSequence: AnySequence;
-    }>();
+    const loadingSequences = new Map<number, { time: SharedBufferBackedSequence<Float64Array | BigInt64Array | BigUint64Array>, values: SharedBufferBackedSequence<Float64Array | BigInt64Array | BigUint64Array> }>();
+    let animationFrameId: number | null = null;
     let loadingOverlay: RenderObject | null = null;
     let loadingOverlayObj: ReturnType<typeof loadingOverlayRenderObject> | null = null;
+    
+    function startPolling(): void {
+        if (animationFrameId !== null) return;
+        const poll = () => {
+            if (loadingSequences.size > 0) {
+                for (const { time, values } of loadingSequences.values()) {
+                    time.update();
+                    values.update();
+                }
+                context.requestRender();
+                animationFrameId = requestAnimationFrame(poll);
+            } else {
+                animationFrameId = null;
+            }
+        };
+        animationFrameId = requestAnimationFrame(poll);
+    }
+    
     // @ts-expect-error - import.meta.url is provided by Vite
     const worker: Worker | null = new Worker(new URL('./mdfLoaderWorker.ts', import.meta.url), { type: 'module' });
     worker.addEventListener('message', (event: MessageEvent<WorkerResponse>) => {
@@ -47,46 +61,14 @@ export default (context: PluginContext): void => {
             case 'signalLoadingStarted':
                 return; // Handled by per-signal promise
             
-            case 'signalLoadingProgress': {
-                const loader = activeSignalLoaders.get(data.signalId);
-                if (!loader) return;
-                
-                // Update buffers if they were reallocated
-                if (data.timeBuffer) {
-                    loader.timeSequence.updateBuffer(data.timeBuffer, data.length);
-                } else {
-                    loader.timeSequence.updateLength(data.length);
-                }
-                
-                if (data.valuesBuffer) {
-                    loader.valuesSequence.updateBuffer(data.valuesBuffer, data.length);
-                } else {
-                    loader.valuesSequence.updateLength(data.length);
-                }
-                
-                context.requestRender();
-                break;
-            }
-            
             case 'signalLoadingComplete': {
-                const loader = activeSignalLoaders.get(data.signalId);
-                if (!loader) return;
-                
-                // Final update with potential buffer changes
-                if (data.timeBuffer) {
-                    loader.timeSequence.updateBuffer(data.timeBuffer, data.length);
-                } else {
-                    loader.timeSequence.updateLength(data.length);
+                const seqs = loadingSequences.get(data.signalId);
+                if (seqs) {
+                    seqs.time.update();
+                    seqs.values.update();
                 }
-                
-                if (data.valuesBuffer) {
-                    loader.valuesSequence.updateBuffer(data.valuesBuffer, data.length);
-                } else {
-                    loader.valuesSequence.updateLength(data.length);
-                }
-                
+                loadingSequences.delete(data.signalId);
                 context.requestRender();
-                activeSignalLoaders.delete(data.signalId);
                 break;
             }
         }
@@ -170,16 +152,11 @@ export default (context: PluginContext): void => {
                             }
                         }
                         
-                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(startResponse.timeConversion)) as ((value: number | bigint) => string | number) | undefined, startResponse.timeUnit) as AnySequence;
-                        time.updateLength(startResponse.length);
-                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(startResponse.valuesConversion)) as ((value: number | bigint) => string | number) | undefined, startResponse.valueUnit) as AnySequence;
-                        values.updateLength(startResponse.length);
+                        const time = new SharedBufferBackedSequence(startResponse.timeBuffer, timeConstructor, wrapConversion(metadata.timeSequenceType, deserializeConversion(startResponse.timeConversion)) as ((value: number | bigint) => string | number) | undefined, startResponse.timeUnit);
+                        const values = new SharedBufferBackedSequence(startResponse.valuesBuffer, valuesConstructor, wrapConversion(metadata.valuesSequenceType, deserializeConversion(startResponse.valuesConversion)) as ((value: number | bigint) => string | number) | undefined, startResponse.valueUnit);
                         
-                        // Register with the persistent handler
-                        activeSignalLoaders.set(metadata.signalId, {
-                            timeSequence: time,
-                            valuesSequence: values
-                        });
+                        loadingSequences.set(metadata.signalId, { time, values });
+                        startPolling();
                         
                         return {
                             time,

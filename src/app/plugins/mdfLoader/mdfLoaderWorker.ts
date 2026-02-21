@@ -23,7 +23,6 @@ interface LoadedSignalData {
 interface CachedGroupData {
     buffers: Map<MdfSignal, SharedBuffer>;
     loading: Promise<void> | null;
-    progressListeners: Set<(timeSeq: SharedBuffer | undefined, valuesSeq: SharedBuffer) => void>;
 }
 
 const signalDataMap: Map<number, LoadedSignalData> = new Map();
@@ -114,7 +113,6 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 cached = {
                     buffers: new Map(),
                     loading: null,
-                    progressListeners: new Set(),
                 };
                 groupCache.set(group, cached);
                 
@@ -127,15 +125,6 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                             const seq = createSharedBuffer(numberType);
                             signalToBuffer.set(sig, seq);
                             return seq;
-                        },
-                        onProgress: () => {
-                            for (const listener of currentCached.progressListeners) {
-                                const tSeq = timeSignal ? currentCached.buffers.get(timeSignal) : undefined;
-                                const vSeq = currentCached.buffers.get(signal);
-                                if (vSeq) {
-                                    listener(tSeq, vSeq);
-                                }
-                            }
                         },
                     });
                     currentCached.loading = null;
@@ -154,7 +143,6 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 signalId: message.signalId,
                 timeBuffer: timeSeq?.getBuffer() ?? new SharedArrayBuffer(0),
                 valuesBuffer: valuesSeq.getBuffer(),
-                length: Math.min(timeSeq?.length() ?? valuesSeq.length(), valuesSeq.length()),
                 timeConversion,
                 valuesConversion,
                 timeUnit,
@@ -164,47 +152,12 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
             self.postMessage(startResponse);
 
             if (cached.loading) {
-                let prevTimeBuffer = timeSeq?.getBuffer();
-                let prevValuesBuffer = valuesSeq.getBuffer();
-                let prevLength = Math.min(timeSeq?.length() ?? valuesSeq.length(), valuesSeq.length());
-                
-                const progressListener = (tSeq: SharedBuffer | undefined, vSeq: SharedBuffer) => {
-                    const currentTimeBuffer = tSeq?.getBuffer();
-                    const currentValuesBuffer = vSeq.getBuffer();
-                    const currentLength = Math.min(tSeq?.length() ?? vSeq.length(), vSeq.length());
-                    
-                    if (currentLength !== prevLength || currentTimeBuffer !== prevTimeBuffer || currentValuesBuffer !== prevValuesBuffer) {
-                        const progressResponse: WorkerResponse = {
-                            type: 'signalLoadingProgress',
-                            signalId: message.signalId,
-                            ...(currentTimeBuffer !== prevTimeBuffer && currentTimeBuffer && { timeBuffer: currentTimeBuffer }),
-                            ...(currentValuesBuffer !== prevValuesBuffer && { valuesBuffer: currentValuesBuffer }),
-                            length: currentLength
-                        };
-                        
-                        prevTimeBuffer = currentTimeBuffer;
-                        prevValuesBuffer = currentValuesBuffer;
-                        prevLength = currentLength;
-                        
-                        self.postMessage(progressResponse);
-                    }
-                };
-                
-                cached.progressListeners.add(progressListener);
                 await cached.loading;
-                cached.progressListeners.delete(progressListener);
             }
-            
-            const finalTimeBuffer = timeSeq?.getBuffer() ?? new SharedArrayBuffer(0);
-            const finalValuesBuffer = valuesSeq.getBuffer();
-            const finalLength = Math.min(timeSeq?.length() ?? valuesSeq.length(), valuesSeq.length());
             
             const completeResponse: WorkerResponse = {
                 type: 'signalLoadingComplete',
                 signalId: message.signalId,
-                timeBuffer: finalTimeBuffer,
-                valuesBuffer: finalValuesBuffer,
-                length: finalLength
             };
             
             self.postMessage(completeResponse);
