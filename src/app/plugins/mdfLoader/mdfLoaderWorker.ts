@@ -23,7 +23,7 @@ interface LoadedSignalData {
 interface CachedGroupData {
     buffers: Map<MdfSignal, SharedBuffer>;
     loading: Promise<void> | null;
-    progressListeners: Set<(timeSeq: SharedBuffer | undefined, valuesSeq: SharedBuffer) => void>;
+    progressListeners: Set<() => void>;
 }
 
 const signalDataMap: Map<number, LoadedSignalData> = new Map();
@@ -132,11 +132,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                         },
                         onProgress: () => {
                             for (const listener of currentCached.progressListeners) {
-                                const tSeq = timeSignal ? currentCached.buffers.get(timeSignal) : undefined;
-                                const vSeq = currentCached.buffers.get(signal);
-                                if (vSeq) {
-                                    listener(tSeq, vSeq);
-                                }
+                                listener();
                             }
                         },
                     });
@@ -170,10 +166,10 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 let prevValuesBuffer = valuesSeq.getBuffer();
                 let prevLength = Math.min(timeSeq?.length() ?? valuesSeq.length(), valuesSeq.length());
                 
-                const progressListener = (tSeq: SharedBuffer | undefined, vSeq: SharedBuffer) => {
-                    const currentTimeBuffer = tSeq?.getBuffer();
-                    const currentValuesBuffer = vSeq.getBuffer();
-                    const currentLength = Math.min(tSeq?.length() ?? vSeq.length(), vSeq.length());
+                const progressListener = () => {
+                    const currentTimeBuffer = timeSeq?.getBuffer();
+                    const currentValuesBuffer = valuesSeq.getBuffer();
+                    const currentLength = Math.min(timeSeq?.length() ?? valuesSeq.length(), valuesSeq.length());
                     
                     if (currentLength !== prevLength || currentTimeBuffer !== prevTimeBuffer || currentValuesBuffer !== prevValuesBuffer) {
                         const progressResponse: WorkerResponse = {
