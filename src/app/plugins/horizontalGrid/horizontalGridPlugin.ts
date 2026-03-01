@@ -15,39 +15,27 @@ function calculateGridLinePositions(
         return [];
     }
     
-    // Calculate the value range for all signals in this row
-    let minValue = Infinity;
-    let maxValue = -Infinity;
-    
-    for (const signal of row.signals) {
-        minValue = Math.min(minValue, signal.values.min);
-        maxValue = Math.max(maxValue, signal.values.max);
-    }
-    
-    if (minValue === Infinity || maxValue === -Infinity || minValue === maxValue) {
-        return [];
-    }
-    
-    const valueRange = maxValue - minValue;
-    const gridSpacing = getGridSpacing(valueRange, bounds.height);
-    
-    // Transform from signal value space to pixel space
     const yScale = row.yScale || 1.0;
     const yOffset = row.yOffset || 0.0;
     
-    // Calculate grid line positions
-    const startValue = Math.ceil(minValue / gridSpacing) * gridSpacing;
-    const endValue = Math.floor(maxValue / gridSpacing) * gridSpacing;
+    // Visible value range from the viewport transform
+    const visibleTop = 1 / yScale - yOffset;
+    const visibleBottom = -1 / yScale - yOffset;
+    const visibleRange = visibleTop - visibleBottom;
+    
+    if (visibleRange <= 0) return [];
+    
+    const gridSpacing = getGridSpacing(visibleRange, bounds.height);
+    
+    const startValue = Math.ceil(visibleBottom / gridSpacing) * gridSpacing;
+    const endValue = Math.floor(visibleTop / gridSpacing) * gridSpacing;
     
     let positions: GridLinePosition[] = [];
     
     for (let value = startValue; value <= endValue; value += gridSpacing) {
-        // Convert signal value to screen Y position
-        // Match the shader transformation: (bounds.height / 2) - (value + yOffset) * yScale * bounds.height / 2
         const normalizedValue = (value + yOffset) * yScale;
         const y = (bounds.height / 2) - (normalizedValue * bounds.height / 2);
         
-        // Only include if the line is within bounds
         if (y >= 0 && y <= bounds.height) {
             positions.push({ value, y });
         }

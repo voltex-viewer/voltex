@@ -6,6 +6,8 @@ export class RowImpl implements Row {
     public readonly rowRenderObject: RenderObject;
     public yScale: number = 1.0;
     public yOffset: number = 0.0;
+    public minY: number = -1;
+    public maxY: number = 1;
     public selected: boolean = false;
     public readonly labelViewport: ViewportRenderObject;
     public readonly mainViewport: ViewportRenderObject;
@@ -48,7 +50,8 @@ export class RowImpl implements Row {
 
         if (signals) {
             this.signals = [...signals];
-            this.calculateOptimalScaleAndOffset();
+            this.updateSignalBounds();
+            this.fitVertical();
         }
     }
     get mainArea(): RenderObject {
@@ -70,31 +73,40 @@ export class RowImpl implements Row {
         this.rowRenderObject.height = px(height);
     }
     
-    calculateOptimalScaleAndOffset(): void {
-        if (this.signals.length === 0) {
-            this.yScale = 1.0;
-            this.yOffset = 0.0;
-            return;
-        }
-        
+    updateSignalBounds(): void {
+        if (this.signals.length === 0) return;
         let minValue = Infinity;
         let maxValue = -Infinity;
-        const padding = 0.7;
-        
         for (const signal of this.signals) {
             minValue = Math.min(minValue, signal.values.min);
             maxValue = Math.max(maxValue, signal.values.max);
         }
-        
-        if (minValue === Infinity || maxValue === -Infinity) {
-            this.yScale = 1.0;
-            this.yOffset = 0.0;
-        } else if (minValue === maxValue) {
-            this.yScale = 1.0;
-            this.yOffset = -minValue;
+        if (minValue !== Infinity && maxValue !== -Infinity) {
+            this.minY = minValue;
+            this.maxY = maxValue;
+        }
+    }
+
+    fitVertical(): void {
+        this.setViewport(0, 0);
+    }
+
+
+    setViewport(yOffset: number, yScale: number): void {
+        const maxBlankFraction = 0.3;
+        const range = this.maxY - this.minY;
+        const minFill = 1 - maxBlankFraction;
+        const minYScale = range > 0 ? 2 * minFill / range : 1;
+        this.yScale = Math.max(yScale, minYScale);
+        const fill = range * this.yScale / 2;
+        const blankFraction = maxBlankFraction * Math.min(1, Math.max(0, (fill - minFill) / maxBlankFraction));
+        const k = (1 - 2 * blankFraction) / this.yScale;
+        const minOffset = k - this.maxY;
+        const maxOffset = -k - this.minY;
+        if (minOffset > maxOffset) {
+            this.yOffset = (minOffset + maxOffset) / 2;
         } else {
-            this.yScale = 2.0 / (maxValue - minValue) * padding;
-            this.yOffset = -(maxValue + minValue) / 2.0;
+            this.yOffset = Math.max(minOffset, Math.min(maxOffset, yOffset));
         }
     }
 }

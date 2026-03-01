@@ -9,7 +9,7 @@ type ResizeState =
     | { type: 'none' }
     | { type: 'horizontal'; startX: number }
     | { type: 'vertical'; startY: number; row: RowImpl }
-    | { type: 'time-offset'; startX: number; startTimeAtCursor: number; lastX: number; lastTime: number; velocity: number }
+    | { type: 'time-offset'; startX: number; startTimeAtCursor: number; lastX: number; lastTime: number; velocity: number; startY: number; row: RowImpl | null; startYOffset: number; verticalDragActive: boolean }
     | { type: 'dragging-rows'; draggedRows: RowImpl[]; startY: number; offsetY: number; offsetX: number; insertIndex: number }
     | { type: 'potential-row-drag'; row: RowImpl; startX: number; startY: number; event: MouseEvent }
     | { type: 'scrollbar'; startY: number; startOffset: number };
@@ -79,7 +79,10 @@ export class RowContainerRenderObject {
         
         this.renderObject = parent.addChild({
             render: (_context: RenderContext, bounds: RenderBounds): boolean => {
-                this.rows.forEach(row => row.calculateOptimalScaleAndOffset());
+                this.rows.forEach(row => {
+                    row.updateSignalBounds();
+                    if (this.autoFitButton.enabled) row.fitVertical();
+                });
                 return this.updateAutoFit(bounds);
             }
         });
@@ -140,13 +143,18 @@ export class RowContainerRenderObject {
                     const mouseXInViewport = event.clientX - this.labelWidth;
                     if (mouseXInViewport < 0) return {};
                     
+                    const hit = this.getRowAtY(event.clientY);
                     this.resizeState = {
                         type: 'time-offset',
                         startX: event.clientX,
                         startTimeAtCursor: (this.state.offset + mouseXInViewport) / this.state.pxPerSecond,
                         lastX: mouseXInViewport,
                         lastTime: performance.now(),
-                        velocity: 0
+                        velocity: 0,
+                        startY: event.clientY,
+                        row: hit?.row ?? null,
+                        startYOffset: hit?.row.yOffset ?? 0,
+                        verticalDragActive: false,
                     };
                     
                     if (this.animationFrame !== null) {
@@ -213,6 +221,17 @@ export class RowContainerRenderObject {
                             time: this.resizeState.startTimeAtCursor - mouseXInViewport / this.animationTarget.pxPerSecond,
                             pxPerSecond: this.animationTarget.pxPerSecond
                         };
+                    }
+
+                    // Vertical panning with deadband
+                    const deltaY = event.clientY - this.resizeState.startY;
+                    if (!this.resizeState.verticalDragActive && Math.abs(deltaY) > this.dragThreshold) {
+                        this.resizeState = { ...this.resizeState, verticalDragActive: true };
+                    }
+                    if (this.resizeState.verticalDragActive && this.resizeState.row) {
+                        const row = this.resizeState.row;
+                        const valueDelta = deltaY * 2 / (row.height * row.yScale);
+                        row.setViewport(this.resizeState.startYOffset - valueDelta, row.yScale);
                     }
 
                     this.resizeState = {
@@ -329,12 +348,27 @@ export class RowContainerRenderObject {
                     return;
                 }
                 
+                // Ctrl+scroll: vertical zoom on the row under cursor
+                if (event.ctrlKey && Math.abs(event.deltaY) > 0) {
+                    this.setAutoFit(false);
+                    const hit = this.getRowAtY(event.clientY);
+                    if (hit) {
+                        const { row, normY } = hit;
+                        const factor = Math.pow(1.25, Math.abs(event.deltaY) / 50);
+                        const scale = event.deltaY < 0 ? factor : 1 / factor;
+                        const newScale = row.yScale * scale;
+                        row.setViewport(row.yOffset + normY / row.yScale * (1 / scale - 1), newScale);
+                        this.requestRender();
+                    }
+                    return;
+                }
+                
                 // Handle horizontal scrolling (panning)
                 if (Math.abs(event.deltaX) > 0) {
                     this.startSmoothPan(event.deltaX);
                 }
                 
-                // Handle vertical scrolling (zooming)
+                // Handle horizontal zooming
                 if (Math.abs(event.deltaY) > 0) {
                     const zoomFactor = Math.pow(1.25, Math.abs(event.deltaY) / 50);
                     const currentTarget = this.animationTarget.pxPerSecond;
@@ -922,6 +956,19 @@ export class RowContainerRenderObject {
         }
         return { type: 'none' };
     }
+
+    private getRowAtY(clientY: number): { row: RowImpl; normY: number } | null {
+        let currentY = -this.verticalScrollOffset;
+        for (const row of this.rows) {
+            const rowBottom = currentY + row.height;
+            if (clientY >= currentY && clientY < rowBottom) {
+                const normY = 1 - 2 * (clientY - currentY) / row.height;
+                return { row, normY };
+            }
+            currentY = rowBottom;
+        }
+        return null;
+    }
     
     onChange(callback: RowChangedCallback): void {
         this.changeCallbacks.push(callback);
@@ -1147,6 +1194,7 @@ export class RowContainerRenderObject {
                 // on the next frame (only if max increases will it be real-time)
                 const range = this.getSignalTimeRange();
                 this.lastSignalMaxTime = range?.max ?? -Infinity;
+                this.rows.forEach(row => row.fitVertical());
             } else {
                 this.isRealTimeTracking = false;
             }
