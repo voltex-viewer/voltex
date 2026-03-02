@@ -9,6 +9,7 @@ export class RowImpl implements Row {
     public minY: number = -1;
     public maxY: number = 1;
     public selected: boolean = false;
+    public verticalAutoFit: boolean = true;
     public readonly labelViewport: ViewportRenderObject;
     public readonly mainViewport: ViewportRenderObject;
     

@@ -81,7 +81,7 @@ export class RowContainerRenderObject {
             render: (_context: RenderContext, bounds: RenderBounds): boolean => {
                 this.rows.forEach(row => {
                     row.updateSignalBounds();
-                    if (this.autoFitButton.enabled) row.fitVertical();
+                    if (row.verticalAutoFit) row.fitVertical();
                 });
                 return this.updateAutoFit(bounds);
             }
@@ -350,10 +350,10 @@ export class RowContainerRenderObject {
                 
                 // Ctrl+scroll: vertical zoom on the row under cursor
                 if (event.ctrlKey && Math.abs(event.deltaY) > 0) {
-                    this.setAutoFit(false);
                     const hit = this.getRowAtY(event.clientY);
                     if (hit) {
                         const { row, normY } = hit;
+                        row.verticalAutoFit = false;
                         const factor = Math.pow(1.25, Math.abs(event.deltaY) / 50);
                         const scale = event.deltaY < 0 ? factor : 1 / factor;
                         const newScale = row.yScale * scale;
@@ -1194,7 +1194,10 @@ export class RowContainerRenderObject {
                 // on the next frame (only if max increases will it be real-time)
                 const range = this.getSignalTimeRange();
                 this.lastSignalMaxTime = range?.max ?? -Infinity;
-                this.rows.forEach(row => row.fitVertical());
+                this.rows.forEach(row => {
+                    row.verticalAutoFit = true;
+                    row.fitVertical();
+                });
             } else {
                 this.isRealTimeTracking = false;
             }
