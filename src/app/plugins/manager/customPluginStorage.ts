@@ -1,9 +1,13 @@
 import type { PluginModule, PluginMetadata } from '@voltex-viewer/plugin-api';
+import { computeIntegrity } from './integrityUtil';
 
 export interface CustomPluginData {
     metadata: PluginMetadata;
     code: string;
     uploadedAt: number;
+    registryUrl?: string;   // which registry this came from
+    registryMain?: string;  // path in registry for re-fetching on update
+    integrity?: string;     // "sha256-<base64>" — re-verified on every load
 }
 
 export class CustomPluginStorage {
@@ -24,13 +28,19 @@ export class CustomPluginStorage {
         return await this.root!.getDirectoryHandle(CustomPluginStorage.storageDir, { create: true });
     }
 
-    async savePlugin(name: string, code: string, metadata: PluginMetadata): Promise<void> {
+    async savePlugin(
+        name: string,
+        code: string,
+        metadata: PluginMetadata,
+        extra?: { registryUrl?: string; registryMain?: string; integrity?: string }
+    ): Promise<void> {
         const dir = await this.ensureStorageDir();
-        
+
         const pluginData: CustomPluginData = {
             metadata,
             code,
-            uploadedAt: Date.now()
+            uploadedAt: Date.now(),
+            ...extra,
         };
 
         const sanitizedName = this.sanitizeFilename(name);
@@ -100,6 +110,14 @@ export class CustomPluginStorage {
     }
 
     async loadPluginModule(pluginData: CustomPluginData): Promise<PluginModule> {
+        // Re-verify stored integrity before executing — catches OPFS tampering
+        if (pluginData.integrity) {
+            const computed = await computeIntegrity(pluginData.code);
+            if (computed !== pluginData.integrity) {
+                throw new Error(`Integrity check failed for "${pluginData.metadata.name}": stored plugin code has been tampered with`);
+            }
+        }
+
         // Create a blob URL from the code to load it as an ES module
         const blob = new Blob([pluginData.code], { type: 'application/javascript' });
         const url = URL.createObjectURL(blob);

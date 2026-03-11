@@ -36,6 +36,15 @@ ipcMain.handle('open-file-dialog', async () => {
 });
 
 ipcMain.handle('open-external-url', async (_event, url: string) => {
+    let parsed: URL;
+    try {
+        parsed = new URL(url);
+    } catch {
+        throw new Error(`Blocked: invalid URL`);
+    }
+    if (!['https:', 'http:', 'mailto:'].includes(parsed.protocol)) {
+        throw new Error(`Blocked: unsupported URL scheme "${parsed.protocol}"`);
+    }
     await shell.openExternal(url);
 });
 

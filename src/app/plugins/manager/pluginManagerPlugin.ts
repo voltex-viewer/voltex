@@ -6,6 +6,7 @@ import * as t from 'io-ts';
 import { CustomPluginStorage } from './customPluginStorage';
 import { VxpkgLoader } from './vxpkgLoader';
 import { GitHubReleaseLoader } from './gitHubReleaseLoader';
+import { RegistryClient, type RegistryPlugin } from './registryClient';
 
 const pluginManagerConfigSchema = t.type({
     enabledPlugins: t.record(t.string, t.boolean)
@@ -20,7 +21,25 @@ let config: PluginManagerConfig;
 let customPluginStorage: CustomPluginStorage;
 const customPluginNames = new Set<string>();
 const availableUpdates = new Map<string, string>();
+const installingPlugins = new Set<string>();
 let currentlyDisplayedPluginName: string | null = null;
+
+const registriesStorageKey = 'voltex-registries';
+
+function loadRegistries(): string[] {
+    try {
+        const raw = localStorage.getItem(registriesStorageKey);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter((u): u is string => typeof u === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveRegistries(urls: string[]): void {
+    localStorage.setItem(registriesStorageKey, JSON.stringify(urls));
+}
 
 export default (pluginContext: PluginContext): void => {
     context = pluginContext;
@@ -127,21 +146,29 @@ async function loadCustomPlugins(): Promise<void> {
 async function checkForUpdates(): Promise<void> {
     if (!pluginManager || !customPluginStorage) return;
 
+    availableUpdates.clear();
     const plugins = await customPluginStorage.getAllPlugins();
-    
+    const registryCache = new Map<string, Awaited<ReturnType<typeof RegistryClient.fetchRegistry>>>();
+
     for (const [name, pluginData] of plugins) {
-        const url = pluginData.metadata.url;
-        if (!url) continue;
+        if (!pluginData.registryUrl) continue;
 
         try {
-            const release = await GitHubReleaseLoader.fetchLatestRelease(url);
-            if (!release) continue;
+            let registry = registryCache.get(pluginData.registryUrl);
+            if (!registry) {
+                registry = await RegistryClient.fetchRegistry(pluginData.registryUrl);
+                registryCache.set(pluginData.registryUrl, registry);
+            }
 
-            const latestVersion = GitHubReleaseLoader.parseVersion(release.tag_name);
-            const currentVersion = pluginData.metadata.version;
+            const registryPlugin = registry.plugins.find(p => p.name === name);
+            if (!registryPlugin) continue;
 
-            if (GitHubReleaseLoader.compareVersions(currentVersion, latestVersion) < 0) {
-                availableUpdates.set(name, latestVersion);
+            try {
+                if (GitHubReleaseLoader.compareVersions(pluginData.metadata.version, registryPlugin.version) < 0) {
+                    availableUpdates.set(name, registryPlugin.version);
+                }
+            } catch {
+                console.error(`Skipping update check for "${name}": malformed version string`);
             }
         } catch (error) {
             console.error(`Failed to check updates for ${name}:`, error);
@@ -217,33 +244,87 @@ async function deleteCustomPlugin(pluginName: string): Promise<void> {
     context?.requestRender();
 }
 
-async function openPluginUpdate(pluginName: string): Promise<void> {
+async function autoUpdatePlugin(pluginName: string): Promise<void> {
     if (!pluginManager || !customPluginStorage) return;
 
     const pluginData = await customPluginStorage.getPlugin(pluginName);
-    if (!pluginData || !pluginData.metadata.url) {
-        alert('Cannot update plugin: no repository URL found');
+    if (!pluginData?.registryUrl || !pluginData?.registryMain) {
+        alert('Cannot auto-update plugin: no registry source found. Please reinstall from the Browse tab.');
         return;
     }
 
     try {
-        const release = await GitHubReleaseLoader.fetchLatestRelease(pluginData.metadata.url);
-        if (!release) {
-            alert('Failed to fetch latest release from GitHub');
+        // Re-fetch the registry to get the latest plugin metadata + integrity hash
+        const registry = await RegistryClient.fetchRegistry(pluginData.registryUrl);
+        const registryPlugin = registry.plugins.find(p => p.name === pluginName);
+        if (!registryPlugin) {
+            alert(`Plugin "${pluginName}" not found in its source registry. It may have been removed.`);
             return;
         }
 
-        const releaseUrl = GitHubReleaseLoader.getReleasePageUrl(release);
-        
-        // Open the release page
-        if (window.waveformApi) {
-            window.waveformApi.openExternalUrl(releaseUrl);
-        } else {
-            window.open(releaseUrl, '_blank');
-        }
+        const confirmed = confirm(
+            `Update "${registryPlugin.displayName || pluginName}" to v${registryPlugin.version}?\n\n` +
+            `Source: ${pluginData.registryUrl}\n\n` +
+            `This will download and execute new code from the registry.`
+        );
+        if (!confirmed) return;
+
+        await installFromRegistry(pluginData.registryUrl, registryPlugin);
+        availableUpdates.delete(pluginName);
+        refreshPluginList();
     } catch (error) {
-        console.error('Failed to open release page:', error);
-        alert(`Failed to open release page: ${error instanceof Error ? error.message : String(error)}`);
+        console.error('Failed to auto-update plugin:', error);
+        alert(`Update failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+async function installFromRegistry(repoUrl: string, plugin: RegistryPlugin): Promise<void> {
+    if (!pluginManager || !customPluginStorage) return;
+    if (installingPlugins.has(plugin.name)) return;
+
+    installingPlugins.add(plugin.name);
+    try {
+    const code = await RegistryClient.fetchPluginCode(repoUrl, plugin);
+
+    const metadata = {
+        name: plugin.name,
+        displayName: plugin.displayName,
+        version: plugin.version,
+        description: plugin.description,
+        author: plugin.author,
+    };
+
+    // Disable and unregister existing version if present
+    const existingEnabled = pluginManager.getPlugins().find(p => p.metadata.name === plugin.name);
+    if (existingEnabled) {
+        pluginManager.disablePlugin(existingEnabled);
+    }
+    const existingAvailable = pluginManager.getAvailablePlugins().find(p => p.metadata.name === plugin.name);
+    if (existingAvailable) {
+        pluginManager.unregisterPluginType(plugin.name);
+    }
+
+    // Save to OPFS with registry tracking and integrity hash
+    await customPluginStorage.savePlugin(plugin.name, code, metadata, {
+        registryUrl: repoUrl,
+        registryMain: plugin.main,
+        integrity: plugin.integrity,
+    });
+
+    const pluginData = await customPluginStorage.getPlugin(plugin.name);
+    if (!pluginData) throw new Error('Failed to save plugin to storage');
+
+    const pluginModule = await customPluginStorage.loadPluginModule(pluginData);
+    pluginManager.registerPluginType(pluginModule);
+    customPluginNames.add(plugin.name);
+
+    await pluginManager.enablePlugin(pluginModule);
+    savePluginState(plugin.name, true);
+
+    refreshPluginList();
+    context?.requestRender();
+    } finally {
+        installingPlugins.delete(plugin.name);
     }
 }
 
@@ -284,6 +365,36 @@ function renderContent(): HTMLElement {
     const container = document.createElement('div');
     container.innerHTML = `
         <style>
+            .tab-bar {
+                display: flex;
+                border-bottom: 1px solid #374151;
+                margin-bottom: 16px;
+            }
+            .tab-btn {
+                flex: 1;
+                padding: 8px 0;
+                background: transparent;
+                border: none;
+                color: #6b7280;
+                font-size: 13px;
+                cursor: pointer;
+                transition: color 0.2s;
+                border-bottom: 2px solid transparent;
+                margin-bottom: -1px;
+            }
+            .tab-btn.active {
+                color: #e5e7eb;
+                border-bottom-color: #6366f1;
+            }
+            .tab-btn:hover:not(.active) {
+                color: #9ca3af;
+            }
+            .tab-panel {
+                display: none;
+            }
+            .tab-panel.active {
+                display: block;
+            }
             .search-container {
                 position: relative;
                 margin-bottom: 16px;
@@ -448,32 +559,213 @@ function renderContent(): HTMLElement {
             .list-view.hidden {
                 display: none;
             }
+            .registry-add-form {
+                display: none;
+                margin-bottom: 12px;
+                gap: 6px;
+            }
+            .registry-add-form.open {
+                display: flex;
+            }
+            .registry-url-input {
+                flex: 1;
+                padding: 7px 10px;
+                background: #2c313a;
+                border: 1px solid #444;
+                color: #e5e7eb;
+                border-radius: 6px;
+                font-size: 12px;
+                min-width: 0;
+            }
+            .registry-url-input:focus {
+                outline: none;
+                border-color: #6366f1;
+            }
+            .registry-url-input::placeholder {
+                color: #6b7280;
+            }
+            .registry-url-input:disabled {
+                opacity: 0.5;
+            }
+            .registry-add-btn {
+                padding: 7px 12px;
+                background: #6366f1;
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 12px;
+                white-space: nowrap;
+                transition: background 0.2s;
+            }
+            .registry-add-btn:hover:not(:disabled) {
+                background: #4f46e5;
+            }
+            .registry-add-btn:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+            .registry-section {
+                margin-bottom: 16px;
+            }
+            .registry-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            .registry-name {
+                font-size: 12px;
+                font-weight: 600;
+                color: #9ca3af;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                flex: 1;
+                min-width: 0;
+            }
+            .registry-remove-btn {
+                background: transparent;
+                border: none;
+                color: #6b7280;
+                cursor: pointer;
+                font-size: 16px;
+                line-height: 1;
+                padding: 0 4px;
+                transition: color 0.2s;
+                flex-shrink: 0;
+            }
+            .registry-remove-btn:hover {
+                color: #ef4444;
+            }
+            .registry-plugin-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 12px;
+                background: #2c313a;
+                border-radius: 6px;
+                border: 1px solid #374151;
+                margin-bottom: 6px;
+            }
+            .registry-plugin-info {
+                flex: 1;
+                min-width: 0;
+                margin-right: 8px;
+            }
+            .registry-plugin-name {
+                font-size: 13px;
+                color: #e5e7eb;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .registry-plugin-meta {
+                font-size: 11px;
+                color: #6b7280;
+                margin-top: 2px;
+            }
+            .registry-install-btn {
+                padding: 4px 10px;
+                background: #6366f1;
+                color: #fff;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                white-space: nowrap;
+                transition: background 0.2s;
+                flex-shrink: 0;
+            }
+            .registry-install-btn:hover:not(:disabled) {
+                background: #4f46e5;
+            }
+            .registry-install-btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+            .registry-install-btn.installed {
+                background: #374151;
+                color: #10b981;
+                cursor: default;
+            }
+            .registry-loading {
+                font-size: 12px;
+                color: #6b7280;
+                padding: 8px 0;
+                text-align: center;
+            }
+            .open-registry-btn {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 12px;
+                background: #2c313a;
+                border: 1px dashed #4b5563;
+                border-radius: 6px;
+                color: #9ca3af;
+                font-size: 13px;
+                cursor: pointer;
+                width: 100%;
+                transition: all 0.2s;
+                box-sizing: border-box;
+                margin-bottom: 12px;
+            }
+            .open-registry-btn:hover {
+                border-color: #6366f1;
+                color: #e5e7eb;
+            }
         </style>
-        <div class="list-view" id="list-view">
-            <div class="search-container">
-                <div class="search-icon">
-                    <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-                        <circle cx="6" cy="6" r="3" stroke="#6b7280" stroke-width="1.5" fill="none"/>
-                        <line x1="8.5" y1="8.5" x2="12" y2="12" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"/>
-                    </svg>
+
+        <div class="tab-bar">
+            <button class="tab-btn active" id="tab-installed">Installed</button>
+            <button class="tab-btn" id="tab-browse">Browse</button>
+        </div>
+
+        <div class="tab-panel active" id="panel-installed">
+            <div class="list-view" id="list-view">
+                <div class="search-container">
+                    <div class="search-icon">
+                        <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+                            <circle cx="6" cy="6" r="3" stroke="#6b7280" stroke-width="1.5" fill="none"/>
+                            <line x1="8.5" y1="8.5" x2="12" y2="12" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <input type="text" id="plugin-search" placeholder="Search plugins..." class="search-input">
                 </div>
-                <input type="text" id="plugin-search" placeholder="Search plugins..." class="search-input">
+                <div id="plugin-list" style="display: flex; flex-direction: column; gap: 8px;">
+                </div>
             </div>
-            <div id="plugin-list" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="config-view" id="config-view">
+                <div class="config-header">
+                    <div class="config-title" id="config-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15,18 9,12 15,6"></polyline>
+                        </svg>
+                        <span id="config-plugin-name"></span>
+                    </div>
+                    <div class="toggle-switch" id="config-toggle">
+                    </div>
+                </div>
+                <div id="config-content">
+                </div>
             </div>
         </div>
-        <div class="config-view" id="config-view">
-            <div class="config-header">
-                <div class="config-title" id="config-title">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="15,18 9,12 15,6"></polyline>
-                    </svg>
-                    <span id="config-plugin-name"></span>
-                </div>
-                <div class="toggle-switch" id="config-toggle">
-                </div>
+
+        <div class="tab-panel" id="panel-browse">
+            <button class="open-registry-btn" id="open-registry-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Add Registry
+            </button>
+            <div class="registry-add-form" id="registry-add-form">
+                <input type="text" class="registry-url-input" id="registry-url-input" placeholder="https://github.com/user/my-registry">
+                <button class="registry-add-btn" id="registry-confirm-btn">Add</button>
             </div>
-            <div id="config-content">
+            <div id="registry-list">
             </div>
         </div>
     `;
@@ -492,7 +784,193 @@ function renderContent(): HTMLElement {
         showListView();
     });
 
+    // Tab switching
+    const tabInstalled = container.querySelector('#tab-installed') as HTMLButtonElement;
+    const tabBrowse = container.querySelector('#tab-browse') as HTMLButtonElement;
+    const panelInstalled = container.querySelector('#panel-installed') as HTMLElement;
+    const panelBrowse = container.querySelector('#panel-browse') as HTMLElement;
+
+    tabInstalled.addEventListener('click', () => {
+        tabInstalled.classList.add('active');
+        tabBrowse.classList.remove('active');
+        panelInstalled.classList.add('active');
+        panelBrowse.classList.remove('active');
+    });
+
+    tabBrowse.addEventListener('click', () => {
+        tabBrowse.classList.add('active');
+        tabInstalled.classList.remove('active');
+        panelBrowse.classList.add('active');
+        panelInstalled.classList.remove('active');
+        renderRegistryList();
+    });
+
+    // Add Registry toggle
+    const openRegistryBtn = container.querySelector('#open-registry-btn') as HTMLButtonElement;
+    const registryAddForm = container.querySelector('#registry-add-form') as HTMLElement;
+    const registryUrlInput = container.querySelector('#registry-url-input') as HTMLInputElement;
+    const registryConfirmBtn = container.querySelector('#registry-confirm-btn') as HTMLButtonElement;
+
+    openRegistryBtn.addEventListener('click', () => {
+        registryAddForm.classList.toggle('open');
+        if (registryAddForm.classList.contains('open')) {
+            registryUrlInput.focus();
+        }
+    });
+
+    const doAddRegistry = async () => {
+        const url = registryUrlInput.value.trim();
+        if (!url) return;
+
+        registryUrlInput.disabled = true;
+        registryConfirmBtn.disabled = true;
+        registryConfirmBtn.textContent = 'Adding...';
+
+        try {
+            await addRegistry(url);
+            registryUrlInput.value = '';
+            registryAddForm.classList.remove('open');
+            renderRegistryList();
+        } catch (error) {
+            alert(`Failed to add registry: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            registryUrlInput.disabled = false;
+            registryConfirmBtn.disabled = false;
+            registryConfirmBtn.textContent = 'Add';
+        }
+    };
+
+    registryConfirmBtn.addEventListener('click', doAddRegistry);
+    registryUrlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doAddRegistry();
+    });
+
     return container;
+}
+
+async function addRegistry(repoUrl: string): Promise<void> {
+    // Validate by fetching the registry
+    await RegistryClient.fetchRegistry(repoUrl);
+
+    const registries = loadRegistries();
+    const normalizedUrl = repoUrl.replace(/\/$/, '');
+    if (!registries.includes(normalizedUrl)) {
+        registries.push(normalizedUrl);
+        saveRegistries(registries);
+    }
+}
+
+function removeRegistry(repoUrl: string): void {
+    const normalizedUrl = repoUrl.replace(/\/$/, '');
+    const registries = loadRegistries().filter(u => u !== normalizedUrl);
+    saveRegistries(registries);
+}
+
+async function renderRegistryList(): Promise<void> {
+    if (!sidebarContainer) return;
+
+    const registryListEl = sidebarContainer.querySelector('#registry-list') as HTMLElement;
+    if (!registryListEl) return;
+
+    const registries = loadRegistries();
+
+    if (registries.length === 0) {
+        registryListEl.innerHTML = `<div class="registry-loading">No registries added yet.</div>`;
+        return;
+    }
+
+    // Render skeleton sections first, then fill async
+    registryListEl.innerHTML = '';
+
+    // Snapshot installed plugins once so all registry renders see the same state
+    const installedPlugins = await customPluginStorage.getAllPlugins();
+
+    for (const repoUrl of registries) {
+        const section = document.createElement('div');
+        section.className = 'registry-section';
+        section.innerHTML = `
+            <div class="registry-header">
+                <span class="registry-name"></span>
+                <button class="registry-remove-btn" title="Remove registry">&times;</button>
+            </div>
+            <div class="registry-loading">Loading...</div>
+        `;
+        (section.querySelector('.registry-name') as HTMLElement).textContent = repoUrl;
+
+        const removeBtn = section.querySelector('.registry-remove-btn') as HTMLButtonElement;
+        removeBtn.addEventListener('click', () => {
+            removeRegistry(repoUrl);
+            section.remove();
+            const registryListEl2 = sidebarContainer?.querySelector('#registry-list') as HTMLElement;
+            if (registryListEl2 && registryListEl2.children.length === 0) {
+                registryListEl2.innerHTML = `<div class="registry-loading">No registries added yet.</div>`;
+            }
+        });
+
+        registryListEl.appendChild(section);
+
+        // Async load
+        RegistryClient.fetchRegistry(repoUrl).then(registry => {
+            const nameEl = section.querySelector('.registry-name') as HTMLElement;
+            nameEl.textContent = registry.name;
+            nameEl.title = repoUrl;
+
+            const loadingEl = section.querySelector('.registry-loading') as HTMLElement;
+            loadingEl.remove();
+
+            for (const plugin of registry.plugins) {
+                    const isInstalled = installedPlugins.has(plugin.name);
+                    const pluginEl = document.createElement('div');
+                    pluginEl.className = 'registry-plugin-item';
+
+                    const infoDiv = document.createElement('div');
+                    infoDiv.className = 'registry-plugin-info';
+
+                    const nameDiv = document.createElement('div');
+                    nameDiv.className = 'registry-plugin-name';
+                    nameDiv.textContent = plugin.displayName || plugin.name;
+
+                    const metaDiv = document.createElement('div');
+                    metaDiv.className = 'registry-plugin-meta';
+                    const metaParts = [`v${plugin.version}`];
+                    if (plugin.author) metaParts.push(plugin.author);
+                    if (plugin.description) metaParts.push(plugin.description);
+                    metaDiv.textContent = metaParts.join(' · ');
+
+                    infoDiv.appendChild(nameDiv);
+                    infoDiv.appendChild(metaDiv);
+
+                    const installBtn = document.createElement('button');
+                    installBtn.className = `registry-install-btn${isInstalled ? ' installed' : ''}`;
+                    installBtn.disabled = isInstalled;
+                    installBtn.textContent = isInstalled ? 'Installed' : 'Install';
+
+                    if (!isInstalled) {
+                        installBtn.addEventListener('click', async () => {
+                            installBtn.disabled = true;
+                            installBtn.textContent = 'Installing...';
+                            try {
+                                await installFromRegistry(repoUrl, plugin);
+                                installBtn.textContent = 'Installed';
+                                installBtn.classList.add('installed');
+                            } catch (error) {
+                                console.error('Failed to install plugin:', error);
+                                alert(`Install failed: ${error instanceof Error ? error.message : String(error)}`);
+                                installBtn.disabled = false;
+                                installBtn.textContent = 'Install';
+                            }
+                        });
+                    }
+
+                    pluginEl.appendChild(infoDiv);
+                    pluginEl.appendChild(installBtn);
+                    section.appendChild(pluginEl);
+                }
+        }).catch(error => {
+            const loadingEl = section.querySelector('.registry-loading') as HTMLElement;
+            loadingEl.textContent = `Failed to load registry: ${error instanceof Error ? error.message : String(error)}`;
+        });
+    }
 }
 
 async function togglePlugin(pluginName: string, toggleElement: HTMLElement) {
@@ -530,70 +1008,68 @@ function renderPluginList(): void {
     for (const pluginModule of pluginManager.getAvailablePlugins().sort((a, b) => (a.metadata.displayName || a.metadata.name).localeCompare(b.metadata.displayName || b.metadata.name))) {
         const pluginItem = document.createElement('div');
         pluginItem.className = 'plugin-item';
-        pluginItem.setAttribute('data-plugin-name', pluginModule.metadata.name.toLowerCase());
-        
-        const isPluginManager = pluginModule.metadata.name === 'Plugin Manager';
-        const isVoltexCore = pluginModule.metadata.name === 'Voltex';
+        const isPluginManager = pluginModule.metadata.name === '@voltex-viewer/manager-plugin';
+        const isVoltexCore = pluginModule.metadata.name === '@voltex-viewer/voltex';
         const canBeToggled = !isPluginManager && !isVoltexCore;
         const enabledPlugin = pluginManager!.getPlugins().find(p => p.metadata.name === pluginModule.metadata.name);
         const isEnabled = !!enabledPlugin;
         const hasConfig = pluginManager!.getConfigManager().hasConfig(pluginModule.metadata.name);
         const isCustomPlugin = customPluginNames.has(pluginModule.metadata.name);
         const displayName = pluginModule.metadata.displayName || pluginModule.metadata.name;
+        pluginItem.setAttribute('data-plugin-name', pluginModule.metadata.name.toLowerCase());
+        pluginItem.setAttribute('data-plugin-display-name', displayName.toLowerCase());
         const hasUpdate = availableUpdates.has(pluginModule.metadata.name);
         const updateVersion = availableUpdates.get(pluginModule.metadata.name);
         
-        pluginItem.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2c313a; border-radius: 6px; border: 1px solid #374151;">
-            <span style="color: #e5e7eb; font-weight: 400; font-size: 13px; display: flex; align-items: center; overflow: hidden; flex: 1; min-width: 0;">
-            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${displayName}</span>
-            </span>
-            <div style="display: flex; align-items: center;">
-            ${hasUpdate ? `
-            <div class="update-icon" data-plugin="${pluginModule.metadata.name}" title="Update available: v${updateVersion}">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
-                <path d="M8 1c.55 0 1 .45 1 1v5.59l1.29-1.29a1 1 0 111.41 1.41l-3 3a1 1 0 01-1.41 0l-3-3a1 1 0 111.41-1.41L7 7.59V2c0-.55.45-1 1-1z"/>
-                <rect x="2" y="11" width="12" height="3" rx="1.5"/>
-            </svg>
-            </div>
-            ` : ''}
-            ${hasConfig || isCustomPlugin ? `
-            <div class="config-button" data-plugin="${pluginModule.metadata.name}" title="Configure plugin">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
-            </svg>
-            </div>
-            ` : ''}
-            ${canBeToggled ? 
-            `<div class="toggle-switch ${isEnabled ? 'enabled' : ''}" data-plugin="${pluginModule.metadata.name}"></div>` :
-            `<div style="width: 40px;"></div>`
-            }
-            </div>
-            </div>
-        `;
+        const inner = document.createElement('div');
+        inner.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #2c313a; border-radius: 6px; border: 1px solid #374151;';
 
-        const toggleSwitch = pluginItem.querySelector('.toggle-switch') as HTMLElement;
-        if (toggleSwitch) {
-            toggleSwitch.addEventListener('click', () => {
-                return togglePlugin(pluginModule.metadata.name, toggleSwitch);
-            });
-        }
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'color: #e5e7eb; font-weight: 400; font-size: 13px; display: flex; align-items: center; overflow: hidden; flex: 1; min-width: 0;';
+        const nameInner = document.createElement('span');
+        nameInner.style.cssText = 'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+        nameInner.textContent = displayName;
+        nameSpan.appendChild(nameInner);
 
-        // Add update icon event listener
-        const updateIcon = pluginItem.querySelector('.update-icon') as HTMLElement;
-        if (updateIcon) {
+        const actionsDiv = document.createElement('div');
+        actionsDiv.style.cssText = 'display: flex; align-items: center;';
+
+        if (hasUpdate) {
+            const updateIcon = document.createElement('div');
+            updateIcon.className = 'update-icon';
+            updateIcon.setAttribute('title', `Update available: v${updateVersion}`);
+            updateIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none"><path d="M8 1c.55 0 1 .45 1 1v5.59l1.29-1.29a1 1 0 111.41 1.41l-3 3a1 1 0 01-1.41 0l-3-3a1 1 0 111.41-1.41L7 7.59V2c0-.55.45-1 1-1z"/><rect x="2" y="11" width="12" height="3" rx="1.5"/></svg>`;
             updateIcon.addEventListener('click', async () => {
-                await openPluginUpdate(pluginModule.metadata.name);
+                await autoUpdatePlugin(pluginModule.metadata.name);
             });
+            actionsDiv.appendChild(updateIcon);
         }
 
-        // Add config button event listener
-        const configButton = pluginItem.querySelector('.config-button') as HTMLElement;
-        if (configButton) {
+        if (hasConfig || isCustomPlugin) {
+            const configButton = document.createElement('div');
+            configButton.className = 'config-button';
+            configButton.setAttribute('title', 'Configure plugin');
+            configButton.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>`;
             configButton.addEventListener('click', () => {
                 showConfigView(pluginModule.metadata.name);
             });
+            actionsDiv.appendChild(configButton);
         }
+
+        if (canBeToggled) {
+            const toggleSwitch = document.createElement('div');
+            toggleSwitch.className = `toggle-switch${isEnabled ? ' enabled' : ''}`;
+            toggleSwitch.addEventListener('click', () => togglePlugin(pluginModule.metadata.name, toggleSwitch));
+            actionsDiv.appendChild(toggleSwitch);
+        } else {
+            const spacer = document.createElement('div');
+            spacer.style.width = '40px';
+            actionsDiv.appendChild(spacer);
+        }
+
+        inner.appendChild(nameSpan);
+        inner.appendChild(actionsDiv);
+        pluginItem.appendChild(inner);
 
         pluginListContainer.appendChild(pluginItem);
     }
@@ -606,7 +1082,8 @@ function filterPlugins(searchTerm: string): void {
     
     for (const item of pluginItems) {
         const pluginName = item.getAttribute('data-plugin-name') || '';
-        const shouldShow = pluginName.includes(searchTerm);
+        const pluginDisplayName = item.getAttribute('data-plugin-display-name') || '';
+        const shouldShow = pluginName.includes(searchTerm) || pluginDisplayName.includes(searchTerm);
         (item as HTMLElement).style.display = shouldShow ? 'block' : 'none';
     }
 }
@@ -633,14 +1110,14 @@ function showConfigView(pluginName: string): void {
     currentlyDisplayedPluginName = pluginName;
 
     const configSchema = pluginManager.getConfigManager().getConfigSchema(pluginName);
-    if (!configSchema) return;
+    const isCustomPlugin = customPluginNames.has(pluginName);
+    if (!configSchema && !isCustomPlugin) return;
 
     const pluginModule = pluginManager.getAvailablePlugins().find(p => p.metadata.name === pluginName);
     const displayName = pluginModule ? (pluginModule.metadata.displayName || pluginModule.metadata.name) : pluginName;
     const enabledPlugin = pluginManager.getPlugins().find(p => p.metadata.name === pluginName);
     const isEnabled = !!enabledPlugin;
-    const isCustomPlugin = customPluginNames.has(pluginName);
-    
+
     const listView = sidebarContainer.querySelector('#list-view') as HTMLElement;
     const configView = sidebarContainer.querySelector('#config-view') as HTMLElement;
     const configContent = sidebarContainer.querySelector('#config-content') as HTMLElement;
@@ -665,25 +1142,25 @@ function showConfigView(pluginName: string): void {
     // Clear previous config content
     configContent.innerHTML = '';
     
-    // Generate config UI
-    const configUI = ConfigUIGenerator.generateConfigUI(configSchema, {
-        onUpdate: (newConfig) => {
-            pluginManager!.getConfigManager().updateConfig(pluginName, newConfig);
-            if (context) {
-                context.requestRender();
+    // Generate config UI (only if schema exists)
+    if (configSchema) {
+        const configUI = ConfigUIGenerator.generateConfigUI(configSchema, {
+            onUpdate: (newConfig) => {
+                pluginManager!.getConfigManager().updateConfig(pluginName, newConfig);
+                if (context) {
+                    context.requestRender();
+                }
+            },
+            onReset: () => {
+                pluginManager!.getConfigManager().updateConfig(pluginName, configSchema.defaultConfig);
+                showConfigView(pluginName);
+                if (context) {
+                    context.requestRender();
+                }
             }
-        },
-        onReset: () => {
-            pluginManager!.getConfigManager().updateConfig(pluginName, configSchema.defaultConfig);
-            // Refresh the config view with default values
-            showConfigView(pluginName);
-            if (context) {
-                context.requestRender();
-            }
-        }
-    });
-
-    configContent.appendChild(configUI);
+        });
+        configContent.appendChild(configUI);
+    }
     
     // Add delete button for custom plugins
     if (isCustomPlugin) {
