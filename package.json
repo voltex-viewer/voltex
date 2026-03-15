@@ -41,7 +41,8 @@
     "eslint": "^9.36.0",
     "eslint-plugin-check-file": "^3.3.1",
     "eslint-plugin-import": "^2.32.0",
-    "puppeteer": "^24.39.0",
+    "jszip": "^3.10.1",
+    "puppeteer": "^24.39.1",
     "ts-node": "^10.9.2",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.48.0",
@@ -59,7 +60,6 @@
     "@voltex-viewer/plugin-api": "workspace:*",
     "electron-squirrel-startup": "^1.0.1",
     "fp-ts": "^2.16.11",
-    "io-ts": "^2.2.22",
-    "jszip": "^3.10.1"
+    "io-ts": "^2.2.22"
   }
 }

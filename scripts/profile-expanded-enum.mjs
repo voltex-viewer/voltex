@@ -55,11 +55,10 @@ async function loadPlugin(page, vxpkgPath) {
 
 async function runZoomCycles(page, centerX, centerY) {
     const delay = ms => new Promise(r => setTimeout(r, ms));
-    const pan = async (dx, steps = 100) => {
-        await page.mouse.move(centerX, centerY);
-        await page.mouse.down();
-        await page.mouse.move(centerX + dx, centerY, { steps });
-        await page.mouse.up();
+    const pan = async (key, holdMs = 500) => {
+        await page.keyboard.down(key);
+        await delay(holdMs);
+        await page.keyboard.up(key);
         await delay(100);
     };
     const zoom = async (deltaY, steps) => {
@@ -72,14 +71,20 @@ async function runZoomCycles(page, centerX, centerY) {
     await page.keyboard.press('f');
     await delay(500);
 
-    // Zoomed in - small pans
+    // Zoomed in - short pans
     await zoom(-200, ZOOM_STEPS);
     await delay(500);
-    await pan(30);
-    await pan(-30);
+    await pan('d', 300);
+    await pan('a', 300);
 
-    // Zoom out
-    await zoom(200, ZOOM_STEPS);
+    // Mid zoom - moderate pans
+    await zoom(200, Math.floor(ZOOM_STEPS / 2));
+    await delay(500);
+    await pan('d', 500);
+    await pan('a', 500);
+
+    // Zoom out fully
+    await zoom(200, Math.ceil(ZOOM_STEPS / 2));
     await delay(500);
 
     await page.keyboard.press('f');
@@ -87,9 +92,9 @@ async function runZoomCycles(page, centerX, centerY) {
 
     // Zoomed out - extensive panning (this is where perf issues occur)
     for (let i = 0; i < 3; i++) {
-        await pan(200, 30);
+        await pan('d', 800);
         await delay(300);
-        await pan(-200, 30);
+        await pan('a', 800);
         await delay(300);
     }
 }
