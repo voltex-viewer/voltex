@@ -1,6 +1,7 @@
 import { formatValueForDisplay, type RenderContext, type RenderBounds, type Signal, type SignalMetadata } from '@voltex-viewer/plugin-api';
 import type { ExpandedSegment } from './layout';
 import { topHeightRatio, trapezoidHeightRatio } from './animation';
+import { drawTruncatedText } from '../waveformRenderObject';
 
 export class ExpandedEnumTextRenderer {
     render(
@@ -36,7 +37,7 @@ export class ExpandedEnumTextRenderer {
             const segWidth = segEndX - segStartX;
             if (segWidth < padding * 2 + 10) continue;
 
-            let displayText = formatValueForDisplay(
+            const displayText = formatValueForDisplay(
                 "convertedValueAt" in signal.values
                     ? signal.values.convertedValueAt(seg.startBufferIndex)
                     : seg.value,
@@ -50,46 +51,7 @@ export class ExpandedEnumTextRenderer {
 
             if (availableWidth <= 0) continue;
 
-            const textMetrics = utils.measureText(displayText);
-            const textWidth = textMetrics.renderWidth;
-
-            if (textWidth > availableWidth) {
-                const availableForText = availableWidth - ellipsisWidth;
-                if (availableForText <= 0) continue;
-
-                const avgCharWidth = textWidth / displayText.length;
-                const estimatedLength = Math.floor(availableForText / avgCharWidth);
-
-                let left = Math.max(1, estimatedLength - 5);
-                let right = Math.min(displayText.length - 1, estimatedLength + 5);
-                let bestLength = 0;
-
-                while (left <= right) {
-                    const mid = Math.floor((left + right) / 2);
-                    const truncatedWidth = utils.measureText(displayText.substring(0, mid)).renderWidth;
-                    if (truncatedWidth <= availableForText) {
-                        bestLength = mid;
-                        left = mid + 1;
-                    } else {
-                        right = mid - 1;
-                    }
-                }
-
-                if (bestLength === 0) continue;
-                displayText = displayText.substring(0, bestLength) + '...';
-            }
-
-            utils.drawText(
-                displayText,
-                textX,
-                y,
-                { width: bounds.width, height: bounds.height },
-                {
-                    fillStyle: '#ffffff',
-                    strokeStyle: '#000000',
-                    strokeWidth: 2
-                }
-            );
+            drawTruncatedText(utils, displayText, textX, y, availableWidth, ellipsisWidth, bounds);
         }
     }
 

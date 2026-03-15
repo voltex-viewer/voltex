@@ -13,6 +13,7 @@ import {
     animationLerpFactor,
     ExpandedEnumResources,
 } from './expandedEnum';
+import { EnumRunIndex } from './enumRunIndex';
 
 export interface BufferData {
     timeHighBuffer: WebGLBuffer;
@@ -51,6 +52,7 @@ export default (context: PluginContext): void => {
 
     const buffers = new Map<Signal, SignalBufferData>();
     const dotOverlayBuffers = new Map<Signal, BufferData>();
+    const enumRunIndices = new Map<Signal, EnumRunIndex>();
     
     // Create shared instance geometry for line segments (2 triangles, 6 vertices)
     const segmentInstanceGeometry = new Float32Array([
@@ -116,7 +118,8 @@ export default (context: PluginContext): void => {
                 const metadata = context.signalMetadata.get(signal);
                 const mode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
                 bufferData.downsamplingMode = mode;
-                bufferData.generator = downsamplerFactories[mode](signal);
+                const index = enumRunIndices.get(signal);
+                bufferData.generator = downsamplerFactories[mode](index ? index.asSignal(signal) : signal);
                 bufferData.bufferLength = 0;
                 bufferData.overwriteNext = false;
             }
@@ -127,6 +130,17 @@ export default (context: PluginContext): void => {
         
         let anyBufferNeedsUpdate = false;
         const availableTime = Math.max(1, targetFrameTime - frameTimeOverhead);
+
+        for (const [signal, index] of enumRunIndices) {
+            const remainingTime = availableTime - (performance.now() - frameStartTime);
+            if (remainingTime <= 0) {
+                anyBufferNeedsUpdate = true;
+                break;
+            }
+            if (index.process(signal, 100000)) {
+                anyBufferNeedsUpdate = true;
+            }
+        }
 
         for (const [signal, bufferData] of buffers.entries()) {
             const remainingTime = availableTime - (performance.now() - frameStartTime);
@@ -321,6 +335,12 @@ export default (context: PluginContext): void => {
                     }
                     const metadata = context.signalMetadata.get(channel);
                     const downsamplingMode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
+                    let downsamplerSignal: Signal = channel;
+                    if (downsamplingMode === 'enum') {
+                        const index = new EnumRunIndex();
+                        enumRunIndices.set(channel, index);
+                        downsamplerSignal = index.asSignal(channel);
+                    }
                     buffers.set(channel, {
                         timeHighBuffer,
                         timeLowBuffer,
@@ -328,7 +348,7 @@ export default (context: PluginContext): void => {
                         downsamplingMode,
                         bufferCapacity: 0,
                         bufferLength: 0,
-                        generator: downsamplerFactories[downsamplingMode](channel),
+                        generator: downsamplerFactories[downsamplingMode](downsamplerSignal),
                         overwriteNext: false,
                     });
                 }
@@ -372,6 +392,7 @@ export default (context: PluginContext): void => {
                     row,
                     expandedEnumResources,
                     0,
+                    enumRunIndices.get(channel) ?? null,
                 );
                 enumRenderObjects.set(channel, enumRenderObject);
                 
@@ -485,6 +506,7 @@ export default (context: PluginContext): void => {
                 context.webgl.gl.deleteBuffer(bufferData.timeLowBuffer);
                 context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
                 buffers.delete(signal);
+                enumRunIndices.delete(signal);
             }
         }
         
