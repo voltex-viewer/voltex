@@ -28,6 +28,7 @@ interface CachedGroupData {
 
 const signalDataMap: Map<number, LoadedSignalData> = new Map();
 const groupCache: Map<MdfSignalGroup, CachedGroupData> = new Map();
+let signalId = 0;
 
 function createSharedBuffer(numberType: NumberType): SharedBuffer {
     switch (numberType) {
@@ -50,7 +51,6 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
             });
             
             const signals: SignalMetadata[] = [];
-            let signalId = 0;
             
             for (const group of mdfFile.getGroups()) {
                 for (const channelGroup of group.channelGroups) {
