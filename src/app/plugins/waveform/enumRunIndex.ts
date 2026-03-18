@@ -1,4 +1,4 @@
-import type { Signal, Sequence } from '@voltex-viewer/plugin-api';
+import type { Signal } from '@voltex-viewer/plugin-api';
 
 export class EnumRunIndex {
     private valuesArr = new Float32Array(1024);
@@ -84,44 +84,6 @@ export class EnumRunIndex {
         }
 
         return [startIdx, endIdx];
-    }
-
-    asSignal(rawSignal: Signal): Signal {
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
-        const self = this;
-
-        const timeSeq: Sequence = {
-            get min() { return rawSignal.time.min; },
-            get max() { return rawSignal.time.max; },
-            get length() { return self.count; },
-            valueAt: (i: number) => rawSignal.time.valueAt(this.startIndicesArr[i]),
-        };
-
-        const valuesSeq: Sequence = {
-            get min() { return rawSignal.values.min; },
-            get max() { return rawSignal.values.max; },
-            get length() { return self.count; },
-            valueAt: (i: number) => this.valuesArr[i],
-            convertedValueAt: (i: number) => {
-                return "convertedValueAt" in rawSignal.values
-                    ? rawSignal.values.convertedValueAt!(this.startIndicesArr[i])
-                    : this.valuesArr[i];
-            },
-        };
-
-        if ("null" in rawSignal.values) {
-            (valuesSeq as unknown as Record<string, unknown>).null = rawSignal.values.null;
-        }
-        if ("unit" in rawSignal.values && rawSignal.values.unit !== undefined) {
-            (valuesSeq as unknown as Record<string, unknown>).unit = rawSignal.values.unit;
-        }
-
-        return {
-            source: rawSignal.source,
-            time: timeSeq,
-            values: valuesSeq,
-            renderHint: rawSignal.renderHint,
-        };
     }
 
     private appendRun(value: number, startIndex: number, endIndex: number): void {

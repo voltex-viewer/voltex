@@ -118,8 +118,7 @@ export default (context: PluginContext): void => {
                 const metadata = context.signalMetadata.get(signal);
                 const mode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
                 bufferData.downsamplingMode = mode;
-                const index = enumRunIndices.get(signal);
-                bufferData.generator = downsamplerFactories[mode](index ? index.asSignal(signal) : signal);
+                bufferData.generator = downsamplerFactories[mode](signal);
                 bufferData.bufferLength = 0;
                 bufferData.overwriteNext = false;
             }
@@ -335,11 +334,8 @@ export default (context: PluginContext): void => {
                     }
                     const metadata = context.signalMetadata.get(channel);
                     const downsamplingMode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
-                    let downsamplerSignal: Signal = channel;
                     if (downsamplingMode === 'enum') {
-                        const index = new EnumRunIndex();
-                        enumRunIndices.set(channel, index);
-                        downsamplerSignal = index.asSignal(channel);
+                        enumRunIndices.set(channel, new EnumRunIndex());
                     }
                     buffers.set(channel, {
                         timeHighBuffer,
@@ -348,7 +344,7 @@ export default (context: PluginContext): void => {
                         downsamplingMode,
                         bufferCapacity: 0,
                         bufferLength: 0,
-                        generator: downsamplerFactories[downsamplingMode](downsamplerSignal),
+                        generator: downsamplerFactories[downsamplingMode](channel),
                         overwriteNext: false,
                     });
                 }
