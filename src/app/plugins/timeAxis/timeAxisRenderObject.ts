@@ -39,6 +39,10 @@ export class TimeAxisRenderObject {
         const { pxPerSecond, offset: startPx } = state;
         const gridSpacing = getGridSpacing(pxPerSecond);
         const pxPerGrid = gridSpacing * pxPerSecond;
+        if (pxPerGrid < 1) {
+            console.warn('timeAxisRenderObject: pxPerGrid < 1, skipping render', { pxPerGrid, pxPerSecond, gridSpacing });
+            return false;
+        }
         const unitInfo = this.getTimeUnitAndScale(gridSpacing);
         const leftGridPx = Math.floor(startPx / (pxPerSecond * gridSpacing)) * gridSpacing * pxPerSecond;
 

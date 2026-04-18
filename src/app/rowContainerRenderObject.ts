@@ -12,7 +12,8 @@ type ResizeState =
     | { type: 'time-offset'; startX: number; startTimeAtCursor: number; lastX: number; lastTime: number; velocity: number; startY: number; row: RowImpl | null; startYOffset: number; verticalDragActive: boolean }
     | { type: 'dragging-rows'; draggedRows: RowImpl[]; startY: number; offsetY: number; offsetX: number; insertIndex: number }
     | { type: 'potential-row-drag'; row: RowImpl; startX: number; startY: number; event: MouseEvent }
-    | { type: 'scrollbar'; startY: number; startOffset: number };
+    | { type: 'scrollbar'; startY: number; startOffset: number }
+    | { type: 'zoom-box'; startX: number; startY: number; currentX: number; currentY: number; mode: 'rectangle' | 'axis'; row: RowImpl | null };
 
 interface ViewTransform {
     time: number;
@@ -94,6 +95,15 @@ export class RowContainerRenderObject {
             () => this.setAutoFit(!this.autoFitButton.enabled)
         );
 
+        // Zoom box overlay
+        parent.addChild({
+            zIndex: 2500,
+            render: (context: RenderContext, bounds: RenderBounds): boolean => {
+                this.renderZoomBox(context, bounds);
+                return false;
+            }
+        });
+
         // Create a separate render object for the scrollbar
         parent.addChild({
             zIndex: 3000,
@@ -139,6 +149,23 @@ export class RowContainerRenderObject {
                     this.requestRender();
                     event.stopPropagation(); // Stop propagation to prevent row handlers from interfering
                     return { captureMouse: true, preventDefault: true };
+                } else if (event.altKey || event.ctrlKey) {
+                    const mouseXInViewport = event.clientX - this.labelWidth;
+                    if (mouseXInViewport < 0) return {};
+                    
+                    const hit = this.getRowAtY(event.clientY);
+                    this.resizeState = {
+                        type: 'zoom-box',
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        currentX: event.clientX,
+                        currentY: event.clientY,
+                        mode: event.altKey ? 'rectangle' : 'axis',
+                        row: hit?.row ?? null,
+                    };
+                    
+                    event.stopPropagation();
+                    return { captureMouse: true, allowMouseMoveThrough: true, preventDefault: true };
                 } else {
                     const mouseXInViewport = event.clientX - this.labelWidth;
                     if (mouseXInViewport < 0) return {};
@@ -242,6 +269,13 @@ export class RowContainerRenderObject {
                     };
                     
                     this.requestRender();
+                } else if (this.resizeState.type === 'zoom-box') {
+                    this.resizeState = {
+                        ...this.resizeState,
+                        currentX: event.clientX,
+                        currentY: event.clientY,
+                    };
+                    this.requestRender();
                 } else if (this.resizeState.type === 'dragging-rows') {
                     // Handle row dragging
                     const dragState = this.resizeState;
@@ -311,6 +345,11 @@ export class RowContainerRenderObject {
                 else if (this.resizeState.type === 'vertical') {
                     this.requestRender();
                     this.resizeState = { type: 'none' };
+                }
+                else if (this.resizeState.type === 'zoom-box') {
+                    this.applyZoomBox();
+                    this.resizeState = { type: 'none' };
+                    this.requestRender();
                 }
                 else if (this.resizeState.type === 'time-offset') {
                     const pxPerFrame = this.resizeState.velocity * 16.67;
@@ -1046,6 +1085,139 @@ export class RowContainerRenderObject {
         this.verticalScrollOffset = Math.max(0, Math.min(maxOffset, this.verticalScrollOffset));
     }
 
+    private getZoomBoxEffectiveMode(): 'horizontal' | 'vertical' | 'rectangle' {
+        if (this.resizeState.type !== 'zoom-box') return 'horizontal';
+        if (this.resizeState.mode === 'rectangle') return 'rectangle';
+        const dx = Math.abs(this.resizeState.currentX - this.resizeState.startX);
+        const dy = Math.abs(this.resizeState.currentY - this.resizeState.startY);
+        return dx >= dy ? 'horizontal' : 'vertical';
+    }
+
+    onKeyUp(key: string): void {
+        if (this.resizeState.type !== 'zoom-box') return;
+        if (key === 'Alt' || key === 'Control') {
+            this.resizeState = { type: 'none' };
+            this.requestRender();
+        }
+    }
+
+    private applyZoomBox(): void {
+        if (this.resizeState.type !== 'zoom-box') return;
+        const { startX, startY, currentX, currentY, row } = this.resizeState;
+        const mode = this.getZoomBoxEffectiveMode();
+
+        const viewportWidth = getAbsoluteBounds(this.renderObject).width - this.labelWidth;
+
+        if (mode === 'horizontal' || mode === 'rectangle') {
+            const x0 = Math.min(startX, currentX) - this.labelWidth;
+            const x1 = Math.max(startX, currentX) - this.labelWidth;
+            if (x1 - x0 > 0) {
+                const startTime = (this.state.offset + x0) / this.state.pxPerSecond;
+                const endTime = (this.state.offset + x1) / this.state.pxPerSecond;
+                const newPxPerSecond = Math.max(this.minPxPerSecond, Math.min(this.maxPxPerSecond, viewportWidth / (endTime - startTime)));
+                this.setAutoFit(false);
+                const anchorTime = (startTime + endTime) / 2;
+                const anchorScreenX = viewportWidth / 2;
+                this.animationTarget = {
+                    type: 'anchored',
+                    anchorTime,
+                    anchorScreenX,
+                    pxPerSecond: newPxPerSecond,
+                };
+                this.startUnifiedAnimation();
+            }
+        }
+
+        if ((mode === 'vertical' || mode === 'rectangle') && row) {
+            const y0 = Math.min(startY, currentY);
+            const y1 = Math.max(startY, currentY);
+            if (y1 - y0 > 0) {
+                let rowScreenY = -this.verticalScrollOffset;
+                for (const r of this.rows) {
+                    if (r === row) break;
+                    rowScreenY += r.height;
+                }
+                const normY0 = 1 - 2 * (y0 - rowScreenY) / row.height;
+                const normY1 = 1 - 2 * (y1 - rowScreenY) / row.height;
+                const rawTop = normY0 / row.yScale - row.yOffset;
+                const rawBottom = normY1 / row.yScale - row.yOffset;
+                const rawRange = rawTop - rawBottom;
+                if (rawRange > 0) {
+                    let valTop = rawTop, valBottom = rawBottom;
+                    for (let i = 0; i < 3; i++) {
+                        const b = row.getViewportBounds(2 / (valTop - valBottom));
+                        valTop = Math.min(rawTop, b.max);
+                        valBottom = Math.max(rawBottom, b.min);
+                    }
+                    const valRange = valTop - valBottom;
+                    if (valRange > 0) {
+                        const newYScale = 2 / valRange;
+                        const newYOffset = -(valTop + valBottom) / 2;
+                        row.verticalAutoFit = false;
+                        row.setViewport(newYOffset, newYScale);
+                    }
+                }
+            }
+        }
+    }
+
+    private renderZoomBox(context: RenderContext, bounds: RenderBounds): void {
+        if (this.resizeState.type !== 'zoom-box') return;
+        const { startX, startY, currentX, currentY } = this.resizeState;
+        if (Math.abs(currentX - startX) < 2 && Math.abs(currentY - startY) < 2) return;
+
+        const mode = this.getZoomBoxEffectiveMode();
+
+        let x0: number, y0: number, x1: number, y1: number;
+        if (mode === 'horizontal') {
+            x0 = Math.min(startX, currentX);
+            x1 = Math.max(startX, currentX);
+            y0 = 0;
+            y1 = bounds.height;
+        } else if (mode === 'vertical') {
+            x0 = this.labelWidth;
+            x1 = bounds.width;
+            y0 = Math.min(startY, currentY);
+            y1 = Math.max(startY, currentY);
+        } else {
+            x0 = Math.min(startX, currentX);
+            x1 = Math.max(startX, currentX);
+            y0 = Math.min(startY, currentY);
+            y1 = Math.max(startY, currentY);
+        }
+
+        const { gl, utils } = context.render;
+
+        // Filled rectangle
+        const fillVertices = new Float32Array([x0, y0, x1, y0, x0, y1, x1, y1]);
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, fillVertices, gl.STATIC_DRAW);
+
+        gl.useProgram(utils.line);
+        const posLoc = gl.getAttribLocation(utils.line, 'a_position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.uniform2f(gl.getUniformLocation(utils.line, 'u_bounds'), bounds.width, bounds.height);
+        gl.uniform2f(gl.getUniformLocation(utils.line, 'u_offset'), 0, 0);
+        gl.uniform1i(gl.getUniformLocation(utils.line, 'u_dashed'), 0);
+        gl.uniform4f(gl.getUniformLocation(utils.line, 'u_color'), 0.3, 0.5, 0.8, 0.3);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        // Border
+        const borderVertices = new Float32Array([
+            x0, y0, x1, y0,
+            x1, y0, x1, y1,
+            x1, y1, x0, y1,
+            x0, y1, x0, y0,
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, borderVertices, gl.STATIC_DRAW);
+        gl.uniform4f(gl.getUniformLocation(utils.line, 'u_color'), 0.4, 0.6, 0.9, 0.8);
+        gl.drawArrays(gl.LINES, 0, 8);
+
+        gl.deleteBuffer(buffer);
+    }
+
     private renderScrollbar(context: RenderContext, bounds: RenderBounds): void {
         const totalHeight = this.getTotalRowsHeight();
         const viewportHeight = bounds.height;
@@ -1187,21 +1359,21 @@ export class RowContainerRenderObject {
     }
 
     private setAutoFit(enabled: boolean): void {
+        if (enabled) {
+            this.rows.forEach(row => {
+                row.verticalAutoFit = true;
+                row.fitVertical();
+            });
+        }
         if (this.autoFitButton.enabled !== enabled) {
             this.autoFitButton.setAutoFit(enabled);
             if (enabled) {
-                // Set to current max time so we correctly detect real-time vs static
-                // on the next frame (only if max increases will it be real-time)
                 const range = this.getSignalTimeRange();
                 this.lastSignalMaxTime = range?.max ?? -Infinity;
-                this.rows.forEach(row => {
-                    row.verticalAutoFit = true;
-                    row.fitVertical();
-                });
             } else {
                 this.isRealTimeTracking = false;
             }
-            this.requestRender();
         }
+        this.requestRender();
     }
 }

@@ -15,6 +15,10 @@ export class GridRenderObject {
         
         const gridSpacing = getGridSpacing(state.pxPerSecond);
         const pxPerGrid = gridSpacing * state.pxPerSecond;
+        if (pxPerGrid < 1) {
+            console.warn('gridRenderObject: pxPerGrid < 1, skipping render', { pxPerGrid, pxPerSecond: state.pxPerSecond, gridSpacing });
+            return false;
+        }
         const startPx = state.offset;
         const subdivisions = 10;
         const firstMajorPx = Math.floor(startPx / pxPerGrid) * pxPerGrid;

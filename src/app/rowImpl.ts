@@ -92,18 +92,25 @@ export class RowImpl implements Row {
         this.setViewport(0, 0);
     }
 
+    private static readonly maxBlankFraction = 0.3;
+
+    getViewportBounds(yScale: number): { min: number; max: number } {
+        const range = this.maxY - this.minY;
+        const minFill = 1 - RowImpl.maxBlankFraction;
+        const fill = range * yScale / 2;
+        const blankFraction = RowImpl.maxBlankFraction * Math.min(1, Math.max(0, (fill - minFill) / RowImpl.maxBlankFraction));
+        const padding = 2 * blankFraction / yScale;
+        return { min: this.minY - padding, max: this.maxY + padding };
+    }
 
     setViewport(yOffset: number, yScale: number): void {
-        const maxBlankFraction = 0.3;
         const range = this.maxY - this.minY;
-        const minFill = 1 - maxBlankFraction;
+        const minFill = 1 - RowImpl.maxBlankFraction;
         const minYScale = range > 0 ? 2 * minFill / range : 1;
         this.yScale = Math.max(yScale, minYScale);
-        const fill = range * this.yScale / 2;
-        const blankFraction = maxBlankFraction * Math.min(1, Math.max(0, (fill - minFill) / maxBlankFraction));
-        const k = (1 - 2 * blankFraction) / this.yScale;
-        const minOffset = k - this.maxY;
-        const maxOffset = -k - this.minY;
+        const bounds = this.getViewportBounds(this.yScale);
+        const minOffset = 1 / this.yScale - bounds.max;
+        const maxOffset = -1 / this.yScale - bounds.min;
         if (minOffset > maxOffset) {
             this.yOffset = (minOffset + maxOffset) / 2;
         } else {

@@ -281,6 +281,10 @@ export class Renderer {
                 e.preventDefault();
             }
         });
+
+        this.canvas.addEventListener('keyup', (e) => {
+            this.rowContainer.onKeyUp(e.key);
+        });
     }
 
     private buildKeybindingString(event: KeyboardEvent): string {
