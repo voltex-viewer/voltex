@@ -9,7 +9,6 @@ import { createEnumDownsampler } from './downsamplers/enumDownsampler';
 import type { Downsampler } from './downsamplers/types';
 import { createRawDownsampler } from './downsamplers/rawDownsampler';
 import {
-    binarySearchTimeIndex,
     animationLerpFactor,
     ExpandedEnumResources,
 } from './expandedEnum';
@@ -404,8 +403,9 @@ export default (context: PluginContext): void => {
                         }
                         
                         // ExpandedEnum always expands, Enum uses heuristic
+                        const enumRunIndex = enumRunIndices.get(channel);
                         const shouldBeExpanded = metadata.renderMode === RenderMode.ExpandedEnum ||
-                            (config.enumExpansionEnabled && shouldUseExpandedMode(channel, ctx, bounds, expandedState.wasExpanded, config.minExpandedWidth));
+                            (config.enumExpansionEnabled && isEnumRunIndexReady(channel, enumRunIndex) && shouldUseExpandedMode(channel, ctx, bounds, expandedState.wasExpanded, config.minExpandedWidth, enumRunIndex));
                         
                         const targetProgress = shouldBeExpanded ? 1 : 0;
                         expandedState.wasExpanded = shouldBeExpanded;
@@ -522,70 +522,51 @@ function shouldUseExpandedMode(
     context: RenderContext,
     bounds: RenderBounds,
     wasExpanded: boolean,
-    minExpandedWidth: number
+    minExpandedWidth: number,
+    enumRunIndex: EnumRunIndex,
 ): boolean {
     const { state } = context;
     const startTime = state.offset / state.pxPerSecond;
     const endTime = (state.offset + bounds.width) / state.pxPerSecond;
-
-    const maxUpdateIndex = Math.min(signal.time.length, signal.values.length);
-    if (maxUpdateIndex === 0) return false;
-
-    const startIndex = binarySearchTimeIndex(signal, startTime, 0, maxUpdateIndex - 1, true);
-    const endIndex = binarySearchTimeIndex(signal, endTime, startIndex, maxUpdateIndex - 1, false);
 
     const maxTransitionsForExpansion = Math.floor(bounds.width / minExpandedWidth);
     const maxTransitionsHysteresis = 5;
     const maxPossibleThreshold = maxTransitionsForExpansion + maxTransitionsHysteresis;
 
     const nullValue = "null" in signal.values ? signal.values.null : null;
+
+    const [visibleRunStart, visibleRunEnd] = enumRunIndex.getVisibleRunRange(signal, startTime, endTime);
+
     let visibleTransitions = 0;
     let hasNarrowSegment = false;
+    const lastRun = enumRunIndex.runCount - 1;
 
-    let segStart = startIndex;
-    const firstValue = signal.values.valueAt(startIndex);
-    while (segStart > 0 && signal.values.valueAt(segStart - 1) === firstValue) {
-        segStart--;
-    }
+    for (let run = visibleRunStart; run <= visibleRunEnd; run++) {
+        const value = enumRunIndex.value(run);
+        const segmentStartTime = signal.time.valueAt(enumRunIndex.startIndex(run));
+        const segmentEndTime = run < lastRun
+            ? signal.time.valueAt(enumRunIndex.startIndex(run + 1))
+            : signal.time.valueAt(enumRunIndex.endIndex(run));
+        const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
+        const isNullSegment = nullValue !== null && value === nullValue;
 
-    let segmentStartTime = signal.time.valueAt(segStart);
-    let segmentValue = firstValue;
+        if (!isNullSegment && segmentWidth < minExpandedWidth) {
+            hasNarrowSegment = true;
+        }
 
-    for (let i = startIndex; i <= endIndex && i < maxUpdateIndex; i++) {
-        const val = signal.values.valueAt(i);
-        if (val !== segmentValue) {
-            const segmentEndTime = signal.time.valueAt(i);
-            const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
-            const isNullSegment = nullValue !== null && segmentValue === nullValue;
-            if (!isNullSegment && segmentWidth < minExpandedWidth) {
-                hasNarrowSegment = true;
-            }
-            
-            visibleTransitions++;
-            if (visibleTransitions > maxPossibleThreshold) {
-                return false;
-            }
-            
-            segmentStartTime = segmentEndTime;
-            segmentValue = val;
+        visibleTransitions++;
+        if (visibleTransitions > maxPossibleThreshold) {
+            return false;
         }
     }
 
-    // Find true end of last segment
-    let segEnd = endIndex;
-    while (segEnd + 1 < maxUpdateIndex && signal.values.valueAt(segEnd + 1) === segmentValue) {
-        segEnd++;
-    }
-    const segmentEndTime = segEnd + 1 < maxUpdateIndex 
-        ? signal.time.valueAt(segEnd + 1) 
-        : signal.time.valueAt(segEnd);
-    const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
-    const isNullSegment = nullValue !== null && segmentValue === nullValue;
-    if (!isNullSegment && segmentWidth < minExpandedWidth) {
-        hasNarrowSegment = true;
-    }
-    visibleTransitions++;
-
     const threshold = wasExpanded ? maxPossibleThreshold : maxTransitionsForExpansion;
     return visibleTransitions <= threshold && hasNarrowSegment;
+}
+
+function isEnumRunIndexReady(signal: Signal, enumRunIndex: EnumRunIndex | undefined): enumRunIndex is EnumRunIndex {
+    if (!enumRunIndex || enumRunIndex.runCount === 0) return false;
+
+    const maxUpdateIndex = Math.min(signal.time.length, signal.values.length);
+    return maxUpdateIndex > 0 && enumRunIndex.endIndex(enumRunIndex.runCount - 1) >= maxUpdateIndex - 1;
 }

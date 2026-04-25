@@ -1,4 +1,5 @@
 import type { Signal } from "@voltex-viewer/plugin-api";
+import type { EnumRunIndex } from '../enumRunIndex';
 
 export interface ExpandedSegment {
     startBufferIndex: number;
@@ -58,41 +59,47 @@ export function binarySearchTimeIndex(
 
 export function computeExpandedLayout(
     signal: Signal,
-    startIndex: number,
-    endIndex: number,
+    enumRunIndex: EnumRunIndex,
+    startRun: number,
+    endRun: number,
     pxPerSecond: number,
     offset: number,
     viewportCenterX: number,
     viewportWidth: number,
     minExpandedWidth: number
 ): ExpandedSegment[] {
-    const maxUpdateIndex = Math.min(signal.time.length, signal.values.length);
-    if (startIndex >= maxUpdateIndex) return [];
+    const runCount = enumRunIndex.runCount;
+    if (runCount === 0) return [];
+
+    const clampedStartRun = Math.max(0, Math.min(startRun, runCount - 1));
+    const clampedEndRun = Math.max(clampedStartRun, Math.min(endRun, runCount - 1));
 
     const maxSegmentsForViewport = Math.ceil(viewportWidth / minExpandedWidth) + 4;
     const centerTime = (viewportCenterX + offset) / pxPerSecond;
-    const centerIndex = binarySearchTimeIndex(signal, centerTime, startIndex, endIndex, true);
 
     const leftSegments: ExpandedSegment[] = [];
     const rightSegments: ExpandedSegment[] = [];
     let totalExtraNeeded = 0;
     let totalShrinkable = 0;
+    const lastRun = runCount - 1;
 
-    const createSegment = (segStartIdx: number, segEndIdx: number): ExpandedSegment | null => {
-        if (segStartIdx >= maxUpdateIndex || segEndIdx > maxUpdateIndex) return null;
-        
-        const actualEndIdx = Math.min(segEndIdx, maxUpdateIndex - 1);
-        
-        const value = signal.values.valueAt(segStartIdx);
+    const createSegmentFromRun = (runIdx: number): ExpandedSegment | null => {
+        if (runIdx < clampedStartRun || runIdx > clampedEndRun) return null;
+
+        const segStartIdx = enumRunIndex.startIndex(runIdx);
+        const segEndIdx = enumRunIndex.endIndex(runIdx);
+        const value = enumRunIndex.value(runIdx);
         const segmentStartTime = signal.time.valueAt(segStartIdx);
-        const segmentEndTime = signal.time.valueAt(actualEndIdx);
+        const segmentEndTime = runIdx < lastRun
+            ? signal.time.valueAt(enumRunIndex.startIndex(runIdx + 1))
+            : signal.time.valueAt(segEndIdx);
         const originalStartX = segmentStartTime * pxPerSecond - offset;
         const originalEndX = segmentEndTime * pxPerSecond - offset;
         const originalWidth = originalEndX - originalStartX;
 
         const seg: ExpandedSegment = {
             startBufferIndex: segStartIdx,
-            endBufferIndex: actualEndIdx,
+            endBufferIndex: segEndIdx,
             originalStartX,
             originalEndX,
             renderStartX: 0,
@@ -114,54 +121,59 @@ export function computeExpandedLayout(
         return seg;
     };
 
-    const adjustedCenterIndex = Math.min(centerIndex, maxUpdateIndex - 1);
-    if (adjustedCenterIndex < startIndex) return [];
+    let centerRun = clampedStartRun;
+    let left = clampedStartRun;
+    let right = clampedEndRun;
+    while (left <= right) {
+        const mid = (left + right) >>> 1;
+        const runStartTime = signal.time.valueAt(enumRunIndex.startIndex(mid));
+        const runEndTime = mid < lastRun
+            ? signal.time.valueAt(enumRunIndex.startIndex(mid + 1))
+            : signal.time.valueAt(enumRunIndex.endIndex(mid));
 
-    let currentSegStart = adjustedCenterIndex;
-    const centerValue = signal.values.valueAt(adjustedCenterIndex);
-    while (currentSegStart > startIndex && signal.values.valueAt(currentSegStart - 1) === centerValue) {
-        currentSegStart--;
+        if (centerTime < runStartTime) {
+            right = mid - 1;
+        } else if (centerTime > runEndTime) {
+            left = mid + 1;
+        } else {
+            centerRun = mid;
+            break;
+        }
     }
 
-    let currentSegEnd = adjustedCenterIndex + 1;
-    while (currentSegEnd < endIndex + 1 && currentSegEnd < maxUpdateIndex && signal.values.valueAt(currentSegEnd) === centerValue) {
-        currentSegEnd++;
+    if (left > right) {
+        centerRun = Math.max(clampedStartRun, Math.min(clampedEndRun, right));
     }
 
-    const centerSeg = createSegment(currentSegStart, currentSegEnd);
+    const centerSeg = createSegmentFromRun(centerRun);
     if (!centerSeg) return [];
     rightSegments.push(centerSeg);
 
-    let leftIdx = currentSegStart;
-    let rightIdx = currentSegEnd;
-    let canExpandLeft = leftIdx > startIndex;
-    let canExpandRight = rightIdx <= endIndex && rightIdx < maxUpdateIndex;
+    let leftRun = centerRun - 1;
+    let rightRun = centerRun + 1;
 
-    while ((canExpandLeft || canExpandRight) && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
-        if (canExpandLeft && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
-            leftIdx--;
-            const value = signal.values.valueAt(leftIdx);
-            let segStart = leftIdx;
-            while (segStart > startIndex && signal.values.valueAt(segStart - 1) === value) {
-                segStart--;
+    while (leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
+        let added = false;
+
+        if (leftRun >= clampedStartRun && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
+            const seg = createSegmentFromRun(leftRun);
+            if (seg) {
+                leftSegments.push(seg);
+                added = true;
             }
-            const seg = createSegment(segStart, leftIdx + 1);
-            if (seg) leftSegments.push(seg);
-            leftIdx = segStart;
-            canExpandLeft = leftIdx > startIndex;
+            leftRun--;
         }
 
-        if (canExpandRight && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
-            const value = signal.values.valueAt(rightIdx);
-            let segEnd = rightIdx + 1;
-            while (segEnd <= endIndex + 1 && segEnd < maxUpdateIndex && signal.values.valueAt(segEnd) === value) {
-                segEnd++;
+        if (rightRun <= clampedEndRun && leftSegments.length + rightSegments.length < maxSegmentsForViewport) {
+            const seg = createSegmentFromRun(rightRun);
+            if (seg) {
+                rightSegments.push(seg);
+                added = true;
             }
-            const seg = createSegment(rightIdx, segEnd);
-            if (seg) rightSegments.push(seg);
-            rightIdx = segEnd;
-            canExpandRight = rightIdx <= endIndex && rightIdx < maxUpdateIndex;
+            rightRun++;
         }
+
+        if (!added) break;
     }
 
     const segments = [...leftSegments.reverse(), ...rightSegments];

@@ -7,7 +7,6 @@ import {
     type ExpandedSegment,
     type ExpandedEnumResources,
     ExpandedEnumController,
-    binarySearchTimeIndex,
     borderWidth,
 } from './expandedEnum';
 import type { EnumRunIndex } from './enumRunIndex';
@@ -290,72 +289,43 @@ export class WaveformRenderObject {
         const baselineMetrics = utils.measureText('Ag');
         const y = (bounds.height - baselineMetrics.renderHeight) / 2;
 
-        if (this.enumRunIndex && this.enumRunIndex.runCount > 0) {
-            const [visStart, visEnd] = this.enumRunIndex.getVisibleRunRange(this.signal, startTime, endTime);
+        if (!this.enumRunIndex || this.enumRunIndex.runCount === 0) return;
 
-            // Collect renderable runs
-            type RunEntry = { runIdx: number; pxWidth: number; startX: number; endX: number };
-            const runs: RunEntry[] = [];
-            for (let r = visStart; r <= visEnd; r++) {
-                const rStartTime = this.signal.time.valueAt(this.enumRunIndex.startIndex(r));
-                const rEndIdx = this.enumRunIndex.endIndex(r);
-                const rEndTime = r + 1 < this.enumRunIndex.runCount
-                    ? this.signal.time.valueAt(this.enumRunIndex.startIndex(r + 1))
-                    : this.signal.time.valueAt(rEndIdx);
-                const startX = rStartTime * state.pxPerSecond - state.offset;
-                const endX = rEndTime * state.pxPerSecond - state.offset;
-                const pxWidth = endX - startX;
-                if (pxWidth >= minRenderableWidth) {
-                    runs.push({ runIdx: r, pxWidth, startX, endX });
-                }
+        const [visStart, visEnd] = this.enumRunIndex.getVisibleRunRange(this.signal, startTime, endTime);
+
+        // Collect renderable runs
+        type RunEntry = { runIdx: number; pxWidth: number; startX: number; endX: number };
+        const runs: RunEntry[] = [];
+        for (let r = visStart; r <= visEnd; r++) {
+            const rStartTime = this.signal.time.valueAt(this.enumRunIndex.startIndex(r));
+            const rEndIdx = this.enumRunIndex.endIndex(r);
+            const rEndTime = r + 1 < this.enumRunIndex.runCount
+                ? this.signal.time.valueAt(this.enumRunIndex.startIndex(r + 1))
+                : this.signal.time.valueAt(rEndIdx);
+            const startX = rStartTime * state.pxPerSecond - state.offset;
+            const endX = rEndTime * state.pxPerSecond - state.offset;
+            const pxWidth = endX - startX;
+            if (pxWidth >= minRenderableWidth) {
+                runs.push({ runIdx: r, pxWidth, startX, endX });
             }
+        }
 
-            runs.sort((a, b) => b.pxWidth - a.pxWidth);
+        runs.sort((a, b) => b.pxWidth - a.pxWidth);
 
-            for (const run of runs) {
-                const startIdx = this.enumRunIndex.startIndex(run.runIdx);
-                const value = this.enumRunIndex.value(run.runIdx);
-                const enumText = formatValueForDisplay(
-                    "convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt!(startIdx) : value,
-                    this.metadata.display
-                );
-                if (enumText === "null") continue;
+        for (const run of runs) {
+            const startIdx = this.enumRunIndex.startIndex(run.runIdx);
+            const value = this.enumRunIndex.value(run.runIdx);
+            const enumText = formatValueForDisplay(
+                "convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt!(startIdx) : value,
+                this.metadata.display
+            );
+            if (enumText === "null") continue;
 
-                const textX = Math.max(padding, run.startX + padding);
-                const availableWidth = Math.max(0, run.endX - textX - padding);
-                if (availableWidth <= 0) continue;
+            const textX = Math.max(padding, run.startX + padding);
+            const availableWidth = Math.max(0, run.endX - textX - padding);
+            if (availableWidth <= 0) continue;
 
-                drawTruncatedText(utils, enumText, textX, y, availableWidth, ellipsisWidth, bounds);
-            }
-        } else {
-            // Fallback: no index yet, use original linear scan
-            const maxUpdateIndex = Math.min(this.signal.time.length, this.signal.values.length);
-            const startIndex = binarySearchTimeIndex(this.signal, startTime, 0, maxUpdateIndex - 1, true);
-            const endIndex = binarySearchTimeIndex(this.signal, endTime, startIndex, maxUpdateIndex - 1, false);
-
-            for (let i = startIndex; i <= endIndex && i < maxUpdateIndex - 1; i++) {
-                const segmentStartTime = this.signal.time.valueAt(i);
-                const value = this.signal.values.valueAt(i);
-
-                let segmentEndTime = this.signal.time.valueAt(i + 1);
-                let j = i + 1;
-                while (j < maxUpdateIndex - 1 && this.signal.values.valueAt(j) === value) {
-                    segmentEndTime = this.signal.time.valueAt(j + 1);
-                    j++;
-                }
-                i = j - 1;
-
-                const enumText = formatValueForDisplay("convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt(i) : value, this.metadata.display);
-                if (enumText == "null") continue;
-
-                const segmentStartX = segmentStartTime * state.pxPerSecond - state.offset;
-                const segmentEndX = segmentEndTime * state.pxPerSecond - state.offset;
-                const textX = Math.max(padding, segmentStartX + padding);
-                const availableWidth = Math.max(0, segmentEndX - textX - padding);
-                if (availableWidth <= 0) continue;
-
-                drawTruncatedText(utils, enumText, textX, y, availableWidth, ellipsisWidth, bounds);
-            }
+            drawTruncatedText(utils, enumText, textX, y, availableWidth, ellipsisWidth, bounds);
         }
     }
 
@@ -408,6 +378,7 @@ export class WaveformRenderObject {
             this.expandedController = new ExpandedEnumController(
                 this.gl,
                 this.signal,
+                this.enumRunIndex,
                 this.config,
                 this.waveformPrograms,
                 this.expandedResources

@@ -1,10 +1,10 @@
 import type { RenderContext, RenderBounds, Signal, SignalMetadata } from '@voltex-viewer/plugin-api';
 import type { WaveformShaders } from '../waveformShaders';
 import type { WaveformConfig } from '../waveformConfig';
+import type { EnumRunIndex } from '../enumRunIndex';
 import {
     type ExpandedSegment,
     computeExpandedLayout,
-    binarySearchTimeIndex,
 } from './layout';
 import { ExpandedEnumAnimationState, topHeightRatio, trapezoidHeightRatio } from './animation';
 import { type ExpandedEnumResources } from './resources';
@@ -27,6 +27,7 @@ export class ExpandedEnumController {
     constructor(
         gl: WebGL2RenderingContext,
         private signal: Signal,
+        private enumRunIndex: EnumRunIndex | null,
         private config: WaveformConfig,
         shaders: WaveformShaders,
         resources: ExpandedEnumResources
@@ -45,49 +46,28 @@ export class ExpandedEnumController {
     update(context: RenderContext, bounds: RenderBounds): ExpandedEnumUpdateResult {
         const { state } = context;
 
+        if (!this.enumRunIndex || this.enumRunIndex.runCount === 0) {
+            this.currentSegments = [];
+            return { segments: this.currentSegments, needsRedraw: false };
+        }
+
+        const indexedLastRun = this.enumRunIndex.runCount - 1;
+
         const startTime = state.offset / state.pxPerSecond;
         const endTime = (state.offset + bounds.width) / state.pxPerSecond;
-
-        const maxUpdateIndex = Math.min(this.signal.time.length, this.signal.values.length);
-        let startIndex = binarySearchTimeIndex(this.signal, startTime, 0, maxUpdateIndex - 1, true);
-        let endIndex = binarySearchTimeIndex(this.signal, endTime, startIndex, maxUpdateIndex - 1, false);
+        const [visibleRunStart, visibleRunEnd] = this.enumRunIndex.getVisibleRunRange(this.signal, startTime, endTime);
 
         const maxTransitionsForExpansion = Math.floor(bounds.width / this.config.minExpandedWidth);
-        const extraSegments = Math.ceil(maxTransitionsForExpansion / 2);
-        
-        for (let e = 0; e < extraSegments && startIndex > 0; e++) {
-            const currentValue = this.signal.values.valueAt(startIndex);
-            while (startIndex > 0 && this.signal.values.valueAt(startIndex - 1) === currentValue) {
-                startIndex--;
-            }
-            if (startIndex > 0) {
-                startIndex--;
-                const newValue = this.signal.values.valueAt(startIndex);
-                while (startIndex > 0 && this.signal.values.valueAt(startIndex - 1) === newValue) {
-                    startIndex--;
-                }
-            }
-        }
-        
-        for (let e = 0; e < extraSegments && endIndex < maxUpdateIndex - 1; e++) {
-            const currentValue = this.signal.values.valueAt(endIndex);
-            while (endIndex < maxUpdateIndex - 1 && this.signal.values.valueAt(endIndex + 1) === currentValue) {
-                endIndex++;
-            }
-            if (endIndex < maxUpdateIndex - 1) {
-                endIndex++;
-                const newValue = this.signal.values.valueAt(endIndex);
-                while (endIndex < maxUpdateIndex - 1 && this.signal.values.valueAt(endIndex + 1) === newValue) {
-                    endIndex++;
-                }
-            }
-        }
+        const extraRuns = Math.ceil(maxTransitionsForExpansion / 2);
+        const startRun = Math.max(0, visibleRunStart - extraRuns);
+        const endRun = Math.min(indexedLastRun, visibleRunEnd + extraRuns);
 
         const viewportCenterX = bounds.width / 2;
         const segments = computeExpandedLayout(
             this.signal,
-            startIndex,
-            endIndex,
+            this.enumRunIndex,
+            startRun,
+            endRun,
             state.pxPerSecond,
             state.offset,
             viewportCenterX,
