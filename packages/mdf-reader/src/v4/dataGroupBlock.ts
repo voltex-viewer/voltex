@@ -2,7 +2,7 @@ import { Link, readBlock, MaybeLinked, GenericBlock, isNonNullLink, NonNullLink 
 import { DataTableBlock, deserializeDataTableBlock, readDataTableBlock, resolveDataTableOffset } from './dataTableBlock';
 import { DataListBlock, iterateDataListBlocks, resolveDataListOffset } from './dataListBlock';
 import { ChannelGroupBlock, resolveChannelGroupOffset } from './channelGroupBlock';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 import { deserializeHeaderListBlock, HeaderListBlock, resolveHeaderListOffset } from './headerListBlock';
 
@@ -25,20 +25,27 @@ export function deserializeDataGroupBlock(block: GenericBlock): DataGroupBlock<'
     };
 }
 
-export function serializeDataGroupBlock(view: DataView, context: SerializeContext, dataGroup: DataGroupBlock<'instanced'>): void {
-    view.setBigUint64(0, context.get(dataGroup.dataGroupNext), true);
-    view.setBigUint64(8, context.get(dataGroup.channelGroupFirst), true);
-    view.setBigUint64(16, context.get(dataGroup.data), true);
-    view.setBigUint64(24, context.get(dataGroup.comment), true);
-    view.setUint8(32, dataGroup.recordIdSize);
+const dataGroupBlockLength = 40;
+
+export async function serializeDataGroupBlock(write: SerializeWriteFunction, context: SerializeContext, dataGroup: DataGroupBlock<'instanced'>): Promise<void> {
+    await write({
+        size: dataGroupBlockLength,
+        fill: (view: DataView<ArrayBuffer>) => {
+            view.setBigUint64(0, context.get(dataGroup.dataGroupNext), true);
+            view.setBigUint64(8, context.get(dataGroup.channelGroupFirst), true);
+            view.setBigUint64(16, context.get(dataGroup.data), true);
+            view.setBigUint64(24, context.get(dataGroup.comment), true);
+            view.setUint8(32, dataGroup.recordIdSize);
+        },
+    });
 }
 
 export function resolveDataGroupOffset(context: SerializeContext, block: DataGroupBlock<'instanced'> | null) {
     return context.resolve(
-        block, 
+        block,
         {
             type: "##DG",
-            length: BigInt(40n),
+            length: BigInt(dataGroupBlockLength),
             linkCount: 4n,
         },
         serializeDataGroupBlock,

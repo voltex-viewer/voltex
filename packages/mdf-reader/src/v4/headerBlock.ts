@@ -1,7 +1,7 @@
 import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink } from './common';
 import { DataGroupBlock, resolveDataGroupOffset } from './dataGroupBlock';
 import { FileHistoryBlock, resolveFileHistoryOffset } from './fileHistoryBlock';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
 export interface Header<TMode extends 'linked' | 'instanced' = 'linked'> {
@@ -42,21 +42,28 @@ export function deserializeHeader(block: GenericBlock): Header {
     };
 }
 
-export function serializeHeader(view: DataView<ArrayBuffer>, context: SerializeContext, header: Header<'instanced'>): void {
-    view.setBigUint64(0, context.get(header.firstDataGroup), true);
-    view.setBigUint64(8, context.get(header.fileHistory), true);
-    view.setBigUint64(16, context.get(header.channelHierarchy), true);
-    view.setBigUint64(24, context.get(header.attachment), true);
-    view.setBigUint64(32, context.get(header.event), true);
-    view.setBigUint64(40, context.get(header.comment), true);
-    view.setBigUint64(48, header.startTime, true);
-    view.setUint16(56, header.timeZone, true);
-    view.setUint16(58, header.dstOffset, true);
-    view.setUint8(60, header.timeFlags);
-    view.setUint8(61, header.timeQuality);
-    view.setUint8(62, header.flags);
-    view.setBigUint64(64, header.startAngle, true);
-    view.setBigUint64(72, header.startDistance, true);
+const headerBlockLength = 80;
+
+export async function serializeHeader(write: SerializeWriteFunction, context: SerializeContext, header: Header<'instanced'>): Promise<void> {
+    await write({
+        size: headerBlockLength,
+        fill: (view: DataView<ArrayBuffer>) => {
+            view.setBigUint64(0, context.get(header.firstDataGroup), true);
+            view.setBigUint64(8, context.get(header.fileHistory), true);
+            view.setBigUint64(16, context.get(header.channelHierarchy), true);
+            view.setBigUint64(24, context.get(header.attachment), true);
+            view.setBigUint64(32, context.get(header.event), true);
+            view.setBigUint64(40, context.get(header.comment), true);
+            view.setBigUint64(48, header.startTime, true);
+            view.setUint16(56, header.timeZone, true);
+            view.setUint16(58, header.dstOffset, true);
+            view.setUint8(60, header.timeFlags);
+            view.setUint8(61, header.timeQuality);
+            view.setUint8(62, header.flags);
+            view.setBigUint64(64, header.startAngle, true);
+            view.setBigUint64(72, header.startDistance, true);
+        },
+    });
 }
 
 export function resolveHeaderOffset(context: SerializeContext, header: Header<'instanced'>): bigint {
@@ -64,7 +71,7 @@ export function resolveHeaderOffset(context: SerializeContext, header: Header<'i
         header,
         {
             type: "##HD",
-            length: 80n,
+            length: BigInt(headerBlockLength),
             linkCount: 6n,
         },
         serializeHeader,

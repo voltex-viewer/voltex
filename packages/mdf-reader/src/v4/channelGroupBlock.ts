@@ -1,7 +1,7 @@
 import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink, isNonNullLink } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelBlock, resolveChannelOffset } from './channelBlock';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
 export interface ChannelGroupBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
@@ -38,27 +38,34 @@ export function deserializeChannelGroupBlock(block: GenericBlock): ChannelGroupB
     };
 }
 
-export function serializeChannelGroupBlock(view: DataView, context: SerializeContext, block: ChannelGroupBlock<'instanced'>) {
-    view.setBigUint64(0, context.get(block.channelGroupNext), true);
-    view.setBigUint64(8, context.get(block.channelFirst), true);
-    view.setBigUint64(16, context.get(block.acquisitionName), true);
-    view.setBigUint64(24, context.get(block.acquisitionSource), true);
-    view.setBigUint64(32, context.get(block.sampleReductionFirst), true);
-    view.setBigUint64(40, context.get(block.comment), true);
-    view.setBigUint64(48, block.recordId, true);
-    view.setBigUint64(56, block.cycleCount, true);
-    view.setUint16(64, block.flags, true);
-    view.setUint16(66, block.pathSeparator, true);
-    view.setUint32(72, block.dataBytes, true);
-    view.setUint32(76, block.invalidationBytes, true);
+const channelGroupBlockLength = 80;
+
+export async function serializeChannelGroupBlock(write: SerializeWriteFunction, context: SerializeContext, block: ChannelGroupBlock<'instanced'>): Promise<void> {
+    await write({
+        size: channelGroupBlockLength,
+        fill: (view: DataView<ArrayBuffer>) => {
+            view.setBigUint64(0, context.get(block.channelGroupNext), true);
+            view.setBigUint64(8, context.get(block.channelFirst), true);
+            view.setBigUint64(16, context.get(block.acquisitionName), true);
+            view.setBigUint64(24, context.get(block.acquisitionSource), true);
+            view.setBigUint64(32, context.get(block.sampleReductionFirst), true);
+            view.setBigUint64(40, context.get(block.comment), true);
+            view.setBigUint64(48, block.recordId, true);
+            view.setBigUint64(56, block.cycleCount, true);
+            view.setUint16(64, block.flags, true);
+            view.setUint16(66, block.pathSeparator, true);
+            view.setUint32(72, block.dataBytes, true);
+            view.setUint32(76, block.invalidationBytes, true);
+        },
+    });
 }
 
 export function resolveChannelGroupOffset(context: SerializeContext, block: ChannelGroupBlock<'instanced'> | null) {
     return context.resolve(
-        block, 
+        block,
         {
             type: "##CG",
-            length: 80n,
+            length: BigInt(channelGroupBlockLength),
             linkCount: 6n,
         },
         serializeChannelGroupBlock,

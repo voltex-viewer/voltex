@@ -1,5 +1,5 @@
 import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink } from './common';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { MetadataBlock, resolveMetadataOffset } from './textBlock';
 import { BufferedFileReader } from '../bufferedFileReader';
 
@@ -24,16 +24,23 @@ export function deserializeFileHistoryBlock(block: GenericBlock): FileHistoryBlo
     };
 }
 
-export function serializeFileHistoryBlock(view: DataView<ArrayBuffer>, context: SerializeContext, fileHistory: FileHistoryBlock<'instanced'>): void {
-    view.setBigUint64(0, context.get(fileHistory.fileHistoryNext), true);
-    view.setBigUint64(8, context.get(fileHistory.comment), true);
-    view.setBigUint64(16, fileHistory.time, true);
-    view.setUint16(24, fileHistory.timeZone, true);
-    view.setUint16(26, fileHistory.dstOffset, true);
-    view.setUint8(28, fileHistory.timeFlags);
-    view.setUint8(29, 0);
-    view.setUint8(30, 0);
-    view.setUint8(31, 0);
+const fileHistoryBlockLength = 32;
+
+export async function serializeFileHistoryBlock(write: SerializeWriteFunction, context: SerializeContext, fileHistory: FileHistoryBlock<'instanced'>): Promise<void> {
+    await write({
+        size: fileHistoryBlockLength,
+        fill: (view: DataView<ArrayBuffer>) => {
+            view.setBigUint64(0, context.get(fileHistory.fileHistoryNext), true);
+            view.setBigUint64(8, context.get(fileHistory.comment), true);
+            view.setBigUint64(16, fileHistory.time, true);
+            view.setUint16(24, fileHistory.timeZone, true);
+            view.setUint16(26, fileHistory.dstOffset, true);
+            view.setUint8(28, fileHistory.timeFlags);
+            view.setUint8(29, 0);
+            view.setUint8(30, 0);
+            view.setUint8(31, 0);
+        },
+    });
 }
 
 export function resolveFileHistoryOffset(context: SerializeContext, block: FileHistoryBlock<'instanced'> | null) {
@@ -41,7 +48,7 @@ export function resolveFileHistoryOffset(context: SerializeContext, block: FileH
         block, 
         {
             type: "##FH",
-            length: BigInt(32n),
+            length: BigInt(fileHistoryBlockLength),
             linkCount: 2n,
         },
         serializeFileHistoryBlock,

@@ -1,5 +1,5 @@
 import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink } from './common';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 import { DataListBlock, resolveDataListOffset } from './dataListBlock';
 
@@ -17,16 +17,23 @@ export function deserializeHeaderListBlock(block: GenericBlock): HeaderListBlock
     };
 }
 
-export function serializeHeaderListBlock(view: DataView, context: SerializeContext, block: HeaderListBlock<'instanced'>): void {
-    view.setBigUint64(0, context.get(block.dataList), true);
-    view.setUint8(8, block.flags);
-    view.setUint8(9, block.algorithm);
-    view.setUint8(10, 0);
-    view.setUint8(11, 0);
-    view.setUint8(12, 0);
-    view.setUint8(13, 0);
-    view.setUint8(14, 0);
-    view.setUint8(15, 0);
+const headerListBlockLength = 16;
+
+export async function serializeHeaderListBlock(write: SerializeWriteFunction, context: SerializeContext, block: HeaderListBlock<'instanced'>): Promise<void> {
+    await write({
+        size: headerListBlockLength,
+        fill: (view: DataView<ArrayBuffer>) => {
+            view.setBigUint64(0, context.get(block.dataList), true);
+            view.setUint8(8, block.flags);
+            view.setUint8(9, block.algorithm);
+            view.setUint8(10, 0);
+            view.setUint8(11, 0);
+            view.setUint8(12, 0);
+            view.setUint8(13, 0);
+            view.setUint8(14, 0);
+            view.setUint8(15, 0);
+        },
+    });
 }
 
 export function resolveHeaderListOffset(context: SerializeContext, block: HeaderListBlock<'instanced'>) {
@@ -34,7 +41,7 @@ export function resolveHeaderListOffset(context: SerializeContext, block: Header
         block, 
         {
             type: "##HL",
-            length: 16n,
+            length: BigInt(headerListBlockLength),
             linkCount: 1n,
         },
         serializeHeaderListBlock,

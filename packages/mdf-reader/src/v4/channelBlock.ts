@@ -1,7 +1,7 @@
 import { Link, NonNullLink, isNonNullLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelConversionBlock, resolveChannelConversionOffset } from './channelConversionBlock';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
 export enum DataType {
@@ -89,40 +89,47 @@ export function deserializeChannelBlock(block: GenericBlock): ChannelBlock<'link
     };
 }
 
-export function serializeChannelBlock(view: DataView, context: SerializeContext, block: ChannelBlock<'instanced'>) {
-    view.setBigUint64(0, context.get(block.channelNext), true);
-    view.setBigUint64(8, context.get(block.component), true);
-    view.setBigUint64(16, context.get(block.txName), true);
-    view.setBigUint64(24, context.get(block.siSource), true);
-    view.setBigUint64(32, context.get(block.conversion), true);
-    view.setBigUint64(40, context.get(block.data), true);
-    view.setBigUint64(48, context.get(block.unit), true);
-    view.setBigUint64(56, context.get(block.comment), true);
+const channelBlockLength = 136;
 
-    view.setUint8(64, block.channelType);
-    view.setUint8(65, block.syncType);
-    view.setUint8(66, block.dataType);
-    view.setUint8(67, block.bitOffset);
-    view.setUint32(68, block.byteOffset, true);
-    view.setUint32(72, block.bitCount, true);
-    view.setUint32(76, block.flags, true);
-    view.setUint32(80, block.invalidationBitPosition, true);
-    view.setUint8(84, block.precision);
-    view.setUint16(86, block.attachmentCount, true);
-    view.setFloat64(88, block.valueRangeMinimum, true);
-    view.setFloat64(96, block.valueRangeMaximum, true);
-    view.setFloat64(104, block.limitMinimum, true);
-    view.setFloat64(112, block.limitMaximum, true);
-    view.setFloat64(120, block.limitExtendedMinimum, true);
-    view.setFloat64(128, block.limitExtendedMaximum, true);
+export async function serializeChannelBlock(write: SerializeWriteFunction, context: SerializeContext, block: ChannelBlock<'instanced'>): Promise<void> {
+    await write({
+        size: channelBlockLength,
+        fill: (view: DataView<ArrayBuffer>) => {
+            view.setBigUint64(0, context.get(block.channelNext), true);
+            view.setBigUint64(8, context.get(block.component), true);
+            view.setBigUint64(16, context.get(block.txName), true);
+            view.setBigUint64(24, context.get(block.siSource), true);
+            view.setBigUint64(32, context.get(block.conversion), true);
+            view.setBigUint64(40, context.get(block.data), true);
+            view.setBigUint64(48, context.get(block.unit), true);
+            view.setBigUint64(56, context.get(block.comment), true);
+
+            view.setUint8(64, block.channelType);
+            view.setUint8(65, block.syncType);
+            view.setUint8(66, block.dataType);
+            view.setUint8(67, block.bitOffset);
+            view.setUint32(68, block.byteOffset, true);
+            view.setUint32(72, block.bitCount, true);
+            view.setUint32(76, block.flags, true);
+            view.setUint32(80, block.invalidationBitPosition, true);
+            view.setUint8(84, block.precision);
+            view.setUint16(86, block.attachmentCount, true);
+            view.setFloat64(88, block.valueRangeMinimum, true);
+            view.setFloat64(96, block.valueRangeMaximum, true);
+            view.setFloat64(104, block.limitMinimum, true);
+            view.setFloat64(112, block.limitMaximum, true);
+            view.setFloat64(120, block.limitExtendedMinimum, true);
+            view.setFloat64(128, block.limitExtendedMaximum, true);
+        },
+    });
 }
 
 export function resolveChannelOffset(context: SerializeContext, block: ChannelBlock<'instanced'> | null) {
     return context.resolve(
-        block, 
+        block,
         {
             type: "##CN",
-            length: 136n,
+            length: BigInt(channelBlockLength),
             linkCount: 8n,
         },
         serializeChannelBlock,

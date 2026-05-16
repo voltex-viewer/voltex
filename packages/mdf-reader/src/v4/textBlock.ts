@@ -1,5 +1,5 @@
 import { Link, readBlock, GenericBlock, NonNullLink } from './common';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
 export interface TextBlock {
@@ -22,16 +22,20 @@ export function deserializeMetadataBlock(block: GenericBlock): MetadataBlock {
     return deserializeTextBlock(block);
 }
 
-export function serializeTextBlock(view: DataView<ArrayBuffer>, _context: SerializeContext, block: TextBlock): void {
-    const arr = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-    
+export async function serializeTextBlock(write: SerializeWriteFunction, _context: SerializeContext, block: TextBlock): Promise<void> {
     const encoded = new TextEncoder().encode(block.data);
-    arr.set(encoded, 0);
-    arr.set([0], Math.min(encoded.length, arr.byteLength - 1));
+    await write({
+        size: encoded.byteLength + 1,
+        fill: (view: DataView<ArrayBuffer>) => {
+            const arr = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+            arr.set(encoded, 0);
+            arr[arr.byteLength - 1] = 0;
+        },
+    });
 }
 
-export function serializeMetadataBlock(view: DataView<ArrayBuffer>, context: SerializeContext, block: MetadataBlock): void {
-    return serializeTextBlock(view, context, block);
+export async function serializeMetadataBlock(write: SerializeWriteFunction, context: SerializeContext, block: MetadataBlock): Promise<void> {
+    await serializeTextBlock(write, context, block);
 }
 
 export async function readTextBlock(link: NonNullLink<TextBlock>, reader: BufferedFileReader): Promise<TextBlock>;

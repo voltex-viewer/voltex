@@ -289,4 +289,46 @@ describe('mdfFile v4', () => {
         expect(timeData!.buffer).toEqual([0, 1, 2]);
         expect(signalData!.buffer).toEqual([10, 20, 30]);
     });
+
+    it('benchmark: read 1 signal from group with 100 channels', async () => {
+        const rowCount = 10_000;
+        const channelCount = 100;
+        const values = Array.from({ length: rowCount }, (_, i) => i * 0.01);
+
+        const file = await createMdf4File([
+            {
+                name: 'BenchGroup',
+                channels: [
+                    { name: 'Time', type: 'time', dataType: DataType.FloatLe, bitCount: 32, values },
+                    ...Array.from({ length: channelCount - 1 }, (_, i) => ({
+                        name: `Signal${i}`,
+                        type: 'signal' as const,
+                        dataType: DataType.FloatLe,
+                        bitCount: 32,
+                        values,
+                    })),
+                ],
+            },
+        ]);
+
+        const mdf = await openMdfFile(file);
+        const groups = mdf.getGroups();
+        const targetSignal = groups[0].signals.find(s => s.name === 'Signal0')!;
+        const timeSignal = groups[0].signals.find(s => s.channelType === ChannelType.Time)!;
+
+        const start = performance.now();
+        await mdf.read(groups, {
+            createBuffer: (sig) => {
+                if (sig !== targetSignal && sig !== timeSignal) return null;
+                const arr: number[] = [];
+                return { push: (v: number | bigint) => arr.push(Number(v)), getBuffer: () => arr, length: () => arr.length };
+            },
+        });
+        const duration = performance.now() - start;
+
+        console.log(`Read 1/${channelCount} signals, ${rowCount} rows: ${duration.toFixed(1)} ms`);
+        expect(duration).toBeGreaterThan(0);
+    });
 });
+
+

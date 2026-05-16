@@ -1,5 +1,5 @@
 import { Link, readBlock, GenericBlock, NonNullLink } from './common';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
 export interface DataTableBlock {
@@ -80,10 +80,8 @@ export async function deserializeDataTableBlock(block: GenericBlock): Promise<Da
     }
 }
 
-export function serializeDataTableBlock(view: DataView, _context: SerializeContext, block: DataTableBlock): void {
-    for (let i = 0; i < block.data.byteLength; i++) {
-        view.setUint8(i, block.data.getUint8(i));
-    }
+export async function serializeDataTableBlock(write: SerializeWriteFunction, _context: SerializeContext, block: DataTableBlock): Promise<void> {
+    await write(new Uint8Array(block.data.buffer, block.data.byteOffset, block.data.byteLength));
 }
 
 export function resolveDataTableOffset(context: SerializeContext, block: DataTableBlock) {

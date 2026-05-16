@@ -1,6 +1,6 @@
 import { Link, NonNullLink, readBlock, MaybeLinked, GenericBlock, isNonNullLink } from './common';
 import { DataTableBlock, resolveDataTableOffset } from './dataTableBlock';
-import { SerializeContext } from './serializer';
+import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
 export interface DataListBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
@@ -21,28 +21,37 @@ export function deserializeDataListBlock(block: GenericBlock): LinkedDataListBlo
     };
 }
 
-export function serializeDataListBlock(view: DataView, context: SerializeContext, block: DataListBlock<'instanced'>): void {
-    view.setBigUint64(0, context.get(block.dataListNext), true);
-    for (let i = 0; i < block.data.length; i++) {
-        view.setBigUint64((i + 1) * 8, context.get(block.data[i]), true);
-    }
-    let viewOffset = (block.data.length + 1) * 8;
-    view.setUint8(viewOffset, block.flags);
-    viewOffset += 1;
-    view.setUint8(viewOffset, 0);
-    viewOffset += 1;
-    view.setUint8(viewOffset, 0);
-    viewOffset += 1;
-    view.setUint8(viewOffset, 0);
-    viewOffset += 1;
-    view.setUint32(viewOffset, block.data.length, true);
-    viewOffset += 4;
-    let offset = 0n;
-    for (let i = 0; i < block.data.length; i++) {
-        view.setBigUint64(viewOffset, offset, true);
-        viewOffset += 8;
-        offset += BigInt(block.data[i].data.byteLength);
-    }
+function getDataListBlockLength(block: DataListBlock<'instanced'>): number {
+    return 16 + block.data.length * 16;
+}
+
+export async function serializeDataListBlock(write: SerializeWriteFunction, context: SerializeContext, block: DataListBlock<'instanced'>): Promise<void> {
+    await write({
+        size: getDataListBlockLength(block),
+        fill: (view: DataView<ArrayBuffer>) => {
+            view.setBigUint64(0, context.get(block.dataListNext), true);
+            for (let i = 0; i < block.data.length; i++) {
+                view.setBigUint64((i + 1) * 8, context.get(block.data[i]), true);
+            }
+            let viewOffset = (block.data.length + 1) * 8;
+            view.setUint8(viewOffset, block.flags);
+            viewOffset += 1;
+            view.setUint8(viewOffset, 0);
+            viewOffset += 1;
+            view.setUint8(viewOffset, 0);
+            viewOffset += 1;
+            view.setUint8(viewOffset, 0);
+            viewOffset += 1;
+            view.setUint32(viewOffset, block.data.length, true);
+            viewOffset += 4;
+            let offset = 0n;
+            for (let i = 0; i < block.data.length; i++) {
+                view.setBigUint64(viewOffset, offset, true);
+                viewOffset += 8;
+                offset += BigInt(block.data[i].data.byteLength);
+            }
+        },
+    });
 }
 
 export function resolveDataListOffset(context: SerializeContext, block: DataListBlock<'instanced'>) {
@@ -50,7 +59,7 @@ export function resolveDataListOffset(context: SerializeContext, block: DataList
         block, 
         {
             type: "##DL",
-            length: 16n + BigInt(block.data.length) * 16n,
+            length: BigInt(getDataListBlockLength(block)),
             linkCount: 1n + BigInt(block.data.length),
         },
         serializeDataListBlock,
