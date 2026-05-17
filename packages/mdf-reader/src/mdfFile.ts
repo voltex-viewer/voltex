@@ -4,7 +4,7 @@ import { SerializableConversionData } from './conversion';
 import * as v3 from './v3';
 import * as v4 from './v4';
 
-export interface MdfSignal {
+export interface MdfChannel {
     readonly name: string;
     readonly channelType: ChannelType;
     readonly numberType: NumberType;
@@ -13,12 +13,13 @@ export interface MdfSignal {
 }
 
 export interface MdfChannelGroup {
-    readonly signals: MdfSignal[];
+    readonly name: string | null;
+    readonly channels: MdfChannel[];
+    readonly rowCount: number;
 }
 
-export interface MdfSignalGroup {
+export interface MdfDataGroup {
     readonly channelGroups: MdfChannelGroup[];
-    readonly signals: MdfSignal[];
 }
 
 export interface GrowableBuffer<TBuffer> {
@@ -27,15 +28,8 @@ export interface GrowableBuffer<TBuffer> {
     length(): number;
 }
 
-export interface SignalData<TBuffer = Float64Array | BigInt64Array | BigUint64Array> {
-    signal: MdfSignal;
-    buffer: TBuffer;
-    length: number;
-}
-
-export interface ReadOptions<TBuffer = Float64Array | BigInt64Array | BigUint64Array> {
-    onProgress?: (data: SignalData<TBuffer>[][]) => void;
-    createBuffer?: (signal: MdfSignal, numberType: NumberType) => GrowableBuffer<TBuffer>;
+export interface ReadOptions {
+    onProgress?: () => void;
 }
 
 export interface OpenOptions {
@@ -45,8 +39,11 @@ export interface OpenOptions {
 export interface MdfFile {
     readonly filename: string;
     readonly version: number;
-    getGroups(): MdfSignalGroup[];
-    read<TBuffer = Float64Array | BigInt64Array | BigUint64Array>(groups: MdfSignalGroup[], options?: ReadOptions<TBuffer>): Promise<SignalData<TBuffer>[][]>;
+    getGroups(): MdfDataGroup[];
+    read(
+        channels: Array<{ channel: MdfChannel; buffer: { push(value: number | bigint): void } }>,
+        options?: ReadOptions
+    ): Promise<void>;
 }
 
 interface LazySignal {
@@ -62,20 +59,22 @@ interface CachedGroup {
     dgLink: v3.Link<v3.DataGroupBlock> | v4.Link<v4.DataGroupBlock>;
 }
 
-class MdfSignalImpl implements MdfSignal {
+class MdfChannelImpl implements MdfChannel {
     readonly name: string;
     readonly channelType: ChannelType;
     readonly numberType: NumberType;
     readonly lazy: LazySignal;
+    readonly channelGroup: MdfChannelGroupImpl;
     private mdf: MdfFileImpl;
     private cachedConversion: SerializableConversionData | null = null;
 
-    constructor(lazy: LazySignal, mdf: MdfFileImpl) {
+    constructor(lazy: LazySignal, mdf: MdfFileImpl, channelGroup: MdfChannelGroupImpl) {
         this.name = lazy.name;
         this.channelType = lazy.channelType;
         this.numberType = getNumberType(lazy.channel);
         this.lazy = lazy;
         this.mdf = mdf;
+        this.channelGroup = channelGroup;
     }
 
     async getConversion(): Promise<SerializableConversionData> {
@@ -95,112 +94,24 @@ class MdfSignalImpl implements MdfSignal {
 }
 
 class MdfChannelGroupImpl implements MdfChannelGroup {
-    readonly signals: MdfSignalImpl[] = [];
+    readonly channels: MdfChannelImpl[] = [];
+
+    constructor(
+        public readonly dataGroup: MdfDataGroupImpl,
+        public readonly name: string | null,
+        public readonly rowCount: number,
+    ) {}
 }
 
-class MdfSignalGroupImpl implements MdfSignalGroup {
+class MdfDataGroupImpl implements MdfDataGroup {
     readonly channelGroups: MdfChannelGroupImpl[] = [];
-    
-    constructor(public cachedGroup: CachedGroup) {}
-
-    get signals(): MdfSignalImpl[] {
-        return this.channelGroups.flatMap(cg => cg.signals);
-    }
-}
-
-class Float64GrowableBuffer implements GrowableBuffer<Float64Array> {
-    private buffer: Float64Array;
-    private len = 0;
-
-    constructor(initialSize: number) {
-        this.buffer = new Float64Array(initialSize);
-    }
-
-    push(value: number | bigint): void {
-        if (this.len >= this.buffer.length) {
-            const newBuffer = new Float64Array(this.buffer.length * 2);
-            newBuffer.set(this.buffer);
-            this.buffer = newBuffer;
-        }
-        this.buffer[this.len++] = value as number;
-    }
-
-    getBuffer(): Float64Array {
-        return this.buffer;
-    }
-
-    length(): number {
-        return this.len;
-    }
-}
-
-class BigInt64GrowableBuffer implements GrowableBuffer<BigInt64Array> {
-    private buffer: BigInt64Array;
-    private len = 0;
-
-    constructor(initialSize: number) {
-        this.buffer = new BigInt64Array(initialSize);
-    }
-
-    push(value: number | bigint): void {
-        if (this.len >= this.buffer.length) {
-            const newBuffer = new BigInt64Array(this.buffer.length * 2);
-            newBuffer.set(this.buffer);
-            this.buffer = newBuffer;
-        }
-        this.buffer[this.len++] = value as bigint;
-    }
-
-    getBuffer(): BigInt64Array {
-        return this.buffer;
-    }
-
-    length(): number {
-        return this.len;
-    }
-}
-
-class BigUint64GrowableBuffer implements GrowableBuffer<BigUint64Array> {
-    private buffer: BigUint64Array;
-    private len = 0;
-
-    constructor(initialSize: number) {
-        this.buffer = new BigUint64Array(initialSize);
-    }
-
-    push(value: number | bigint): void {
-        if (this.len >= this.buffer.length) {
-            const newBuffer = new BigUint64Array(this.buffer.length * 2);
-            newBuffer.set(this.buffer);
-            this.buffer = newBuffer;
-        }
-        this.buffer[this.len++] = value as bigint;
-    }
-
-    getBuffer(): BigUint64Array {
-        return this.buffer;
-    }
-
-    length(): number {
-        return this.len;
-    }
-}
-
-type DefaultGrowableBuffer = Float64GrowableBuffer | BigInt64GrowableBuffer | BigUint64GrowableBuffer;
-
-function createDefaultGrowableBuffer(numberType: NumberType): DefaultGrowableBuffer {
-    const initalBufferSize = 1024;
-    switch (numberType) {
-        case NumberType.BigInt64: return new BigInt64GrowableBuffer(initalBufferSize);
-        case NumberType.BigUint64: return new BigUint64GrowableBuffer(initalBufferSize);
-        default: return new Float64GrowableBuffer(initalBufferSize);
-    }
+    cachedGroup: CachedGroup = null!;
 }
 
 class MdfFileImpl implements MdfFile {
     readonly filename: string;
     readonly version: number;
-    private groups: MdfSignalGroupImpl[] = [];
+    private dataGroups: MdfDataGroupImpl[] = [];
     private reader: BufferedFileReader;
 
     private constructor(reader: BufferedFileReader) {
@@ -242,27 +153,27 @@ class MdfFileImpl implements MdfFile {
         let dgLink = header.firstDataGroup as v3.Link<v3.DataGroupBlock>;
         let totalSignalCount = 0;
         let lastProgressUpdate = 0;
-        
+
         while (v3.isNonNullLink(dgLink)) {
             const dgBlockLink = dgLink;
             const dgBlock = await v3.readDataGroupBlock(dgBlockLink, this.reader);
-            
+
             const abstractGroups: AbstractGroup[] = [];
-            const channelGroupImpls: MdfChannelGroupImpl[] = [];
+            const dgImpl = new MdfDataGroupImpl();
             let totalRows = 0;
-            
+
             for await (const channelGroup of v3.iterateChannelGroupBlocks(dgBlock.channelGroupFirst, this.reader)) {
                 totalRows += channelGroup.numberOfRecords;
                 const groupChannels: AbstractChannel[] = [];
-                const cgImpl = new MdfChannelGroupImpl();
-                
+                const cgImpl = new MdfChannelGroupImpl(dgImpl, null, channelGroup.numberOfRecords);
+
                 for await (const channel of v3.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
                     const name = channel.longName && v3.isNonNullLink(channel.longName)
                         ? (await v3.readTextBlock(channel.longName, this.reader))?.data ?? channel.name
                         : channel.name;
-                    const channelType = channel.channelType === 1 ? ChannelType.Time : 
+                    const channelType = channel.channelType === 1 ? ChannelType.Time :
                                         channel.channelType === 0 ? ChannelType.Signal : ChannelType.Unknown;
-                    
+
                     const abstractChannel: AbstractChannel = {
                         name: [this.filename, name],
                         type: channelType,
@@ -272,7 +183,7 @@ class MdfFileImpl implements MdfFile {
                         bitCount: channel.bitCount,
                     };
                     groupChannels.push(abstractChannel);
-                    
+
                     const lazy: LazySignal = {
                         name,
                         channelType,
@@ -280,7 +191,7 @@ class MdfFileImpl implements MdfFile {
                         conversionLink: v3.getLink(channel.conversion),
                         unitLink: 0,
                     };
-                    cgImpl.signals.push(new MdfSignalImpl(lazy, this));
+                    cgImpl.channels.push(new MdfChannelImpl(lazy, this, cgImpl));
 
                     if (onProgress) {
                         totalSignalCount++;
@@ -291,9 +202,9 @@ class MdfFileImpl implements MdfFile {
                         }
                     }
                 }
-                
-                channelGroupImpls.push(cgImpl);
-                
+
+                dgImpl.channelGroups.push(cgImpl);
+
                 abstractGroups.push({
                     recordId: Number(channelGroup.recordId),
                     dataBytes: channelGroup.dataBytes + (dgBlock.recordIdType === 2 ? 1 : 0),
@@ -301,14 +212,13 @@ class MdfFileImpl implements MdfFile {
                     channels: groupChannels,
                 });
             }
-            
-            const group = new MdfSignalGroupImpl({
+
+            dgImpl.cachedGroup = {
                 dataGroup: { recordIdSize: dgBlock.recordIdType === 0 ? 0 : 1, totalRows, groups: abstractGroups },
                 dgLink: dgBlockLink,
-            });
-            group.channelGroups.push(...channelGroupImpls);
-            
-            this.groups.push(group);
+            };
+
+            this.dataGroups.push(dgImpl);
             dgLink = dgBlock.dataGroupNext;
         }
 
@@ -324,25 +234,26 @@ class MdfFileImpl implements MdfFile {
         let dgLink = header.firstDataGroup as v4.Link<v4.DataGroupBlock>;
         let totalSignalCount = 0;
         let lastProgressUpdate = 0;
-        
+
         while (v4.isNonNullLink(dgLink)) {
             const dgBlockLink = dgLink;
             const dgBlock = await v4.readDataGroupBlock(dgBlockLink, this.reader);
-            
+
             const abstractGroups: AbstractGroup[] = [];
-            const channelGroupImpls: MdfChannelGroupImpl[] = [];
-            
+            const dgImpl = new MdfDataGroupImpl();
+
             for await (const channelGroup of v4.iterateChannelGroupBlocks(dgBlock.channelGroupFirst, this.reader)) {
+                const cgName = (await v4.readTextBlock(channelGroup.acquisitionName, this.reader))?.data ?? null;
                 const groupChannels: AbstractChannel[] = [];
-                const cgImpl = new MdfChannelGroupImpl();
-                
+                const cgImpl = new MdfChannelGroupImpl(dgImpl, cgName, Number(channelGroup.cycleCount));
+
                 for await (const channel of v4.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
-                    const name = (await v4.readTextBlock(channel.txName, this.reader))?.data ?? "";
-                    const channelType = channel.channelType === 2 ? ChannelType.Time : 
+                    const channelName = (await v4.readTextBlock(channel.txName, this.reader))?.data ?? "";
+                    const channelType = channel.channelType === 2 ? ChannelType.Time :
                                         channel.channelType === 0 ? ChannelType.Signal : ChannelType.Unknown;
-                    
+
                     const abstractChannel: AbstractChannel = {
-                        name: [this.filename, name],
+                        name: [this.filename, channelName],
                         type: channelType,
                         dataType: this.mdf4TypeToDataType(channel.dataType),
                         byteOffset: channel.byteOffset,
@@ -350,15 +261,15 @@ class MdfFileImpl implements MdfFile {
                         bitCount: channel.bitCount,
                     };
                     groupChannels.push(abstractChannel);
-                    
+
                     const lazy: LazySignal = {
-                        name,
+                        name: channelName,
                         channelType,
                         channel: abstractChannel,
                         conversionLink: v4.getLink(channel.conversion as v4.Link<unknown>),
                         unitLink: v4.getLink(channel.unit as v4.Link<unknown>),
                     };
-                    cgImpl.signals.push(new MdfSignalImpl(lazy, this));
+                    cgImpl.channels.push(new MdfChannelImpl(lazy, this, cgImpl));
 
                     if (onProgress) {
                         totalSignalCount++;
@@ -369,9 +280,9 @@ class MdfFileImpl implements MdfFile {
                         }
                     }
                 }
-                
-                channelGroupImpls.push(cgImpl);
-                
+
+                dgImpl.channelGroups.push(cgImpl);
+
                 abstractGroups.push({
                     recordId: Number(channelGroup.recordId),
                     dataBytes: channelGroup.dataBytes,
@@ -379,14 +290,13 @@ class MdfFileImpl implements MdfFile {
                     channels: groupChannels,
                 });
             }
-            
-            const group = new MdfSignalGroupImpl({
+
+            dgImpl.cachedGroup = {
                 dataGroup: { recordIdSize: dgBlock.recordIdSize, groups: abstractGroups },
                 dgLink: dgBlockLink,
-            });
-            group.channelGroups.push(...channelGroupImpls);
-            
-            this.groups.push(group);
+            };
+
+            this.dataGroups.push(dgImpl);
             dgLink = dgBlock.dataGroupNext as v4.Link<v4.DataGroupBlock>;
         }
 
@@ -528,59 +438,45 @@ class MdfFileImpl implements MdfFile {
         }
     }
 
-    getGroups(): MdfSignalGroup[] {
-        return this.groups;
+    getGroups(): MdfDataGroup[] {
+        return this.dataGroups;
     }
 
-    async read<TBuffer = Float64Array | BigInt64Array | BigUint64Array>(groups: MdfSignalGroup[], options?: ReadOptions<TBuffer>): Promise<SignalData<TBuffer>[][]> {
-        const createBuffer = options?.createBuffer ?? ((_signal: MdfSignal, numberType: NumberType) => createDefaultGrowableBuffer(numberType)) as unknown as (signal: MdfSignal, numberType: NumberType) => GrowableBuffer<TBuffer>;
-        
-        const results: SignalData<TBuffer>[][] = groups.map(group => 
-            group.signals.map(signal => ({
-                signal,
-                buffer: undefined as unknown as TBuffer,
-                length: 0,
-            }))
-        );
+    async read(
+        channels: Array<{ channel: MdfChannel; buffer: { push(value: number | bigint): void } }>,
+        options?: ReadOptions
+    ): Promise<void> {
+        // Group requests by their parent data group so each data group is read in one pass
+        const byDataGroup = new Map<MdfDataGroupImpl, Array<{ abstractChannel: AbstractChannel; buffer: { push(value: number | bigint): void } }>>();
 
-        for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
-            const group = groups[groupIdx] as MdfSignalGroupImpl;
-            const signals = group.signals;
-            if (signals.length === 0) continue;
-
-            const { dataGroup, dgLink } = group.cachedGroup;
-
-            const buffers = new Map<AbstractChannel, { growable: GrowableBuffer<TBuffer>; signalIdx: number }>();
-
-            for (let signalIdx = 0; signalIdx < signals.length; signalIdx++) {
-                const signalImpl = signals[signalIdx];
-                const channel = signalImpl.lazy.channel;
-                const numberType = getNumberType(channel);
-                buffers.set(channel, {
-                    growable: createBuffer(signalImpl, numberType),
-                    signalIdx,
-                });
+        for (const { channel, buffer } of channels) {
+            const channelImpl = channel as MdfChannelImpl;
+            const dgImpl = channelImpl.channelGroup.dataGroup;
+            if (!byDataGroup.has(dgImpl)) {
+                byDataGroup.set(dgImpl, []);
             }
+            byDataGroup.get(dgImpl)!.push({ abstractChannel: channelImpl.lazy.channel, buffer });
+        }
 
+        for (const [dgImpl, requests] of byDataGroup) {
+            const { dataGroup, dgLink } = dgImpl.cachedGroup;
+
+            // Build sequences map; same AbstractChannel with multiple buffers -> combined pusher
             const sequences = new Map<AbstractChannel, { push(value: number | bigint): void }>();
-            const noop = { push: () => {} };
-            
-            for (const [channel, { growable }] of buffers) {
-                sequences.set(channel, growable);
-            }
-
-            for (const g of dataGroup.groups) {
-                for (const channel of g.channels) {
-                    if (!sequences.has(channel)) {
-                        sequences.set(channel, noop);
-                    }
+            for (const { abstractChannel, buffer } of requests) {
+                const existing = sequences.get(abstractChannel);
+                if (existing) {
+                    const prev = existing;
+                    sequences.set(abstractChannel, { push: (v) => { prev.push(v); buffer.push(v); } });
+                } else {
+                    sequences.set(abstractChannel, buffer);
                 }
             }
 
             const getDataBlocks = async () => {
                 if (this.version >= 400 && this.version < 500) {
                     const dgBlock = await v4.readDataGroupBlock(dgLink as v4.Link<v4.DataGroupBlock>, this.reader);
-                    return dgBlock !== null ?  v4.getDataBlocks(dgBlock, this.reader) : Promise.resolve((async function* () {})());
+                    return dgBlock !== null ? v4.getDataBlocks(dgBlock, this.reader) : Promise.resolve((async function* () {})());
                 } else {
                     const dgBlock = await v3.readDataGroupBlock(dgLink as v3.Link<v3.DataGroupBlock>, this.reader);
                     return dgBlock !== null ? v3.getDataBlocks(dgBlock, this.reader) : Promise.resolve((async function* () {})());
@@ -588,25 +484,8 @@ class MdfFileImpl implements MdfFile {
             };
 
             const loader = new DataGroupLoader(dataGroup, getDataBlocks);
-            
-            const updateResults = () => {
-                for (const [, { growable, signalIdx }] of buffers) {
-                    results[groupIdx][signalIdx].buffer = growable.getBuffer();
-                    results[groupIdx][signalIdx].length = growable.length();
-                }
-            };
-
-            await loader.loadInto(sequences, options?.onProgress ? {
-                onProgress: () => {
-                    updateResults();
-                    options.onProgress!(results);
-                },
-            } : undefined);
-
-            updateResults();
+            await loader.loadInto(sequences, options);
         }
-
-        return results;
     }
 }
 

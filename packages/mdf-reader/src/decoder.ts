@@ -84,9 +84,7 @@ export class DataGroupLoader {
             const channelSequences = [];
             for (const channel of group.channels) {
                 const sequence = sequences.get(channel);
-                if (!sequence) {
-                    throw new Error(`No sequence provided for channel ${channel.name.join('.')}`);
-                }
+                if (!sequence) continue;
                 channelSequences.push({
                     sequence,
                     loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),

@@ -138,6 +138,14 @@ async function createMdf4File(groups: { name: string; channels: { name: string; 
     return new File([result], 'test.mf4', { type: 'application/octet-stream' });
 }
 
+function makeBuffer() {
+    const values: number[] = [];
+    return {
+        push: (v: number | bigint) => { values.push(Number(v)); },
+        get values() { return values; },
+    };
+}
+
 describe('mdfFile v4', () => {
     it('should open a v4 file and read groups', async () => {
         const file = await createMdf4File([
@@ -158,16 +166,16 @@ describe('mdfFile v4', () => {
         const groups = mdf.getGroups();
         expect(groups.length).toBe(1);
 
-        const signals = groups[0].signals;
-        expect(signals.length).toBe(2);
+        const channels = groups[0].channelGroups[0].channels;
+        expect(channels.length).toBe(2);
 
-        const timeSignal = signals.find(s => s.channelType === ChannelType.Time);
-        const valueSignal = signals.find(s => s.channelType === ChannelType.Signal);
+        const timeChannel = channels.find(c => c.channelType === ChannelType.Time);
+        const valueChannel = channels.find(c => c.channelType === ChannelType.Signal);
 
-        expect(timeSignal).toBeDefined();
-        expect(valueSignal).toBeDefined();
-        expect(timeSignal!.name).toBe('Time');
-        expect(valueSignal!.name).toBe('Signal1');
+        expect(timeChannel).toBeDefined();
+        expect(valueChannel).toBeDefined();
+        expect(timeChannel!.name).toBe('Time');
+        expect(valueChannel!.name).toBe('Signal1');
     });
 
     it('should read signal data', async () => {
@@ -186,23 +194,24 @@ describe('mdfFile v4', () => {
 
         const mdf = await openMdfFile(file);
         const groups = mdf.getGroups();
+        const channels = groups[0].channelGroups[0].channels;
 
-        const result = await mdf.read(groups);
+        const timeChannel = channels.find(c => c.name === 'Time')!;
+        const voltageChannel = channels.find(c => c.name === 'Voltage')!;
+        const timeBuf = makeBuffer();
+        const voltageBuf = makeBuffer();
 
-        expect(result.length).toBe(1);
-        expect(result[0].length).toBe(2);
+        await mdf.read([
+            { channel: timeChannel, buffer: timeBuf },
+            { channel: voltageChannel, buffer: voltageBuf },
+        ]);
 
-        const timeData = result[0].find(d => d.signal.name === 'Time');
-        const voltageData = result[0].find(d => d.signal.name === 'Voltage');
-
-        expect(timeData).toBeDefined();
-        expect(voltageData).toBeDefined();
-        expect(timeData!.length).toBe(5);
-        expect(voltageData!.length).toBe(5);
+        expect(timeBuf.values.length).toBe(5);
+        expect(voltageBuf.values.length).toBe(5);
 
         for (let i = 0; i < 5; i++) {
-            expect(timeData!.buffer[i]).toBeCloseTo(timeValues[i]);
-            expect(voltageData!.buffer[i]).toBeCloseTo(signalValues[i]);
+            expect(timeBuf.values[i]).toBeCloseTo(timeValues[i]);
+            expect(voltageBuf.values[i]).toBeCloseTo(signalValues[i]);
         }
     });
 
@@ -229,8 +238,15 @@ describe('mdfFile v4', () => {
 
         expect(groups.length).toBe(2);
 
-        const result = await mdf.read(groups);
-        expect(result.length).toBe(2);
+        const allChannels = groups.flatMap(dg => dg.channelGroups.flatMap(cg => cg.channels));
+        const bufs = new Map(allChannels.map(ch => [ch, makeBuffer()]));
+
+        await mdf.read(allChannels.map(ch => ({ channel: ch, buffer: bufs.get(ch)! })));
+
+        const s1Buf = bufs.get(allChannels.find(c => c.name === 'S1')!)!;
+        const s2Buf = bufs.get(allChannels.find(c => c.name === 'S2')!)!;
+        expect(s1Buf.values.length).toBe(2);
+        expect(s2Buf.values.length).toBe(3);
     });
 
     it('should call onProgress during file loading', async () => {
@@ -254,7 +270,7 @@ describe('mdfFile v4', () => {
         expect(progressCalled).toBe(true);
     });
 
-    it('should use custom buffer factory', async () => {
+    it('should read channels into caller-provided buffers', async () => {
         const file = await createMdf4File([
             {
                 name: 'Group1',
@@ -266,28 +282,18 @@ describe('mdfFile v4', () => {
         ]);
 
         const mdf = await openMdfFile(file);
-        const groups = mdf.getGroups();
+        const channels = mdf.getGroups()[0].channelGroups[0].channels;
 
-        let bufferCreated = false;
-        const result = await mdf.read<number[]>(groups, {
-            createBuffer: () => {
-                bufferCreated = true;
-                const arr: number[] = [];
-                return {
-                    push: (v: number | bigint) => arr.push(Number(v)),
-                    getBuffer: () => arr,
-                    length: () => arr.length,
-                };
-            },
-        });
+        const timeBuf = makeBuffer();
+        const signalBuf = makeBuffer();
 
-        expect(bufferCreated).toBe(true);
-        expect(Array.isArray(result[0][0].buffer)).toBe(true);
-        
-        const timeData = result[0].find(d => d.signal.name === 'Time');
-        const signalData = result[0].find(d => d.signal.name === 'Signal');
-        expect(timeData!.buffer).toEqual([0, 1, 2]);
-        expect(signalData!.buffer).toEqual([10, 20, 30]);
+        await mdf.read([
+            { channel: channels.find(c => c.name === 'Time')!, buffer: timeBuf },
+            { channel: channels.find(c => c.name === 'Signal')!, buffer: signalBuf },
+        ]);
+
+        expect(timeBuf.values).toEqual([0, 1, 2]);
+        expect(signalBuf.values).toEqual([10, 20, 30]);
     });
 
     it('benchmark: read 1 signal from group with 100 channels', async () => {
@@ -312,23 +318,21 @@ describe('mdfFile v4', () => {
         ]);
 
         const mdf = await openMdfFile(file);
-        const groups = mdf.getGroups();
-        const targetSignal = groups[0].signals.find(s => s.name === 'Signal0')!;
-        const timeSignal = groups[0].signals.find(s => s.channelType === ChannelType.Time)!;
+        const channels = mdf.getGroups()[0].channelGroups[0].channels;
+        const targetChannel = channels.find(c => c.name === 'Signal0')!;
+        const timeChannel = channels.find(c => c.channelType === ChannelType.Time)!;
+
+        const timeBuf = makeBuffer();
+        const targetBuf = makeBuffer();
 
         const start = performance.now();
-        await mdf.read(groups, {
-            createBuffer: (sig) => {
-                if (sig !== targetSignal && sig !== timeSignal) return null;
-                const arr: number[] = [];
-                return { push: (v: number | bigint) => arr.push(Number(v)), getBuffer: () => arr, length: () => arr.length };
-            },
-        });
+        await mdf.read([
+            { channel: timeChannel, buffer: timeBuf },
+            { channel: targetChannel, buffer: targetBuf },
+        ]);
         const duration = performance.now() - start;
 
         console.log(`Read 1/${channelCount} signals, ${rowCount} rows: ${duration.toFixed(1)} ms`);
         expect(duration).toBeGreaterThan(0);
     });
 });
-
-
