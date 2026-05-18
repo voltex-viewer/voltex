@@ -121,11 +121,7 @@ jobs:
     - name: Publish plugin-api to NPM
       working-directory: packages/plugin-api
       run: npm publish --access public --provenance
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Publish mdf-reader to NPM
       working-directory: packages/mdf-reader
       run: npm publish --access public --provenance
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
