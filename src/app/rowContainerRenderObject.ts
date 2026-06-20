@@ -39,7 +39,15 @@ export class RowContainerRenderObject {
 
     // Vertical scrolling state
     private verticalScrollOffset = 0; // Pixels scrolled from top
+    private lastScrollOffset = 0; // Previous clamped offset, for the drag overscroll ratchet
     private scrollbarWidth = 8;
+
+    // Drag state: latest mouse position and edge auto-scroll loop
+    private dragMouseX = 0;
+    private dragMouseY = 0;
+    private autoScrollFrame: number | null = null;
+    private autoScrollLastTime = 0;
+    private autoScrollSpeed = 0; // pixels per frame (signed)
 
     // Animation frame for momentum scrolling and zooming
     private animationFrame: number | null = null;
@@ -66,6 +74,9 @@ export class RowContainerRenderObject {
     private readonly minPxPerSecond = 1e-7;  // ~100 years visible on a typical screen
     private readonly maxPxPerSecond = 1e8;   // ~10 microseconds visible on a typical screen
     private readonly dragThreshold = 5; // pixels to move before starting drag
+    private readonly autoScrollEdge = 40; // edge zone (px) that triggers auto-scroll while dragging
+    private readonly maxAutoScrollSpeed = 15; // max auto-scroll speed (px per frame)
+    private readonly dragKeepVisibleFraction = 0.6; // keep ~60% of the viewport filled with undragged rows while dragging
 
     private readonly renderObject: RenderObject;
 
@@ -74,6 +85,7 @@ export class RowContainerRenderObject {
         private state: WaveformState,
         private requestRender: () => void,
         private commandManager: CommandManager,
+        private canvas: HTMLCanvasElement,
     ) {
         // Initialize targetTransform to current state
         this.animationTarget = { type: 'free', ...this.getCurrentTransform() };
@@ -196,14 +208,12 @@ export class RowContainerRenderObject {
                 // Handle ongoing resize operations
                 if (this.resizeState.type === 'scrollbar') {
                     const viewportHeight = getAbsoluteBounds(this.renderObject).height;
-                    const totalHeight = this.getTotalRowsHeight();
                     const deltaY = event.clientY - this.resizeState.startY;
-                    
-                    // Convert screen delta to content delta
-                    const scrollRatio = totalHeight / viewportHeight;
+
+                    // Convert thumb screen delta to content delta
+                    const scrollRatio = this.getScrollContentHeight(viewportHeight) / viewportHeight;
                     this.verticalScrollOffset = this.resizeState.startOffset + deltaY * scrollRatio;
-                    this.clampScrollOffset(viewportHeight);
-                    
+
                     this.updateRowPositions();
                     this.requestRender();
                 } else if (this.resizeState.type === 'horizontal') {
@@ -277,53 +287,7 @@ export class RowContainerRenderObject {
                     };
                     this.requestRender();
                 } else if (this.resizeState.type === 'dragging-rows') {
-                    // Handle row dragging
-                    const dragState = this.resizeState;
-                    
-                    const calculateInsertIndex = (mouseY: number): number => {
-                        let currentY = 0;
-                        let insertIndex = 0;
-                        
-                        for (const row of this.rows) {
-                            if (dragState.draggedRows.includes(row)) {
-                                insertIndex++;
-                                continue;
-                            }
-                            
-                            if (mouseY < currentY + row.height / 2) {
-                                return insertIndex;
-                            }
-                            
-                            currentY += row.height;
-                            insertIndex++;
-                        }
-                        
-                        return this.rows.length;
-                    }
-                    
-                    const mouseX = event.clientX - dragState.offsetX;
-                    const mouseY = event.clientY - dragState.offsetY;
-                    
-                    // Update dragged rows positions
-                    let currentY = mouseY;
-                    for (const row of dragState.draggedRows) {
-                        row.rowRenderObject.x = px(mouseX);
-                        row.rowRenderObject.y = px(currentY);
-                        row.rowRenderObject.zIndex = 1000; // Bring to front
-                        currentY += row.height;
-                    }
-                    
-                    // Calculate where to insert the rows
-                    const insertIndex = calculateInsertIndex(mouseY);
-                    if (insertIndex !== dragState.insertIndex) {
-                        this.resizeState = {
-                            ...dragState,
-                            insertIndex
-                        };
-                        this.updateRowPositionsForDrag();
-                    }
-                    
-                    this.requestRender();
+                    this.updateDrag(event);
                 } else {
                     // No ongoing operation, show the available operations
                     const mousePosition = this.getMousePosition(event);
@@ -379,9 +343,7 @@ export class RowContainerRenderObject {
                 
                 // If mouse is over the label area, scroll vertically through rows
                 if (mouseXInViewport < 0 && Math.abs(event.deltaY) > 0) {
-                    const viewportHeight = getAbsoluteBounds(this.renderObject).height;
                     this.verticalScrollOffset += event.deltaY;
-                    this.clampScrollOffset(viewportHeight);
                     this.updateRowPositions();
                     this.requestRender();
                     return;
@@ -626,55 +588,113 @@ export class RowContainerRenderObject {
             return;
         }
         
-        // Delegate to the overlay's mouse move handler for drag operations
         if (this.resizeState.type === 'dragging-rows') {
-            const dragState = this.resizeState;
-            
-            const calculateInsertIndex = (mouseY: number): number => {
-                let currentY = 0;
-                let insertIndex = 0;
-                
-                for (const row of this.rows) {
-                    if (dragState.draggedRows.includes(row)) {
-                        insertIndex++;
-                        continue;
-                    }
-                    
-                    if (mouseY < currentY + row.height / 2) {
-                        return insertIndex;
-                    }
-                    
-                    currentY += row.height;
-                    insertIndex++;
-                }
-                
-                return this.rows.length;
-            }
-            
-            const mouseX = event.clientX - dragState.offsetX;
-            const mouseY = event.clientY - dragState.offsetY;
-            
-            // Update dragged rows positions
-            let currentY = mouseY;
-            for (const row of dragState.draggedRows) {
-                row.rowRenderObject.x = px(mouseX);
-                row.rowRenderObject.y = px(currentY);
-                row.rowRenderObject.zIndex = 1000; // Bring to front
-                currentY += row.height;
-            }
-            
-            // Calculate where to insert the rows
-            const insertIndex = calculateInsertIndex(mouseY);
-            if (insertIndex !== dragState.insertIndex) {
-                this.resizeState = {
-                    ...dragState,
-                    insertIndex
-                };
-                this.updateRowPositionsForDrag();
-            }
-            
-            this.requestRender();
+            this.updateDrag(event);
         }
+    }
+
+    private updateDrag(event: MouseEvent): void {
+        if (this.resizeState.type !== 'dragging-rows') return;
+        this.dragMouseX = event.clientX;
+        this.dragMouseY = event.clientY;
+        this.applyDragLayout();
+        this.updateEdgeAutoScroll();
+    }
+
+    // Lays out from the stored mouse position so auto-scroll can re-run it without an event.
+    private applyDragLayout(): void {
+        if (this.resizeState.type !== 'dragging-rows') return;
+        const dragState = this.resizeState;
+        const mouseX = this.dragMouseX - dragState.offsetX;
+        const mouseY = this.dragMouseY - dragState.offsetY;
+
+        let currentY = mouseY;
+        for (const row of dragState.draggedRows) {
+            row.rowRenderObject.x = px(mouseX);
+            row.rowRenderObject.y = px(currentY);
+            row.rowRenderObject.zIndex = 1000;
+            currentY += row.height;
+        }
+
+        const insertIndex = this.calculateInsertIndex(mouseY);
+        if (insertIndex !== dragState.insertIndex) {
+            this.resizeState = { ...dragState, insertIndex };
+        }
+
+        this.updateRowPositions();
+        this.requestRender();
+    }
+
+    private updateEdgeAutoScroll(): void {
+        if (this.resizeState.type !== 'dragging-rows') {
+            this.stopEdgeAutoScroll();
+            return;
+        }
+
+        // dragMouseY is canvas-relative, but the canvas can extend past the visible
+        // window, so clamp the edge zones to the window to keep them on screen.
+        const canvasRect = this.canvas.getBoundingClientRect();
+        const visibleTop = Math.max(0, -canvasRect.top);
+        const visibleBottom = Math.min(canvasRect.height, window.innerHeight - canvasRect.top);
+
+        const intoTop = visibleTop + this.autoScrollEdge - this.dragMouseY;
+        const intoBottom = this.dragMouseY - (visibleBottom - this.autoScrollEdge);
+        if (intoTop > 0) {
+            this.autoScrollSpeed = -this.maxAutoScrollSpeed * Math.min(1, intoTop / this.autoScrollEdge);
+        } else if (intoBottom > 0) {
+            this.autoScrollSpeed = this.maxAutoScrollSpeed * Math.min(1, intoBottom / this.autoScrollEdge);
+        } else {
+            this.stopEdgeAutoScroll();
+            return;
+        }
+
+        if (this.autoScrollFrame === null) {
+            this.autoScrollLastTime = performance.now();
+            this.autoScrollFrame = requestAnimationFrame(this.stepEdgeAutoScroll);
+        }
+    }
+
+    private stepEdgeAutoScroll = (): void => {
+        this.autoScrollFrame = null;
+        if (this.resizeState.type !== 'dragging-rows') return;
+
+        // performance.now() shares a clock with autoScrollLastTime; the rAF
+        // timestamp does not. Cap dt so a long frame gap can't jump the view.
+        const now = performance.now();
+        const deltaTime = Math.min(50, now - this.autoScrollLastTime);
+        this.autoScrollLastTime = now;
+
+        const before = this.verticalScrollOffset;
+        this.verticalScrollOffset += this.autoScrollSpeed * deltaTime / 16.67;
+        this.applyDragLayout(); // clamps the offset via clampScrollOffset
+
+        if (this.verticalScrollOffset !== before) {
+            this.autoScrollFrame = requestAnimationFrame(this.stepEdgeAutoScroll);
+        }
+    };
+
+    private stopEdgeAutoScroll(): void {
+        if (this.autoScrollFrame !== null) {
+            cancelAnimationFrame(this.autoScrollFrame);
+            this.autoScrollFrame = null;
+        }
+    }
+
+    // mouseY is screen-space; -verticalScrollOffset matches the rendered row positions.
+    private calculateInsertIndex(mouseY: number): number {
+        if (this.resizeState.type !== 'dragging-rows') return 0;
+        let currentY = -this.verticalScrollOffset;
+        let insertIndex = 0;
+        for (const row of this.rows) {
+            if (this.resizeState.draggedRows.includes(row)) {
+                insertIndex++;
+                continue;
+            }
+            if (mouseY < currentY + row.height / 2) return insertIndex;
+            currentY += row.height;
+            insertIndex++;
+        }
+        return this.rows.length;
     }
 
     private handleRowMouseUp(_event: MouseEvent): void {
@@ -862,45 +882,11 @@ export class RowContainerRenderObject {
         this.requestRender();
     }
 
-    private updateRowPositionsForDrag(): void {
-        if (this.resizeState.type !== 'dragging-rows') return;
-        
-        
-        // Count how many dragged rows come before the insert index to adjust it
-        let draggedRowsBeforeInsert = 0;
-        for (let i = 0; i < this.resizeState.insertIndex && i < this.rows.length; i++) {
-            if (this.resizeState.draggedRows.includes(this.rows[i])) {
-                draggedRowsBeforeInsert++;
-            }
-        }
-        const adjustedInsertIndex = this.resizeState.insertIndex - draggedRowsBeforeInsert;
-
-        // Calculate total height of dragged rows
-        const draggedHeight = this.resizeState.draggedRows.reduce((sum, row) => sum + row.height, 0);
-
-        let currentY = 0;
-        let visualIndex = 0; // Index among non-dragged rows
-        for (const row of this.rows) {
-            // Skip positioning dragged rows (they follow the mouse)
-            if (this.resizeState.draggedRows.includes(row)) {
-                continue;
-            }
-            
-            // If we've reached the insert position, leave space for dragged rows
-            if (visualIndex === adjustedInsertIndex) {
-                currentY += draggedHeight;
-            }
-
-            row.rowRenderObject.y = px(currentY);
-            
-            currentY += row.height;
-            visualIndex++; // Only increment for non-dragged rows
-        }
-    }
-
     private finalizeDraggedRows(): void {
         if (this.resizeState.type !== 'dragging-rows') return;
-        
+
+        this.stopEdgeAutoScroll();
+
         const { draggedRows, insertIndex } = this.resizeState;
         
         // Remove dragged rows and calculate adjusted insert index
@@ -931,10 +917,30 @@ export class RowContainerRenderObject {
         return [...this.rows];
     }
 
+    // Index of the drop gap among the undragged rows, or -1 when not dragging.
+    private getDragGapIndex(): number {
+        if (this.resizeState.type !== 'dragging-rows') return -1;
+        const { draggedRows, insertIndex } = this.resizeState;
+        const draggedBefore = this.rows.slice(0, insertIndex).filter(r => draggedRows.includes(r)).length;
+        return insertIndex - draggedBefore;
+    }
+
+    // Dragged rows are skipped here (applyDragLayout follows the cursor) and leave a
+    // gap at the insert slot. With no drag, draggedRows is empty and this is a plain stack.
     private updateRowPositions(): void {
-        let currentY = -this.verticalScrollOffset; // Apply vertical scroll offset
+        this.clampScrollOffset();
+
+        const draggedRows = this.resizeState.type === 'dragging-rows' ? this.resizeState.draggedRows : [];
+        const draggedHeight = draggedRows.reduce((sum, row) => sum + row.height, 0);
+        const gapIndex = this.getDragGapIndex();
+
+        let currentY = -this.verticalScrollOffset;
+        let visualIndex = 0;
         for (const row of this.rows) {
-            row.rowRenderObject.x = px(0); // Reset x position
+            if (draggedRows.includes(row)) continue;
+            if (visualIndex === gapIndex) currentY += draggedHeight;
+
+            row.rowRenderObject.x = px(0);
             row.rowRenderObject.y = px(currentY);
             row.rowRenderObject.height = px(row.height);
             row.labelArea.y = px(this.rowVerticalBorder);
@@ -943,6 +949,7 @@ export class RowContainerRenderObject {
             row.mainArea.height = px(row.height - this.rowVerticalBorder * 2);
 
             currentY += row.height;
+            visualIndex++;
         }
     }
 
@@ -1075,14 +1082,47 @@ export class RowContainerRenderObject {
         return this.rows.reduce((sum, row) => sum + row.height, 0);
     }
 
+    // Allows scrolling until the last row reaches the top, like a text editor.
     private getMaxScrollOffset(viewportHeight: number): number {
         const totalHeight = this.getTotalRowsHeight();
-        return Math.max(0, totalHeight - viewportHeight);
+        if (totalHeight <= viewportHeight) return 0;
+        return totalHeight - this.rows[this.rows.length - 1].height;
     }
 
-    private clampScrollOffset(viewportHeight: number): void {
-        const maxOffset = this.getMaxScrollOffset(viewportHeight);
-        this.verticalScrollOffset = Math.max(0, Math.min(maxOffset, this.verticalScrollOffset));
+    // While dragging, scrolling stops sooner so ~60% of the viewport keeps showing
+    // undragged rows for drop context. Based on the undragged rows alone, since the
+    // dragged block can be taller than the viewport.
+    private getDragMaxScrollOffset(viewportHeight: number): number {
+        if (this.resizeState.type !== 'dragging-rows') return 0;
+        const { draggedRows } = this.resizeState;
+        const undraggedCount = this.rows.length - draggedRows.length;
+        if (undraggedCount === 0) return 0;
+
+        const totalHeight = this.getTotalRowsHeight();
+        const draggedHeight = draggedRows.reduce((sum, row) => sum + row.height, 0);
+        const gapIndex = this.getDragGapIndex();
+
+        // Content-space span of the undragged rows; the gap sits at the insert slot.
+        const top = gapIndex <= 0 ? draggedHeight : 0;
+        const bottom = gapIndex >= undraggedCount ? totalHeight - draggedHeight : totalHeight;
+        const keep = Math.min(viewportHeight * this.dragKeepVisibleFraction, bottom - top);
+        return bottom - keep;
+    }
+
+    private getScrollContentHeight(viewportHeight: number): number {
+        return this.getMaxScrollOffset(viewportHeight) + viewportHeight;
+    }
+
+    private clampScrollOffset(): void {
+        const viewportHeight = getAbsoluteBounds(this.renderObject).height;
+        const max = this.resizeState.type === 'dragging-rows'
+            ? this.getDragMaxScrollOffset(viewportHeight)
+            : this.getMaxScrollOffset(viewportHeight);
+        // If a drag starts already scrolled past max, don't snap down; allow
+        // scrolling back toward it but never further out.
+        const upperBound = Math.max(max, this.lastScrollOffset);
+        this.verticalScrollOffset = Math.max(0, Math.min(upperBound, this.verticalScrollOffset));
+        this.lastScrollOffset = this.verticalScrollOffset;
     }
 
     private getZoomBoxEffectiveMode(): 'horizontal' | 'vertical' | 'rectangle' {
@@ -1228,10 +1268,12 @@ export class RowContainerRenderObject {
         }
 
         const { gl, utils } = context.render;
-        
-        // Calculate scrollbar dimensions
-        const scrollbarHeight = Math.max(20, (viewportHeight / totalHeight) * viewportHeight);
-        const scrollbarY = (this.verticalScrollOffset / totalHeight) * viewportHeight;
+
+        // Calculate scrollbar dimensions against the scrollable range (which
+        // includes the overscroll room past the last row).
+        const scrollContentHeight = this.getScrollContentHeight(viewportHeight);
+        const scrollbarHeight = Math.max(20, (viewportHeight / scrollContentHeight) * viewportHeight);
+        const scrollbarY = (this.verticalScrollOffset / scrollContentHeight) * viewportHeight;
         const scrollbarX = bounds.width - this.scrollbarWidth;
         
         // Draw scrollbar track
