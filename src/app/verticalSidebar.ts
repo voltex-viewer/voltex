@@ -1,4 +1,6 @@
 import { SidebarEntryArgs } from "@voltex-viewer/plugin-api";
+import { PluginConfigManager } from "./pluginConfigManager";
+import { voltexPluginName, VoltexConfig } from "./voltexConfig";
 
 export class SidebarEntryImpl {
     readonly icon: HTMLButtonElement;
@@ -32,8 +34,9 @@ export class VerticalSidebar {
     private readonly minWidth: number = 200;
     private readonly maxWidth: number = 2000;
     private isResizing: boolean = false;
+    private lastResizeWidth: number = 0;
 
-    constructor(root: HTMLElement, private resizeCanvas: () => void) {
+    constructor(root: HTMLElement, private resizeCanvas: () => void, private configManager: PluginConfigManager) {
         this.sidebar = document.createElement('div');
         this.sidebar.className = 'vertical-sidebar';
 
@@ -63,13 +66,14 @@ export class VerticalSidebar {
 
         document.addEventListener('mousemove', (e: MouseEvent) => {
             if (!this.isResizing) return;
-            
+
             const rect = this.sidebar.getBoundingClientRect();
             const newWidth = rect.right - e.clientX;
-            
+
             if (newWidth >= this.minWidth && newWidth <= this.maxWidth) {
                 this.sidebar.style.setProperty('--sidebar-width', `${newWidth}px`);
                 this.panelContainer.style.setProperty('--panel-width', `${newWidth - 48}px`);
+                this.lastResizeWidth = newWidth;
             }
         });
 
@@ -79,8 +83,30 @@ export class VerticalSidebar {
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
                 this.resizeCanvas();
+                this.persistWidth(this.lastResizeWidth);
             }
         });
+
+        // Also fires on the Voltex plugin's first config load, so the persisted width is applied on startup.
+        configManager.onConfigChanged((name, cfg) => {
+            if (name === voltexPluginName) {
+                this.setWidth((cfg as VoltexConfig).sidebarWidth);
+            }
+        });
+    }
+
+    setWidth(width: number): void {
+        const clamped = Math.max(this.minWidth, Math.min(this.maxWidth, width));
+        this.sidebar.style.setProperty('--sidebar-width', `${clamped}px`);
+        this.panelContainer.style.setProperty('--panel-width', `${clamped - 48}px`);
+        this.resizeCanvas();
+    }
+
+    private persistWidth(width: number): void {
+        const clamped = Math.max(this.minWidth, Math.min(this.maxWidth, width));
+        const cfg = this.configManager.getConfig<VoltexConfig>(voltexPluginName);
+        if (!cfg || cfg.sidebarWidth === clamped) return;
+        this.configManager.updateConfig(voltexPluginName, { ...cfg, sidebarWidth: clamped });
     }
 
     add(args: SidebarEntryArgs): SidebarEntryImpl {

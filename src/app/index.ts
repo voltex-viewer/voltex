@@ -2,6 +2,7 @@ import './index.css';
 import { WaveformState } from "@voltex-viewer/plugin-api";
 import { Renderer } from './renderer';
 import { VerticalSidebar } from './verticalSidebar';
+import { PluginConfigManager } from './pluginConfigManager';
 import { createMenuBar } from './menuBar';
 import { fileSystemProvider } from './fileSystemProvider';
 
@@ -19,12 +20,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     let renderRequested = false;
     let renderer: Renderer | null = null;
     
+    // Created here so it can be shared with both the sidebar and the renderer.
+    const configManager = new PluginConfigManager();
+
     // Create sidebar with callback to resize canvas when state changes
     const verticalSidebar = new VerticalSidebar(root, () => {
         if (renderer) {
             renderer.resizeCanvases();
         }
-    });
+    }, configManager);
 
     // --- Main waveform container (for time axis and channel rows) ---
     const waveformContainer = document.createElement('div');
@@ -57,7 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    renderer = new Renderer(state, mainCanvas, verticalSidebar, requestRender);
+    renderer = new Renderer(state, mainCanvas, verticalSidebar, requestRender, configManager);
 
     await renderer.loadPlugins();
 

@@ -45,7 +45,8 @@ export class Renderer {
         private state: WaveformState,
         canvas: HTMLCanvasElement,
         private verticalSidebar: VerticalSidebar,
-        private requestRender: () => void
+        private requestRender: () => void,
+        configManager: PluginConfigManager,
     ) {
         this.canvas = canvas;
         
@@ -71,9 +72,8 @@ export class Renderer {
         this.signalSources = new SignalSourceManagerImpl();
 
         // Create row container and add it to root
-        const configManager = new PluginConfigManager();
         const commandManager = new CommandManager(configManager);
-        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, commandManager, this.canvas);
+        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, commandManager, this.canvas, configManager);
         
         this.pluginManager = new PluginManager(
             this.state,

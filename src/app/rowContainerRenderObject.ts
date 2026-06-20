@@ -4,6 +4,8 @@ import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
 import { RowChangedCallback } from './rowManager';
 import { CommandManager } from './commandManager';
 import { AutoFitButton } from './autoFitButton';
+import { PluginConfigManager } from './pluginConfigManager';
+import { voltexPluginName, VoltexConfig } from './voltexConfig';
 
 type ResizeState = 
     | { type: 'none' }
@@ -86,9 +88,17 @@ export class RowContainerRenderObject {
         private requestRender: () => void,
         private commandManager: CommandManager,
         private canvas: HTMLCanvasElement,
+        private configManager: PluginConfigManager,
     ) {
         // Initialize targetTransform to current state
         this.animationTarget = { type: 'free', ...this.getCurrentTransform() };
+
+        // Also fires on the Voltex plugin's first config load, so the persisted width is applied on startup.
+        configManager.onConfigChanged((name, cfg) => {
+            if (name === voltexPluginName) {
+                this.setLabelWidth((cfg as VoltexConfig).labelAreaWidth);
+            }
+        });
         
         this.renderObject = parent.addChild({
             render: (_context: RenderContext, bounds: RenderBounds): boolean => {
@@ -305,6 +315,7 @@ export class RowContainerRenderObject {
                 else if (this.resizeState.type === 'horizontal') {
                     this.requestRender();
                     this.resizeState = { type: 'none' };
+                    this.persistLabelWidth();
                 }
                 else if (this.resizeState.type === 'vertical') {
                     this.requestRender();
@@ -951,6 +962,20 @@ export class RowContainerRenderObject {
             currentY += row.height;
             visualIndex++;
         }
+    }
+
+    private persistLabelWidth(): void {
+        const cfg = this.configManager.getConfig<VoltexConfig>(voltexPluginName);
+        if (!cfg || cfg.labelAreaWidth === this.labelWidth) return;
+        this.configManager.updateConfig(voltexPluginName, { ...cfg, labelAreaWidth: this.labelWidth });
+    }
+
+    setLabelWidth(width: number): void {
+        const clamped = Math.max(this.minLabelWidth, Math.min(this.maxLabelWidth, width));
+        if (clamped === this.labelWidth) return;
+        this.labelWidth = clamped;
+        this.updateViewportWidths();
+        this.requestRender();
     }
 
     updateViewportWidths(): void {
