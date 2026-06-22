@@ -5,6 +5,8 @@ export default (context: PluginContext): void => {
     context.loadConfig(voltexConfigSchema, {
         labelAreaWidth: 100,
         sidebarWidth: 320,
+        timeMode: 'relative',
+        timeZone: 'local',
         keybindings: {
             'select-all-rows': 'ctrl+a',
             'clear-selection': 'escape',

@@ -1,6 +1,6 @@
 import { RowImpl } from './rowImpl';
 import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters, MouseEvent, WheelEvent, MouseCaptureConfig } from "@voltex-viewer/plugin-api";
-import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
+import { getAbsoluteBounds, px, signalShift } from "@voltex-viewer/plugin-api";
 import { RowChangedCallback } from './rowManager';
 import { CommandManager } from './commandManager';
 import { AutoFitButton } from './autoFitButton';
@@ -96,12 +96,17 @@ export class RowContainerRenderObject {
         // Also fires on the Voltex plugin's first config load, so the persisted width is applied on startup.
         configManager.onConfigChanged((name, cfg) => {
             if (name === voltexPluginName) {
-                this.setLabelWidth((cfg as VoltexConfig).labelAreaWidth);
+                const voltexCfg = cfg as VoltexConfig;
+                this.setLabelWidth(voltexCfg.labelAreaWidth);
+                this.state.timeMode = voltexCfg.timeMode;
+                this.state.timeZone = voltexCfg.timeZone;
+                this.requestRender();
             }
         });
         
         this.renderObject = parent.addChild({
             render: (_context: RenderContext, bounds: RenderBounds): boolean => {
+                this.updateReferenceWallTime();
                 this.rows.forEach(row => {
                     row.updateSignalBounds();
                     if (row.verticalAutoFit) row.fitVertical();
@@ -1344,19 +1349,33 @@ export class RowContainerRenderObject {
         gl.disableVertexAttribArray(positionLocation);
     }
 
-    private getSignalTimeRange(): { min: number; max: number } | null {
-        let minTime = Infinity;
-        let maxTime = -Infinity;
-        
+    // Origin of the internal time coordinate: the earliest signal start time, or 0 when none.
+    private updateReferenceWallTime(): void {
+        let min = Infinity;
         for (const row of this.rows) {
             for (const signal of row.signals) {
-                if (signal.time.length > 0) {
-                    minTime = Math.min(minTime, signal.time.min);
-                    maxTime = Math.max(maxTime, signal.time.max);
+                if (signal.startTime != null && signal.startTime < min) {
+                    min = signal.startTime;
                 }
             }
         }
-        
+        this.state.referenceWallTime = min === Infinity ? 0 : min;
+    }
+
+    private getSignalTimeRange(): { min: number; max: number } | null {
+        let minTime = Infinity;
+        let maxTime = -Infinity;
+
+        for (const row of this.rows) {
+            for (const signal of row.signals) {
+                if (signal.time.length > 0) {
+                    const shift = signalShift(signal, this.state);
+                    minTime = Math.min(minTime, signal.time.min + shift);
+                    maxTime = Math.max(maxTime, signal.time.max + shift);
+                }
+            }
+        }
+
         if (minTime === Infinity || maxTime === -Infinity) {
             return null;
         }

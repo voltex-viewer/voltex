@@ -106,6 +106,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 type: 'fileLoaded',
                 signals,
                 fileName: message.file.name,
+                startTime: mdfFile.startTime,
             };
 
             self.postMessage(response);

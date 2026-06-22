@@ -186,7 +186,8 @@ export default (context: PluginContext): void => {
                             values,
                             renderMode: startResponse.renderMode,
                             source,
-                            renderHint: startResponse.renderMode
+                            renderHint: startResponse.renderMode,
+                            startTime: response.startTime,
                         };
                     }
                 }));

@@ -1,10 +1,11 @@
-import { 
-    type PluginContext, 
-    type RenderContext, 
+import {
+    type PluginContext,
+    type RenderContext,
     type RenderBounds,
     type RenderObject,
     type Row,
-    type WebGLUtils
+    type WebGLUtils,
+    signalShift
 } from '@voltex-viewer/plugin-api';
 
 const alpha = 0.8;
@@ -84,23 +85,25 @@ export class CursorRenderObject {
         if (!hoveredRow) {
             return time;
         }
-        
+
         const snapDistancePx = 10;
         const { state } = this.context;
         const snapDistanceTime = snapDistancePx / state.pxPerSecond;
-        
+
         let nearestTime: number | null = null;
         let nearestDistance = snapDistanceTime;
 
         // Only snap to signals in the hovered row
         for (const signal of hoveredRow.signals) {
-            const startIndex = this.binarySearch(signal.time, time - snapDistanceTime);
-            const endIndex = this.binarySearch(signal.time, time + snapDistanceTime);
-            
+            const shift = signalShift(signal, this.context.state);
+            const localTime = time - shift;
+            const startIndex = this.binarySearch(signal.time, localTime - snapDistanceTime);
+            const endIndex = this.binarySearch(signal.time, localTime + snapDistanceTime);
+
             for (let i = startIndex; i <= endIndex && i < signal.time.length; i++) {
-                const pointTime = signal.time.valueAt(i);
+                const pointTime = signal.time.valueAt(i) + shift;
                 const distance = Math.abs(pointTime - time);
-                
+
                 if (distance < nearestDistance) {
                     nearestDistance = distance;
                     nearestTime = pointTime;

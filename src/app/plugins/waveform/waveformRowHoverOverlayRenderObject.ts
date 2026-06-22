@@ -16,6 +16,7 @@ class HighlightSignal implements Signal {
         public readonly time: ArraySequence,
         public readonly values: ArraySequence,
         public readonly renderHint: RenderMode,
+        public readonly startTime?: number | undefined,
     ) {
     }
 
@@ -103,7 +104,8 @@ export class WaveformRowHoverOverlayRenderObject {
                     signal.source,
                     new ArraySequence(),
                     new ArraySequence(),
-                    RenderMode.Dots // This is ignored as the render metadata proxy provides the correct mode
+                    RenderMode.Dots, // This is ignored as the render metadata proxy provides the correct mode
+                    signal.startTime, // keep the highlight aligned with the source in real-time mode
                 );
                 this.highlightSignals.set(signal, highlightSignal);
 
@@ -214,8 +216,7 @@ export class WaveformRowHoverOverlayRenderObject {
                 this.mouse.offsetX,
                 this.mouse.offsetY,
                 bounds.height,
-                state.pxPerSecond,
-                state.offset
+                state
             );
             
             const dataPoint = this.getSignalValueAtIndex(signal, dataIndex, signalMetadata);
@@ -271,7 +272,7 @@ export class WaveformRowHoverOverlayRenderObject {
             
             // Get the expanded segment for this data point
             const startTime = signal.time.valueAt(dataIndex);
-            const segment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state.pxPerSecond, context.state.offset);
+            const segment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state);
             if (segment) {
                 this.expandedHighlightData = { signal, segment, dataIndex };
             }
@@ -383,7 +384,7 @@ export class WaveformRowHoverOverlayRenderObject {
         
         // Re-query the segment position for current frame (tracks animation)
         const startTime = signal.time.valueAt(segment.startBufferIndex);
-        const updatedSegment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state.pxPerSecond, context.state.offset);
+        const updatedSegment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state);
         if (!updatedSegment) {
             return false;
         }

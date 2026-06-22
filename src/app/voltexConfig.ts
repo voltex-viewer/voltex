@@ -6,6 +6,8 @@ export const voltexPluginName = '@voltex-viewer/voltex';
 export const voltexConfigSchema = t.type({
     labelAreaWidth: t.number,
     sidebarWidth: t.number,
+    timeMode: t.union([t.literal('relative'), t.literal('realtime')]),
+    timeZone: t.string,
     keybindings: t.type({
         'select-all-rows': Keybinding,
         'clear-selection': Keybinding,

@@ -247,6 +247,12 @@ export interface PluginModule {
 export interface WaveformState {
     offset: number,
     pxPerSecond: number,
+    /** Whether the time axis shows relative seconds or absolute wall-clock dates */
+    timeMode: 'relative' | 'realtime',
+    /** IANA timezone name used for real-time display, or 'local' for the browser's zone */
+    timeZone: string,
+    /** Wall-clock origin (unix seconds, UTC) of the internal time coordinate */
+    referenceWallTime: number,
 }
 
 export interface TextValue {
@@ -276,6 +282,8 @@ export interface Signal {
     time: Sequence;
     values: Sequence;
     renderHint: RenderMode;
+    /** Optional absolute recording start, in unix seconds (UTC) */
+    startTime?: number | undefined;
 }
 export interface RenderContext {
     canvas: HTMLCanvasElement;
@@ -333,6 +341,15 @@ export function px(value: number): PositionValue {
 
 export function percent(value: number): PositionValue {
     return { type: 'percentage', value };
+}
+
+/** Seconds a signal is shifted by in real-time mode so its samples sit at their true wall-clock
+ *  position relative to the shared reference. Zero in relative mode or when the signal has no
+ *  start time. */
+export function signalShift(signal: Signal, state: WaveformState): number {
+    return state.timeMode === 'realtime' && signal.startTime != null
+        ? signal.startTime - state.referenceWallTime
+        : 0;
 }
 
 export function hexToRgba(hex: string, alpha: number = 1.0): [number, number, number, number] {

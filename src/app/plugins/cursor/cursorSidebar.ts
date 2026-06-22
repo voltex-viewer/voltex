@@ -1,7 +1,8 @@
 import type { PluginContext, Signal, Row } from '@voltex-viewer/plugin-api';
-import { formatValueForDisplay } from '@voltex-viewer/plugin-api';
+import { formatValueForDisplay, signalShift } from '@voltex-viewer/plugin-api';
 import type { CursorRenderObject } from './cursorRenderObject';
 import type { CursorConfig } from './cursorPlugin';
+import { formatInstant } from './timeFormat';
 
 export class CursorSidebar {
     private container: HTMLElement | null = null;
@@ -216,9 +217,11 @@ export class CursorSidebar {
         const tbody = document.createElement('tbody');
 
         // Add timestamp row
+        const { state } = this.context;
+        const realtime = state.timeMode === 'realtime';
         const timestampRow = document.createElement('tr');
         const timestampLabel = document.createElement('td');
-        timestampLabel.textContent = 'Time (s)';
+        timestampLabel.textContent = realtime ? 'Time' : 'Time (s)';
         timestampLabel.className = 'signal-name';
         timestampRow.appendChild(timestampLabel);
 
@@ -226,7 +229,11 @@ export class CursorSidebar {
             const timestampCell = document.createElement('td');
             timestampCell.className = 'timestamp-cell';
             const position = cursor.getPosition();
-            timestampCell.textContent = position !== null ? position.toFixed(6) : '-';
+            timestampCell.textContent = position === null
+                ? '-'
+                : realtime
+                    ? formatInstant(state.referenceWallTime + position, state.timeZone)
+                    : position.toFixed(6);
             timestampRow.appendChild(timestampCell);
         }
         tbody.appendChild(timestampRow);
@@ -293,8 +300,12 @@ export class CursorSidebar {
 
         if (signal.time.length === 0) return null;
 
+        // Convert the cursor's internal time to this signal's relative time before searching, so
+        // sample-and-hold lands on the right sample when the signal is shifted in real-time mode.
+        const shift = signalShift(signal, this.context.state);
+
         // Find the index at or before the cursor time
-        const index = this.binarySearchFloor(signal.time, cursorTime);
+        const index = this.binarySearchFloor(signal.time, cursorTime - shift);
         
         // If cursor is before the first sample, return null
         if (index < 0) {

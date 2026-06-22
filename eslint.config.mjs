@@ -6,7 +6,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist/**', 'dist-web/**', '.vite/**', 'out/**', '*.config.*']
+    ignores: ['dist/**', 'dist-web/**', '.vite/**', 'out/**', '*.config.*', 'assets/**', 'scripts/**', 'forge.env.d.ts']
   },
   {
     plugins: {

@@ -1,4 +1,4 @@
-import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal, SignalMetadata, formatValueForDisplay } from "@voltex-viewer/plugin-api";
+import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal, type WaveformState, SignalMetadata, formatValueForDisplay, signalShift } from "@voltex-viewer/plugin-api";
 import type { BufferData } from './waveformRendererPlugin';
 import { WaveformConfig } from './waveformConfig';
 import { WaveformShaders, InstancedLineAttributes, BevelJoinAttributes, DotAttributes } from './waveformShaders';
@@ -49,6 +49,12 @@ export class WaveformRenderObject {
         });
     }
 
+    // Pixel offset with the per-signal shift folded in, so the existing
+    // `time * pxPerSecond - offset` mapping draws the signal at its real-time position.
+    private effectiveOffset(state: WaveformState): number {
+        return state.offset - signalShift(this.signal, state) * state.pxPerSecond;
+    }
+
     get expandedModeProgress(): number {
         return this.expandedController?.progress ?? 0;
     }
@@ -59,13 +65,15 @@ export class WaveformRenderObject {
         }
     }
 
-    getExpandedSegmentForTime(time: number, pxPerSecond: number, offset: number): ExpandedSegment | null {
+    getExpandedSegmentForTime(time: number, state: WaveformState): ExpandedSegment | null {
         if (this.metadata.renderMode !== RenderMode.ExpandedEnum || !this.expandedController) return null;
-        return this.expandedController.getSegmentForTime(time, pxPerSecond, offset);
+        return this.expandedController.getSegmentForTime(time, state.pxPerSecond, this.effectiveOffset(state));
     }
 
-    getIndexForPosition(screenX: number, screenY: number, boundsHeight: number, pxPerSecond: number, offset: number): number {
+    getIndexForPosition(screenX: number, screenY: number, boundsHeight: number, state: WaveformState): number {
         const renderMode = this.metadata.renderMode;
+        const pxPerSecond = state.pxPerSecond;
+        const offset = this.effectiveOffset(state);
         const signalLength = Math.min(this.signal.time.length, this.signal.values.length);
         if (signalLength === 0) return 0;
 
@@ -145,7 +153,7 @@ export class WaveformRenderObject {
         const color = this.metadata.color;
         const [r, g, b, a] = hexToRgba(color);
 
-        const leftTimeDouble = state.offset / state.pxPerSecond;
+        const leftTimeDouble = this.effectiveOffset(state) / state.pxPerSecond;
         const timeOffsetHigh = Math.fround(leftTimeDouble);
         const timeOffsetLow = leftTimeDouble - timeOffsetHigh;
 
@@ -280,8 +288,9 @@ export class WaveformRenderObject {
         const { render, state } = context;
         const { utils } = render;
 
-        const startTime = state.offset / state.pxPerSecond;
-        const endTime = (state.offset + bounds.width) / state.pxPerSecond;
+        const enumOffset = this.effectiveOffset(state);
+        const startTime = enumOffset / state.pxPerSecond;
+        const endTime = (enumOffset + bounds.width) / state.pxPerSecond;
 
         const padding = 5;
         const ellipsisWidth = utils.measureText('...').renderWidth;
@@ -302,8 +311,8 @@ export class WaveformRenderObject {
             const rEndTime = r + 1 < this.enumRunIndex.runCount
                 ? this.signal.time.valueAt(this.enumRunIndex.startIndex(r + 1))
                 : this.signal.time.valueAt(rEndIdx);
-            const startX = rStartTime * state.pxPerSecond - state.offset;
-            const endX = rEndTime * state.pxPerSecond - state.offset;
+            const startX = rStartTime * state.pxPerSecond - enumOffset;
+            const endX = rEndTime * state.pxPerSecond - enumOffset;
             const pxWidth = endX - startX;
             if (pxWidth >= minRenderableWidth) {
                 runs.push({ runIdx: r, pxWidth, startX, endX });
@@ -336,7 +345,7 @@ export class WaveformRenderObject {
         const color = this.metadata.color;
         const [r, g, b, a] = hexToRgba(color);
 
-        const leftTimeDouble = state.offset / state.pxPerSecond;
+        const leftTimeDouble = this.effectiveOffset(state) / state.pxPerSecond;
         const timeOffsetHigh = Math.fround(leftTimeDouble);
         const timeOffsetLow = leftTimeDouble - timeOffsetHigh;
 

@@ -39,6 +39,8 @@ export interface OpenOptions {
 export interface MdfFile {
     readonly filename: string;
     readonly version: number;
+    /** Absolute recording start in unix seconds (UTC), or undefined if the file has none. */
+    readonly startTime?: number | undefined;
     getGroups(): MdfDataGroup[];
     read(
         channels: Array<{ channel: MdfChannel; buffer: { push(value: number | bigint): void } }>,
@@ -111,6 +113,7 @@ class MdfDataGroupImpl implements MdfDataGroup {
 class MdfFileImpl implements MdfFile {
     readonly filename: string;
     readonly version: number;
+    startTime?: number | undefined;
     private dataGroups: MdfDataGroupImpl[] = [];
     private reader: BufferedFileReader;
 
@@ -149,6 +152,10 @@ class MdfFileImpl implements MdfFile {
     private async loadGroupsV3(onProgress?: (signalCount: number) => void): Promise<void> {
         const rootLink = v3.newNonNullLink<v3.Header>(64);
         const header = await v3.readHeader(rootLink, this.reader);
+
+        if (header.startTime !== undefined && header.startTime !== 0n) {
+            this.startTime = Number(header.startTime) / 1e9;
+        }
 
         let dgLink = header.firstDataGroup as v3.Link<v3.DataGroupBlock>;
         let totalSignalCount = 0;
@@ -230,6 +237,10 @@ class MdfFileImpl implements MdfFile {
     private async loadGroupsV4(onProgress?: (signalCount: number) => void): Promise<void> {
         const rootLink = v4.newNonNullLink<v4.Header>(64n);
         const header = await v4.readHeader(rootLink, this.reader);
+
+        if (header.startTime !== 0n) {
+            this.startTime = Number(header.startTime) / 1e9;
+        }
 
         let dgLink = header.firstDataGroup as v4.Link<v4.DataGroupBlock>;
         let totalSignalCount = 0;

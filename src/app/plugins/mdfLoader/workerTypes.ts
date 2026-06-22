@@ -20,6 +20,8 @@ export type WorkerResponse = {
     type: 'fileLoaded';
     signals: SignalMetadata[];
     fileName: string;
+    /** Absolute recording start in unix seconds (UTC), or undefined if the file has none. */
+    startTime?: number | undefined;
 } | {
     type: 'fileLoadingProgress';
     channelCount: number;

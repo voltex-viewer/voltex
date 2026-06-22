@@ -1,5 +1,5 @@
 import { type RenderContext, RenderObject, type RenderBounds } from "@voltex-viewer/plugin-api";
-import { getGridSpacing } from './timeAxisUtils';
+import { getAxisTicks } from './timeTicks';
 
 export class GridRenderObject {
     constructor(parent: RenderObject) {
@@ -8,69 +8,54 @@ export class GridRenderObject {
             render: this.render.bind(this),
         });
     }
-    
+
     render(context: RenderContext, bounds: RenderBounds): boolean {
-        const {render, state} = context;
+        const { render, state } = context;
         const { gl, utils } = render;
-        
-        const gridSpacing = getGridSpacing(state.pxPerSecond);
-        const pxPerGrid = gridSpacing * state.pxPerSecond;
-        if (pxPerGrid < 1) {
-            console.warn('gridRenderObject: pxPerGrid < 1, skipping render', { pxPerGrid, pxPerSecond: state.pxPerSecond, gridSpacing });
-            return false;
+
+        const ticks = getAxisTicks(state, bounds.width);
+        const realtime = state.timeMode === 'realtime';
+
+        const normal: number[] = [];
+        const strong: number[] = [];
+        for (const tick of ticks.minor) {
+            const x = Math.round(tick.x);
+            if (x < 0 || x > bounds.width) continue;
+            normal.push(x, 0, x, bounds.height);
         }
-        const startPx = state.offset;
-        const subdivisions = 10;
-        const firstMajorPx = Math.floor(startPx / pxPerGrid) * pxPerGrid;
+        for (const tick of ticks.major) {
+            const x = Math.round(tick.x);
+            if (x < 0 || x > bounds.width) continue;
+            (realtime ? strong : normal).push(x, 0, x, bounds.height);
+        }
 
         const program = utils.grid;
-        
         gl.useProgram(program);
-        
         const positionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        
-        const lines: number[] = [];
-        
-        for (let px = firstMajorPx; px < startPx + bounds.width; px += pxPerGrid) {
-            const x = Math.round(((px - startPx) / bounds.width) * bounds.width);
-            lines.push(x, 0, x, bounds.height);
-        }
 
-        for (let majorPx = firstMajorPx; majorPx < startPx + bounds.width; majorPx += pxPerGrid) {
-            for (let j = 1; j < subdivisions; j++) {
-                const frac = j / subdivisions;
-                const px = majorPx + pxPerGrid * frac;
-                if (px < startPx || px > startPx + bounds.width) continue;
+        const positionLocation = gl.getAttribLocation(program, 'a_position');
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-                const x = Math.round(((px - startPx) / bounds.width) * bounds.width);
-                lines.push(x, 0, x, bounds.height);
-            }
-        }
-        
-        if (lines.length > 0) {
+        gl.uniform2f(gl.getUniformLocation(program, 'u_bounds'), bounds.width, bounds.height);
+        gl.uniform2f(gl.getUniformLocation(program, 'u_offset'), 0, 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'u_dashed'), 1);
+        gl.uniform1i(gl.getUniformLocation(program, 'u_horizontal'), 0);
+        gl.uniform1f(gl.getUniformLocation(program, 'u_dashSize'), 4.0);
+
+        const colorLocation = gl.getUniformLocation(program, 'u_color');
+        const draw = (lines: number[], color: [number, number, number, number]) => {
+            if (lines.length === 0) return;
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lines), gl.STATIC_DRAW);
-            
-            const positionLocation = gl.getAttribLocation(program, 'a_position');
-            const resolutionLocation = gl.getUniformLocation(program, 'u_bounds');
-            const colorLocation = gl.getUniformLocation(program, 'u_color');
-            const dashedLocation = gl.getUniformLocation(program, 'u_dashed');
-            const dashSizeLocation = gl.getUniformLocation(program, 'u_dashSize');
-            
-            gl.enableVertexAttribArray(positionLocation);
-            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-            
-            gl.uniform2f(resolutionLocation, bounds.width, bounds.height);
-            gl.uniform2f(gl.getUniformLocation(program, 'u_offset'), 0, 0);
-            gl.uniform4f(colorLocation, 0.267, 0.267, 0.267, 0.8);
-            gl.uniform1i(dashedLocation, 1);
-            gl.uniform1i(gl.getUniformLocation(program, 'u_horizontal'), 0);
-            gl.uniform1f(dashSizeLocation, 4.0);
-            
+            gl.uniform4f(colorLocation, ...color);
             gl.drawArrays(gl.LINES, 0, lines.length / 2);
-        }
-        
+        };
+        draw(normal, [0.267, 0.267, 0.267, 0.8]);
+        draw(strong, [0.45, 0.45, 0.45, 0.9]);
+
         gl.deleteBuffer(positionBuffer);
+        gl.disableVertexAttribArray(positionLocation);
 
         return false;
     }

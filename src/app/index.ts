@@ -1,4 +1,5 @@
 import './index.css';
+import './installTemporal';
 import { WaveformState } from "@voltex-viewer/plugin-api";
 import { Renderer } from './renderer';
 import { VerticalSidebar } from './verticalSidebar';
@@ -43,6 +44,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const state: WaveformState = {
         offset: 0,
         pxPerSecond: 200,
+        timeMode: 'relative',
+        timeZone: 'local',
+        referenceWallTime: 0,
     }
 
     function requestRender() {
