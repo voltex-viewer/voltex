@@ -46,17 +46,20 @@ class MousePositionTracker {
 
     getLastMouseX(): number | null {
         if (this.lastMouseX === null) return null;
-        
+        return this.toMainAreaX(this.lastMouseX);
+    }
+
+    toMainAreaX(clientX: number): number {
         // Subtract the label width to get position relative to main area
         const rows = this.context.getRows();
-        if (rows.length === 0) return this.lastMouseX;
-        
+        if (rows.length === 0) return clientX;
+
         const firstRow = rows[0];
         const labelWidth = firstRow.labelArea.width;
-        
-        if (labelWidth.type !== 'pixels') return this.lastMouseX;
-        
-        return this.lastMouseX - labelWidth.value;
+
+        if (labelWidth.type !== 'pixels') return clientX;
+
+        return clientX - labelWidth.value;
     }
 
     screenXToTime(screenX: number): number {
@@ -80,6 +83,18 @@ export default (context: PluginContext): void => {
     let activeCursor: CursorRenderObject | null = null;
     let mouseDownPosition: { x: number; y: number } | null = null;
     let hoveredRow: Row | undefined = undefined;
+    // Set while an existing cursor is being drag-moved; holds the position to restore on cancel
+    let movingOriginalPosition: number | null = null;
+    let markerUnderMouse: CursorRenderObject | null = null;
+    let hoveredMarker: CursorRenderObject | null = null;
+
+    const setHoveredMarker = (marker: CursorRenderObject | null) => {
+        if (hoveredMarker === marker) return;
+        hoveredMarker?.setMarkerHovered(false);
+        marker?.setMarkerHovered(true);
+        hoveredMarker = marker;
+        context.requestRender();
+    };
 
     const removeCursor = (cursor: CursorRenderObject) => {
         cursor.cleanup();
@@ -90,6 +105,13 @@ export default (context: PluginContext): void => {
         if (activeCursor === cursor) {
             activeCursor = null;
             isAddingCursor = false;
+            movingOriginalPosition = null;
+        }
+        if (markerUnderMouse === cursor) {
+            markerUnderMouse = null;
+        }
+        if (hoveredMarker === cursor) {
+            hoveredMarker = null;
         }
         cursorSidebar.updateContent();
         context.requestRender();
@@ -124,6 +146,28 @@ export default (context: PluginContext): void => {
                     }
                 }
             });
+
+            // Rows without signals show the numbered markers (see CursorRenderObject).
+            // Track which marker is under the mouse here, where row-local coordinates
+            // are available; the global handler below uses it to start a drag-move.
+            if (row.signals.length === 0) {
+                row.mainArea.addChild({
+                    zIndex: 1001,
+                    onMouseMove: (event: MouseEvent) => {
+                        markerUnderMouse = cursors.find(c => c.hitTestMarker(event.offsetX, event.offsetY)) ?? null;
+                        // Highlight the hovered marker, or the grabbed one while dragging
+                        setHoveredMarker(!activeCursor || markerUnderMouse === activeCursor ? markerUnderMouse : null);
+                        if (markerUnderMouse && !activeCursor) {
+                            document.body.style.cursor = 'pointer';
+                        }
+                    },
+                    onMouseLeave: () => {
+                        markerUnderMouse = null;
+                        // Keep the grabbed marker highlighted while dragging below the axis
+                        setHoveredMarker(movingOriginalPosition !== null ? activeCursor : null);
+                    }
+                });
+            }
         }
         
         cursorSidebar.updateContent();
@@ -134,15 +178,12 @@ export default (context: PluginContext): void => {
         zIndex: 1001, // Higher than cursor render objects
         onMouseMove: (event: MouseEvent) => {
             if (!activeCursor) return;
-            
-            const mouseX = mouseTracker.getLastMouseX();
-            if (mouseX !== null) {
-                const time = mouseTracker.screenXToTime(mouseX);
-                activeCursor.updatePosition(time, hoveredRow);
-                cursorSidebar.updateContent();
-                context.requestRender();
-            }
-            
+
+            const time = mouseTracker.screenXToTime(mouseTracker.toMainAreaX(event.clientX));
+            activeCursor.updatePosition(time, hoveredRow);
+            cursorSidebar.updateContent();
+            context.requestRender();
+
             // Clear mousedown position if mouse moved significantly
             if (mouseDownPosition) {
                 const dx = Math.abs(event.clientX - mouseDownPosition.x);
@@ -153,16 +194,43 @@ export default (context: PluginContext): void => {
             }
         },
         onMouseDown: (event: MouseEvent) => {
-            if (!activeCursor) return;
-            
-            if (event.button === 0) {
+            if (event.button !== 0) return;
+
+            if (activeCursor) {
                 mouseDownPosition = { x: event.clientX, y: event.clientY };
+                return;
+            }
+
+            // Grab a marker in the time axis to drag-move its cursor. Re-check the x
+            // position: the view may have panned/zoomed under a stationary mouse since
+            // markerUnderMouse was last updated.
+            if (markerUnderMouse && !event.altKey && !event.ctrlKey &&
+                markerUnderMouse.hitTestMarkerX(mouseTracker.toMainAreaX(event.clientX))) {
+                const position = markerUnderMouse.getPosition();
+                if (position === null) return;
+
+                activeCursor = markerUnderMouse;
+                movingOriginalPosition = position;
+                context.requestRender();
+                // Claim this mousedown before the pan handler sees it
+                event.stopPropagation();
+                return { captureMouse: true, allowMouseMoveThrough: true, preventDefault: true };
             }
         },
         onMouseUp: (event: MouseEvent) => {
-            if (!activeCursor) return;
-            
-            if (event.button === 0 && mouseDownPosition) {
+            if (event.button !== 0 || !activeCursor) return;
+
+            if (movingOriginalPosition !== null) {
+                // End of a drag-move: drop the cursor where the button was released
+                activeCursor = null;
+                movingOriginalPosition = null;
+                setHoveredMarker(markerUnderMouse);
+                cursorSidebar.updateContent();
+                context.requestRender();
+                return;
+            }
+
+            if (mouseDownPosition) {
                 // Only place cursor if mouse didn't move significantly
                 const position = activeCursor.getPosition();
                 if (position !== null) {
@@ -172,7 +240,7 @@ export default (context: PluginContext): void => {
                     context.requestRender();
                 }
             }
-            
+
             mouseDownPosition = null;
         }
     });
@@ -180,8 +248,8 @@ export default (context: PluginContext): void => {
     context.registerCommand({
         id: 'add',
         action: () => {
-            if (isAddingCursor) return;
-            
+            if (isAddingCursor || activeCursor) return;
+
             isAddingCursor = true;
             
             // Find the smallest available cursor number
@@ -218,7 +286,26 @@ export default (context: PluginContext): void => {
         id: 'cancel',
         action: () => {
             if (!activeCursor) return;
-            
+
+            if (movingOriginalPosition !== null) {
+                // Moving an existing cursor: put it back instead of deleting it
+                activeCursor.setPosition(movingOriginalPosition);
+                activeCursor = null;
+                movingOriginalPosition = null;
+                mouseDownPosition = null;
+                markerUnderMouse = null;
+                setHoveredMarker(null);
+                cursorSidebar.updateContent();
+                context.requestRender();
+                return;
+            }
+
+            if (markerUnderMouse === activeCursor) {
+                markerUnderMouse = null;
+            }
+            if (hoveredMarker === activeCursor) {
+                hoveredMarker = null;
+            }
             activeCursor.cleanup();
             const index = cursors.indexOf(activeCursor);
             if (index > -1) {

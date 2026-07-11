@@ -14,6 +14,8 @@ export class CursorRenderObject {
     private position: number | null = null;
     private renderObjects: RenderObject[] = [];
     private rectBuffer: { buffer: WebGLBuffer, vertexCount: number } | null = null;
+    private markerRect: { y: number; width: number; height: number } | null = null;
+    private markerHovered = false;
 
     constructor(
         private context: PluginContext,
@@ -36,6 +38,26 @@ export class CursorRenderObject {
 
     getPosition(): number | null {
         return this.position;
+    }
+
+    setPosition(time: number | null): void {
+        this.position = time;
+    }
+
+    hitTestMarker(x: number, y: number): boolean {
+        if (this.markerRect === null) return false;
+        return this.hitTestMarkerX(x) &&
+            y >= this.markerRect.y &&
+            y <= this.markerRect.y + this.markerRect.height;
+    }
+
+    hitTestMarkerX(x: number): boolean {
+        if (this.position === null || this.markerRect === null) return false;
+        return Math.abs(x - this.timeToScreenX(this.position)) <= this.markerRect.width / 2;
+    }
+
+    setMarkerHovered(hovered: boolean): void {
+        this.markerHovered = hovered;
     }
 
     getCursorNumber(): number {
@@ -190,6 +212,7 @@ export class CursorRenderObject {
         const blobX = x - blobWidth / 2;
         const blobY = 2;
         const lineStartY = blobY + blobHeight;
+        this.markerRect = { y: blobY, width: blobWidth, height: blobHeight };
 
         // Draw line from bottom of blob to bottom of bounds
         gl.useProgram(utils.grid);
@@ -222,8 +245,15 @@ export class CursorRenderObject {
             gl.deleteBuffer(buffer);
         }
 
-        // Draw background blob with rounded corners
-        const rgb = this.hexToRgb(this.color);
+        // Draw background blob with rounded corners, lightened while hovered
+        let rgb = this.hexToRgb(this.color);
+        if (this.markerHovered) {
+            rgb = [
+                rgb[0] + (1 - rgb[0]) * 0.4,
+                rgb[1] + (1 - rgb[1]) * 0.4,
+                rgb[2] + (1 - rgb[2]) * 0.4,
+            ];
+        }
         this.drawRoundedRect(gl, utils, blobX, blobY, blobWidth, blobHeight, 6, [...rgb, alpha], bounds);
         
         // Draw text with contrasting color
