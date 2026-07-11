@@ -156,28 +156,9 @@ export class PluginManager {
             loadConfig: <A, O = A, I = unknown>(schema: t.Type<A, O, I>, defaultConfig: O): A => {
                 return this.configManager.loadConfig<A, O, I>(plugin.metadata.name, schema, defaultConfig);
             },
-            getEnvironment: (): 'electron' | 'browser' => {
-                // Check if we're in a browser environment first
-                if (typeof window === 'undefined') {
-                    return 'browser';
-                }
-
-                // Primary check: Electron exposes process.type === 'renderer' in the renderer process
-                const win = window as Window & { process?: { type?: string } };
-                if (typeof win.process === 'object' && 
-                    win.process?.type === 'renderer') {
-                    return 'electron';
-                }
-
-                // Fallback check: User agent contains 'Electron'
-                if (typeof navigator === 'object' && 
-                    typeof navigator.userAgent === 'string' && 
-                    navigator.userAgent.indexOf('Electron') >= 0) {
-                    return 'electron';
-                }
-
-                return 'browser';
-            },
+            // Voltex is browser-only since the Electron build was removed; the
+            // union return type remains part of the published plugin API.
+            getEnvironment: (): 'electron' | 'browser' => 'browser',
             registerFileOpenHandler: (handler: FileOpenHandler) => {
                 const data = this.pluginData.get(plugin)!;
                 data.fileExtensionHandlers.push(handler);

@@ -201,15 +201,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 alert(`Error importing configuration: ${message}`);
                             }
                         }
-                    },
-                    { type: 'separator' },
-                    {
-                        label: 'Exit',
-                        action: () => {
-                            if (window.waveformApi) {
-                                window.waveformApi.quitApp();
-                            }
-                        }
                     }
                 ]
             },
@@ -222,11 +213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             const commitHash = __GIT_COMMIT_HASH__;
                             if (commitHash && commitHash !== 'unknown') {
                                 const url = `https://github.com/voltex-viewer/voltex/commit/${commitHash}`;
-                                if (window.waveformApi) {
-                                    window.waveformApi.openExternalUrl(url);
-                                } else {
-                                    window.open(url, '_blank');
-                                }
+                                window.open(url, '_blank');
                             }
                         }
                     }

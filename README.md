@@ -1,6 +1,6 @@
 # Voltex
 
-[Voltex](https://app.voltexviewer.com/) is a high-performance waveform viewer built with Electron and WebGL.
+[Voltex](https://app.voltexviewer.com/) is a high-performance waveform viewer built with WebGL.
 
 ![Screenshot](screenshot.png)
 

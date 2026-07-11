@@ -5,18 +5,7 @@ export class RenderProfiler implements ReadOnlyRenderProfiler {
     private _lastFrame: FrameInfo | null = null;
     private measureStack: (Omit<MeasureInfo, 'endTime'> & { endTime: number | undefined })[][] = [];
     private currentDepth = 0;
-    private now: () => number;
-
-    constructor() {
-        if (window.waveformApi?.getHighResTime) {
-            this.now = () => {
-                const now = window.waveformApi.getHighResTime();
-                return Number(now) / 1000000;
-            };
-        } else {
-            this.now = performance.now.bind(performance);
-        }
-    }
+    private now = performance.now.bind(performance);
 
     get lastFrame(): FrameInfo | null {
         return this._lastFrame;

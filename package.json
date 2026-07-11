@@ -1,9 +1,7 @@
 {
   "name": "voltex",
-  "productName": "voltex",
   "version": "1.0.0",
-  "description": "My Electron application description",
-  "main": ".vite/build/main.js",
+  "description": "View and analyse MDF/MF4, CSV and other measurement data in your browser.",
   "workspaces": [
     "packages/*"
   ],
@@ -11,11 +9,6 @@
     "build:web": "vite build --config vite.web.config.ts",
     "dev:web": "vite dev --config vite.web.config.ts --host 0.0.0.0",
     "preview:web": "vite preview --config vite.web.config.ts",
-    "start": "electron-forge start",
-    "start:debug": "electron-forge start -- --inspect=9229 --remote-debugging-port=9222",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "test": "vitest",
@@ -23,21 +16,11 @@
     "test:run": "vitest run"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.9.0",
-    "@electron-forge/maker-deb": "^7.9.0",
-    "@electron-forge/maker-rpm": "^7.9.0",
-    "@electron-forge/maker-squirrel": "^7.9.0",
-    "@electron-forge/maker-zip": "^7.9.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.9.0",
-    "@electron-forge/plugin-fuses": "^7.9.0",
-    "@electron-forge/plugin-vite": "^7.9.0",
-    "@electron/fuses": "^1.8.0",
     "@eslint/js": "^9.39.1",
     "@types/wicg-file-system-access": "^2023.10.6",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
     "@typescript-eslint/parser": "^8.44.0",
     "@vitest/ui": "^4.0.1",
-    "electron": "38.1.2",
     "eslint": "^9.36.0",
     "eslint-plugin-check-file": "^3.3.1",
     "eslint-plugin-import": "^2.32.0",
@@ -59,7 +42,6 @@
     "@js-temporal/polyfill": "^0.5.1",
     "@voltex-viewer/mdf-reader": "workspace:*",
     "@voltex-viewer/plugin-api": "workspace:*",
-    "electron-squirrel-startup": "^1.0.1",
     "fp-ts": "^2.16.11",
     "io-ts": "^2.2.22"
   }
