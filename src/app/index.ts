@@ -104,6 +104,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         await renderer.pluginManager.loadFiles(...Array.from(e.dataTransfer?.files || []))
     });
 
+    // PWA file handling: when the installed app is launched by the OS as the
+    // default handler for its file types (see file_handlers in the web
+    // manifest), open those files the same way as drag-drop / File > Open.
+    window.launchQueue?.setConsumer(async (params) => {
+        if (params.files.length === 0) return;
+        try {
+            const files = await Promise.all(params.files.map(handle => handle.getFile()));
+            await renderer.pluginManager.loadFiles(...files);
+        } catch (error) {
+            console.error('Failed to open launched file(s):', error);
+        }
+    });
+
     // Create and insert menu bar first
     document.body.insertBefore(
         createMenuBar([
