@@ -165,22 +165,15 @@ export function getVisibleEntries(
 ): { entry: TreeEntry; depth: number }[] {
     const visible: { entry: TreeEntry; depth: number }[] = [];
 
-    if (isSearching) {
-        for (const entry of entries) {
-            if (entry.searchVisible) {
-                visible.push({ entry, depth: entry.depth });
-            }
+    const ancestorStack: boolean[] = [];
+    for (const entry of entries) {
+        ancestorStack.length = entry.depth;
+        const isVisible = ancestorStack.every(expanded => expanded)
+            && (!isSearching || entry.searchVisible);
+        if (isVisible) {
+            visible.push({ entry, depth: entry.depth });
         }
-    } else {
-        const ancestorStack: boolean[] = [];
-        for (const entry of entries) {
-            ancestorStack.length = entry.depth;
-            const isVisible = ancestorStack.every(expanded => expanded);
-            if (isVisible) {
-                visible.push({ entry, depth: entry.depth });
-            }
-            ancestorStack.push(entry.expanded);
-        }
+        ancestorStack.push(entry.expanded);
     }
 
     return visible;

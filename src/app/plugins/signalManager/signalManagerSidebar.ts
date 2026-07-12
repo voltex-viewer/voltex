@@ -69,7 +69,6 @@ export class SignalManagerSidebar {
 
         const nodeCallbacks: TreeNodeCallbacks = {
             onToggle: (entry) => {
-                if (this.searchTerm.trim()) return;
                 this.callbacks.onToggle(entry);
                 this.refresh();
             },
