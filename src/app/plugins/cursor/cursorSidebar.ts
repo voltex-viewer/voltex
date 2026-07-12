@@ -4,6 +4,10 @@ import type { CursorRenderObject } from './cursorRenderObject';
 import type { CursorConfig } from './cursorPlugin';
 import { formatInstant } from './timeFormat';
 
+function formatSigned(seconds: number): string {
+    return (seconds >= 0 ? '+' : '') + seconds.toFixed(6);
+}
+
 export class CursorSidebar {
     private container: HTMLElement | null = null;
 
@@ -103,6 +107,11 @@ export class CursorSidebar {
                     display: flex;
                     align-items: center;
                 }
+                .cursor-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 2px;
+                }
                 .cursor-remove-btn {
                     background: none;
                     border: none;
@@ -119,6 +128,27 @@ export class CursorSidebar {
                 }
                 .cursor-remove-btn:hover {
                     background: #ff4444;
+                    color: #ffffff;
+                }
+                .cursor-delta-btn {
+                    background: none;
+                    border: 1px solid transparent;
+                    color: #858585;
+                    cursor: pointer;
+                    padding: 2px 3px;
+                    line-height: 1;
+                    border-radius: 3px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.15s;
+                }
+                .cursor-delta-btn:hover {
+                    background: rgba(90, 93, 94, 0.31);
+                    color: #cccccc;
+                }
+                .cursor-delta-btn.active {
+                    background: rgba(255, 255, 255, 0.12);
                     color: #ffffff;
                 }
                 .signal-name {
@@ -196,19 +226,27 @@ export class CursorSidebar {
         signalHeader.textContent = 'Signal';
         headerRow.appendChild(signalHeader);
 
-        for (const cursor of this.cursors) {
+        this.cursors.forEach((cursor, cursorIndex) => {
             const cursorHeader = document.createElement('th');
+            const deltaButton = cursorIndex === 0 ? '' : `
+                        <button class="cursor-delta-btn${cursor.deltaMode ? ' active' : ''}" data-cursor-id="${cursor.getCursorNumber()}" title="Show delta from previous cursor">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+                                <path d="M8 2.5 L14 13.5 H2 Z"/>
+                            </svg>
+                        </button>`;
             cursorHeader.innerHTML = `
                 <div class="cursor-number">
                     <div class="cursor-label">
                         <span class="cursor-indicator" style="background-color: ${cursor.getColor()}"></span>
                         Cursor ${cursor.getCursorNumber()}
                     </div>
-                    <button class="cursor-remove-btn" data-cursor-id="${cursor.getCursorNumber()}" title="Remove cursor">×</button>
+                    <div class="cursor-actions">${deltaButton}
+                        <button class="cursor-remove-btn" data-cursor-id="${cursor.getCursorNumber()}" title="Remove cursor">×</button>
+                    </div>
                 </div>
             `;
             headerRow.appendChild(cursorHeader);
-        }
+        });
 
         thead.appendChild(headerRow);
         table.appendChild(thead);
@@ -225,17 +263,24 @@ export class CursorSidebar {
         timestampLabel.className = 'signal-name';
         timestampRow.appendChild(timestampLabel);
 
-        for (const cursor of this.cursors) {
+        this.cursors.forEach((cursor, cursorIndex) => {
             const timestampCell = document.createElement('td');
             timestampCell.className = 'timestamp-cell';
             const position = cursor.getPosition();
-            timestampCell.textContent = position === null
-                ? '-'
-                : realtime
-                    ? formatInstant(state.referenceWallTime + position, state.timeZone)
-                    : position.toFixed(6);
+            if (cursor.deltaMode && cursorIndex > 0) {
+                const previousPosition = this.cursors[cursorIndex - 1].getPosition();
+                timestampCell.textContent = position === null || previousPosition === null
+                    ? '-'
+                    : formatSigned(position - previousPosition);
+            } else {
+                timestampCell.textContent = position === null
+                    ? '-'
+                    : realtime
+                        ? formatInstant(state.referenceWallTime + position, state.timeZone)
+                        : position.toFixed(6);
+            }
             timestampRow.appendChild(timestampCell);
-        }
+        });
         tbody.appendChild(timestampRow);
 
         // Add signal rows
@@ -247,17 +292,27 @@ export class CursorSidebar {
             nameCell.textContent = signalInfo.name[signalInfo.name.length - 1] + (signalInfo.signal.values.unit ? ` (${signalInfo.signal.values.unit})` : '');
             signalRow.appendChild(nameCell);
 
-            for (const cursor of this.cursors) {
+            const display = this.context.signalMetadata.get(signalInfo.signal).display;
+            const values = this.cursors.map(cursor => this.getSignalValueAtCursor(signalInfo.signal, cursor));
+            values.forEach((value, cursorIndex) => {
                 const valueCell = document.createElement('td');
                 valueCell.className = 'signal-value';
-                const value = this.getSignalValueAtCursor(signalInfo.signal, cursor);
-                if (value !== null) {
-                    valueCell.textContent = formatValueForDisplay(value, this.context.signalMetadata.get(signalInfo.signal).display);
-                } else {
+                if (value === null) {
                     valueCell.textContent = '-';
+                } else {
+                    const previousValue = this.cursors[cursorIndex].deltaMode && cursorIndex > 0 ? values[cursorIndex - 1] : null;
+                    if (typeof value === 'number' && typeof previousValue === 'number') {
+                        const delta = value - previousValue;
+                        valueCell.textContent = (delta >= 0 ? '+' : '') + formatValueForDisplay(delta, display);
+                    } else if (typeof value === 'bigint' && typeof previousValue === 'bigint') {
+                        const delta = value - previousValue;
+                        valueCell.textContent = (delta >= 0n ? '+' : '') + formatValueForDisplay(delta, display);
+                    } else {
+                        valueCell.textContent = formatValueForDisplay(value, display);
+                    }
                 }
                 signalRow.appendChild(valueCell);
-            }
+            });
 
             tbody.appendChild(signalRow);
         }
@@ -274,6 +329,19 @@ export class CursorSidebar {
                 const cursor = this.cursors.find(c => c.getCursorNumber() === cursorId);
                 if (cursor) {
                     this.onRemoveCursor(cursor);
+                }
+            });
+        });
+
+        // Add event listeners for delta toggle buttons
+        const deltaButtons = table.querySelectorAll('.cursor-delta-btn');
+        deltaButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                const cursorId = parseInt((e.currentTarget as HTMLElement).getAttribute('data-cursor-id') || '0');
+                const cursor = this.cursors.find(c => c.getCursorNumber() === cursorId);
+                if (cursor) {
+                    cursor.deltaMode = !cursor.deltaMode;
+                    this.updateContent();
                 }
             });
         });

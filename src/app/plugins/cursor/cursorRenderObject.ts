@@ -11,6 +11,8 @@ import {
 const alpha = 0.8;
 
 export class CursorRenderObject {
+    // When true, the sidebar shows this cursor's values as deltas from the previous cursor
+    deltaMode = false;
     private position: number | null = null;
     private renderObjects: RenderObject[] = [];
     private rectBuffer: { buffer: WebGLBuffer, vertexCount: number } | null = null;

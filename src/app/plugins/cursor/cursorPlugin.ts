@@ -17,6 +17,7 @@ const cursorColors = [
 ];
 
 const cursorConfigSchema = t.type({
+    deltaMode: t.boolean,
     keybindings: t.type({
         'add': Keybinding,
         'cancel': Keybinding,
@@ -70,6 +71,7 @@ class MousePositionTracker {
 
 export default (context: PluginContext): void => {
     const config: CursorConfig = context.loadConfig(cursorConfigSchema, {
+        deltaMode: false,
         keybindings: {
             'add': 'c' as t.Branded<string, KeybindingBrand>,
             'cancel': 'escape' as t.Branded<string, KeybindingBrand>,
@@ -273,6 +275,7 @@ export default (context: PluginContext): void => {
                 initialTime,
                 hoveredRow
             );
+            cursor.deltaMode = config.deltaMode;
             cursor.addRowRenderObjects(context.getRows());
             
             activeCursor = cursor;
