@@ -5,9 +5,9 @@ export interface CustomPluginData {
     metadata: PluginMetadata;
     code: string;
     uploadedAt: number;
-    registryUrl?: string;   // which registry this came from
-    registryMain?: string;  // path in registry for re-fetching on update
-    integrity?: string;     // "sha256-<base64>" — re-verified on every load
+    registryUrl?: string | undefined;   // which registry this came from
+    registryMain?: string | undefined;  // path in registry for re-fetching on update
+    integrity?: string | undefined;     // "sha256-<base64>" — re-verified on every load
 }
 
 export class CustomPluginStorage {
@@ -32,7 +32,7 @@ export class CustomPluginStorage {
         name: string,
         code: string,
         metadata: PluginMetadata,
-        extra?: { registryUrl?: string; registryMain?: string; integrity?: string }
+        extra?: { registryUrl?: string | undefined; registryMain?: string | undefined; integrity?: string | undefined }
     ): Promise<void> {
         const dir = await this.ensureStorageDir();
 

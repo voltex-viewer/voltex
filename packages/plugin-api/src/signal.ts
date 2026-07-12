@@ -320,7 +320,7 @@ export class FunctionValueSequence implements Sequence {
         private maxVal: number,
         private nullValue?: number,
     ) {
-        if (typeof this.nullValue !== 'undefined') {
+        if (nullValue !== undefined) {
             this.null = nullValue;
         }
     }

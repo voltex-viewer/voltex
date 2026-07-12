@@ -2,17 +2,17 @@ import { computeIntegrity } from './integrityUtil';
 
 export interface RegistryPlugin {
     name: string;
-    displayName?: string;
+    displayName?: string | undefined;
     version: string;
-    description?: string;
-    author?: string;
+    description?: string | undefined;
+    author?: string | undefined;
     main: string; // full path relative to repo root, e.g. "plugins/notepad/index.js"
-    integrity?: string; // "sha256-<base64>" — computed by CI, verified by Voltex
+    integrity?: string | undefined; // "sha256-<base64>" — computed by CI, verified by Voltex
 }
 
 export interface PluginRegistry {
     name: string;
-    description?: string;
+    description?: string | undefined;
     plugins: RegistryPlugin[];
 }
 

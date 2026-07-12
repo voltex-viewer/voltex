@@ -231,11 +231,11 @@ export interface RenderObject {
 
 export interface PluginMetadata {
     name: string;
-    displayName?: string;
+    displayName?: string | undefined;
     version: string;
-    description?: string;
-    author?: string;
-    url?: string;
+    description?: string | undefined;
+    author?: string | undefined;
+    url?: string | undefined;
 }
 
 export type PluginFunction = (context: PluginContext) => void | Promise<void>;
