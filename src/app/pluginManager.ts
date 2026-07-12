@@ -156,6 +156,9 @@ export class PluginManager {
             loadConfig: <A, O = A, I = unknown>(schema: t.Type<A, O, I>, defaultConfig: O): A => {
                 return this.configManager.loadConfig<A, O, I>(plugin.metadata.name, schema, defaultConfig);
             },
+            updateConfig: (newConfig: unknown): void => {
+                this.configManager.updateConfig(plugin.metadata.name, newConfig);
+            },
             // Voltex is browser-only since the Electron build was removed; the
             // union return type remains part of the published plugin API.
             getEnvironment: (): 'electron' | 'browser' => 'browser',

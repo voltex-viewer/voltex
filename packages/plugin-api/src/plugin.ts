@@ -207,6 +207,7 @@ export interface PluginContext {
     spliceRows(rowsToRemove: Row[], rowsToAdd: RowInsert[]): Row[];
     getRows(): Row[];
     loadConfig<A, O = A, I = unknown>(schema: t.Type<A, O, I>, defaultConfig: O): A;
+    updateConfig<T>(newConfig: T): void;
     getEnvironment(): 'electron' | 'browser';
     loadFiles(...files: File[]): Promise<SignalSource[]>;
     registerFileOpenHandler(handler: FileOpenHandler): void;
