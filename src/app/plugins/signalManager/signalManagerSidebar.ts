@@ -1,4 +1,4 @@
-import { TreeEntry, getVisibleEntries, filterBySearch } from './treeModel';
+import { TreeEntry, type SearchOptions, getVisibleEntries, filterBySearch } from './treeModel';
 import { createTreeNode, type TreeNodeCallbacks } from './signalTreeRenderer';
 import { VirtualList } from './virtualList';
 import './signalManager.css';
@@ -6,12 +6,28 @@ import './signalManager.css';
 const itemHeight = 28;
 const bufferSize = 5;
 
+const searchOptionIcons: Record<keyof SearchOptions, { title: string; svg: string }> = {
+    caseSensitive: {
+        title: 'Match Case',
+        svg: `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><text x="0.5" y="12" font-size="11" font-weight="600">A</text><text x="8.5" y="12" font-size="10">a</text></svg>`,
+    },
+    wholeWord: {
+        title: 'Match Whole Word',
+        svg: `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><text x="2" y="10.5" font-size="10">ab</text><path d="M1 12.5h14v1H1z"/></svg>`,
+    },
+    useRegex: {
+        title: 'Use Regular Expression',
+        svg: `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><text x="2" y="13" font-size="13" font-weight="600">.*</text></svg>`,
+    },
+};
+
 export interface SignalManagerCallbacks {
     onToggle: (entry: TreeEntry) => void;
     onLeafClick: (entry: TreeEntry) => void;
     onRemove: (entry: TreeEntry) => void;
     onPlotFiltered: () => void;
     onFileDrop: (targetEntry: TreeEntry, files: File[]) => void;
+    onSearchOptionsChanged: (options: SearchOptions) => void;
 }
 
 export class SignalManagerSidebar {
@@ -19,9 +35,12 @@ export class SignalManagerSidebar {
     private virtualList: VirtualList<{ entry: TreeEntry; depth: number }>;
     private entries: TreeEntry[] = [];
     private searchTerm = '';
-    private searchInput: HTMLInputElement;
+    private searchInput: HTMLTextAreaElement;
+    private searchOptions: SearchOptions;
+    private optionButtons: { key: keyof SearchOptions; button: HTMLButtonElement }[] = [];
 
-    constructor(private callbacks: SignalManagerCallbacks) {
+    constructor(private callbacks: SignalManagerCallbacks, initialSearchOptions: SearchOptions) {
+        this.searchOptions = { ...initialSearchOptions };
         this.container = document.createElement('div');
         this.container.className = 'signal-manager-root';
 
@@ -30,21 +49,16 @@ export class SignalManagerSidebar {
 
         const searchContainer = document.createElement('div');
         searchContainer.className = 'search-container';
-        searchContainer.innerHTML = `
-            <div class="search-icon">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-                    <circle cx="6" cy="6" r="3" stroke="#6b7280" stroke-width="1.5" fill="none"/>
-                    <line x1="8.5" y1="8.5" x2="12" y2="12" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-            </div>
-        `;
 
-        this.searchInput = document.createElement('input');
-        this.searchInput.type = 'text';
+        this.searchInput = document.createElement('textarea');
+        this.searchInput.rows = 1;
         this.searchInput.placeholder = 'Search signals...';
         this.searchInput.className = 'search-input';
-        this.searchInput.addEventListener('input', (e) => {
-            this.setSearchTerm((e.target as HTMLInputElement).value);
+        this.searchInput.addEventListener('input', () => {
+            // Grow/shrink with the wrapped content (+2 for the 1px borders)
+            this.searchInput.style.height = 'auto';
+            this.searchInput.style.height = `${this.searchInput.scrollHeight + 2}px`;
+            this.setSearchTerm(this.searchInput.value);
         });
         this.searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -53,6 +67,29 @@ export class SignalManagerSidebar {
             }
         });
         searchContainer.appendChild(this.searchInput);
+
+        const optionsContainer = document.createElement('div');
+        optionsContainer.className = 'search-options';
+        for (const key of Object.keys(searchOptionIcons) as (keyof SearchOptions)[]) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'search-option-btn';
+            button.title = searchOptionIcons[key].title;
+            button.innerHTML = searchOptionIcons[key].svg;
+            button.classList.toggle('active', this.searchOptions[key]);
+            // Keep focus in the search input when toggling an option
+            button.addEventListener('mousedown', (e) => e.preventDefault());
+            button.addEventListener('click', () => {
+                this.searchOptions[key] = !this.searchOptions[key];
+                button.classList.toggle('active', this.searchOptions[key]);
+                this.applyFilter();
+                this.refresh();
+                this.callbacks.onSearchOptionsChanged({ ...this.searchOptions });
+            });
+            optionsContainer.appendChild(button);
+            this.optionButtons.push({ key, button });
+        }
+        searchContainer.appendChild(optionsContainer);
 
         innerContainer.appendChild(searchContainer);
 
@@ -78,7 +115,7 @@ export class SignalManagerSidebar {
         };
 
         this.virtualList.setRenderFn((item) => {
-            return createTreeNode(item.entry, item.depth, this.searchTerm, nodeCallbacks);
+            return createTreeNode(item.entry, item.depth, this.searchTerm, this.searchOptions, nodeCallbacks);
         });
 
         innerContainer.appendChild(listWrapper);
@@ -118,8 +155,17 @@ export class SignalManagerSidebar {
         this.refresh();
     }
 
+    setSearchOptions(options: SearchOptions): void {
+        this.searchOptions = { ...options };
+        for (const { key, button } of this.optionButtons) {
+            button.classList.toggle('active', this.searchOptions[key]);
+        }
+        this.applyFilter();
+        this.refresh();
+    }
+
     private applyFilter(): void {
-        filterBySearch(this.entries, this.searchTerm);
+        filterBySearch(this.entries, this.searchTerm, this.searchOptions);
     }
 
     refresh(): void {

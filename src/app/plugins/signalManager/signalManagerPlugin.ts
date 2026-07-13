@@ -1,9 +1,22 @@
 import { type PluginContext, type SignalSource, RenderMode, type Row, type RowInsert, type Signal } from '@voltex-viewer/plugin-api';
+import * as t from 'io-ts';
 import { TreeEntry, buildTreeFromSources, getDescendantRange } from './treeModel';
 import { SignalManagerSidebar } from './signalManagerSidebar';
 import { PlaceholderSignalSource } from './placeholderSignal';
 
+const configSchema = t.type({
+    caseSensitive: t.boolean,
+    wholeWord: t.boolean,
+    useRegex: t.boolean,
+});
+
 export default (context: PluginContext): void => {
+    const config = context.loadConfig(configSchema, {
+        caseSensitive: false,
+        wholeWord: false,
+        useRegex: false,
+    });
+
     const sidebar = new SignalManagerSidebar({
         onToggle: (entry) => {
             entry.expanded = !entry.expanded;
@@ -22,6 +35,16 @@ export default (context: PluginContext): void => {
         onFileDrop: (entry, files) => {
             replaceFileWithSignals(entry, files);
         },
+        onSearchOptionsChanged: (options) => {
+            Object.assign(config, options);
+            context.updateConfig(config);
+        },
+    }, config);
+
+    context.onConfigChanged((pluginName) => {
+        if (pluginName === '@voltex-viewer/signal-manager-plugin') {
+            sidebar.setSearchOptions(config);
+        }
     });
 
     const sidebarEntry = context.addSidebarEntry({

@@ -12,41 +12,70 @@
     overflow: hidden;
 }
 
-.search-container {
+/* Scoped under .signal-manager-container because the plugin manager sidebar
+   defines global rules for the same .search-* class names */
+.signal-manager-container .search-container {
     position: relative;
     flex-shrink: 0;
     padding: 0;
     margin-bottom: 8px;
 }
 
-.search-icon {
-    position: absolute;
-    left: 10px;
-    top: 50%;
-    transform: translateY(-35%);
-    color: #6b7280;
-    font-size: 14px;
-    pointer-events: none;
-    filter: grayscale(100%);
-}
-
-.search-input {
+.signal-manager-container .search-input {
+    display: block;
     width: 100%;
-    padding: 10px 10px 10px 36px;
+    padding: 4px 72px 4px 8px;
     background: #2c313a;
     border: 1px solid #444;
     color: #e5e7eb;
     border-radius: 6px;
     font-size: 13px;
+    font-family: inherit;
+    line-height: 18px;
     box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
 }
 
-.search-input:focus {
+.signal-manager-container .search-options {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    display: flex;
+    gap: 2px;
+}
+
+.signal-manager-container .search-option-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: #9ca3af;
+    cursor: pointer;
+}
+
+.signal-manager-container .search-option-btn:hover {
+    background: #3a4048;
+    color: #e5e7eb;
+}
+
+.signal-manager-container .search-option-btn.active {
+    background: rgba(99, 102, 241, 0.35);
+    border-color: #6366f1;
+    color: #e5e7eb;
+}
+
+.signal-manager-container .search-input:focus {
     outline: none;
     border-color: #6366f1;
 }
 
-.search-input::placeholder {
+.signal-manager-container .search-input::placeholder {
     color: #6b7280;
 }
 

@@ -108,8 +108,32 @@ export function naturalCompare(a: string, b: string): number {
     return 0;
 }
 
-export function filterBySearch(entries: TreeEntry[], searchTerm: string): void {
-    if (!searchTerm.trim()) {
+export interface SearchOptions {
+    caseSensitive: boolean;
+    wholeWord: boolean;
+    useRegex: boolean;
+}
+
+function escapeRegex(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function buildSearchRegex(searchTerm: string, options: SearchOptions, extraFlags = ''): RegExp | null {
+    if (!searchTerm.trim()) return null;
+
+    const flags = (options.caseSensitive ? '' : 'i') + extraFlags;
+    const wrap = (pattern: string) => options.wholeWord ? `\\b(?:${pattern})\\b` : pattern;
+    try {
+        return new RegExp(wrap(options.useRegex ? searchTerm : escapeRegex(searchTerm)), flags);
+    } catch {
+        // Invalid user-supplied regex: fall back to matching it literally
+        return new RegExp(wrap(escapeRegex(searchTerm)), flags);
+    }
+}
+
+export function filterBySearch(entries: TreeEntry[], searchTerm: string, options: SearchOptions): void {
+    const regex = buildSearchRegex(searchTerm, options);
+    if (!regex) {
         for (const entry of entries) {
             entry.searchVisible = false;
             entry.searchMatches = false;
@@ -117,21 +141,10 @@ export function filterBySearch(entries: TreeEntry[], searchTerm: string): void {
         return;
     }
 
-    let regex: RegExp | null = null;
-    let lowerSearchTerm = '';
-    try {
-        regex = new RegExp(searchTerm, 'i');
-    } catch {
-        lowerSearchTerm = searchTerm.toLowerCase();
-    }
-
     // First pass: mark nodes that directly match
     for (const node of entries) {
-        const nodeMatches = regex
-            ? regex.test(node.fullPathString)
-            : node.fullPathString.toLowerCase().includes(lowerSearchTerm);
         node.searchVisible = false;
-        node.searchMatches = nodeMatches;
+        node.searchMatches = regex.test(node.fullPathString);
     }
 
     // Second pass: mark descendants of matching nodes
