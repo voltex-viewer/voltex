@@ -48,7 +48,7 @@ export function createTreeNode(
 
     const treeNodeDiv = document.createElement('div');
     treeNodeDiv.className = `tree-node ${isLeaf ? 'leaf' : 'expandable'}`;
-    treeNodeDiv.style.setProperty('--indent', `${depth * 12}px`);
+    treeNodeDiv.style.setProperty('--indent', `${(depth - 1) * 10}px`);
 
     const toggleSpan = document.createElement('span');
     toggleSpan.className = 'tree-toggle';
