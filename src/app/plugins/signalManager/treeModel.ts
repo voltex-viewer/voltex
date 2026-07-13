@@ -4,6 +4,8 @@ export class TreeEntry {
     expanded: boolean = true;
     searchVisible: boolean = false;
     searchMatches: boolean = false;
+    /** Match ranges within `name`, in [start, end) character offsets */
+    highlightRanges: [number, number][] = [];
     readonly fullPathString: string;
     parent: TreeEntry | null = null;
 
@@ -132,19 +134,48 @@ export function buildSearchRegex(searchTerm: string, options: SearchOptions, ext
 }
 
 export function filterBySearch(entries: TreeEntry[], searchTerm: string, options: SearchOptions): void {
-    const regex = buildSearchRegex(searchTerm, options);
-    if (!regex) {
-        for (const entry of entries) {
-            entry.searchVisible = false;
-            entry.searchMatches = false;
-        }
-        return;
+    for (const entry of entries) {
+        entry.searchVisible = false;
+        entry.searchMatches = false;
+        entry.highlightRanges = [];
     }
 
-    // First pass: mark nodes that directly match
+    const regex = buildSearchRegex(searchTerm, options, 'g');
+    if (!regex) return;
+
+    // First pass: mark nodes whose full path matches, and record each match's
+    // overlap with the node's own name and its ancestors' names. Ancestor full
+    // path strings are prefixes of the node's, so match offsets carry over.
     for (const node of entries) {
-        node.searchVisible = false;
-        node.searchMatches = regex.test(node.fullPathString);
+        for (const match of node.fullPathString.matchAll(regex)) {
+            node.searchMatches = true;
+            const start = match.index;
+            const end = start + match[0].length;
+            for (let cur: TreeEntry | null = node; cur !== null; cur = cur.parent) {
+                const nameStart = cur.fullPathString.length - cur.name.length;
+                const clippedStart = Math.max(start, nameStart) - nameStart;
+                const clippedEnd = Math.min(end, cur.fullPathString.length) - nameStart;
+                if (clippedEnd > clippedStart) {
+                    cur.highlightRanges.push([clippedStart, clippedEnd]);
+                }
+            }
+        }
+    }
+
+    // Merge the overlapping/duplicate ranges collected from different nodes
+    for (const entry of entries) {
+        if (entry.highlightRanges.length < 2) continue;
+        entry.highlightRanges.sort((a, b) => a[0] - b[0]);
+        const merged = [entry.highlightRanges[0]];
+        for (const [start, end] of entry.highlightRanges.slice(1)) {
+            const last = merged[merged.length - 1];
+            if (start <= last[1]) {
+                last[1] = Math.max(last[1], end);
+            } else {
+                merged.push([start, end]);
+            }
+        }
+        entry.highlightRanges = merged;
     }
 
     // Second pass: mark descendants of matching nodes

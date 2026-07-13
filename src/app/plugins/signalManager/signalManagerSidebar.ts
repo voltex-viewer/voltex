@@ -115,7 +115,7 @@ export class SignalManagerSidebar {
         };
 
         this.virtualList.setRenderFn((item) => {
-            return createTreeNode(item.entry, item.depth, this.searchTerm, this.searchOptions, nodeCallbacks);
+            return createTreeNode(item.entry, item.depth, nodeCallbacks);
         });
 
         innerContainer.appendChild(listWrapper);

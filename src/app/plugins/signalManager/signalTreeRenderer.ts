@@ -1,4 +1,4 @@
-import { type TreeEntry, type SearchOptions, buildSearchRegex } from './treeModel';
+import type { TreeEntry } from './treeModel';
 
 const chevronPath = 'M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z';
 const closePath = 'M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z';
@@ -22,17 +22,20 @@ function createSvgIcon(path: string, size = 16): SVGSVGElement {
     return svg;
 }
 
-export function highlightText(text: string, searchTerm: string, options: SearchOptions): string {
-    const regex = buildSearchRegex(searchTerm, options, 'g');
-    if (!regex) return text;
-    return text.replace(regex, '<mark>$&</mark>');
+export function highlightText(entry: TreeEntry): string {
+    const name = entry.name;
+    let html = '';
+    let pos = 0;
+    for (const [start, end] of entry.highlightRanges) {
+        html += `${name.slice(pos, start)}<mark>${name.slice(start, end)}</mark>`;
+        pos = end;
+    }
+    return html + name.slice(pos);
 }
 
 export function createTreeNode(
     entry: TreeEntry,
     depth: number,
-    searchTerm: string,
-    searchOptions: SearchOptions,
     callbacks: TreeNodeCallbacks
 ): HTMLElement {
     const container = document.createElement('div');
@@ -60,8 +63,8 @@ export function createTreeNode(
     const labelSpan = document.createElement('span');
     labelSpan.className = 'tree-label';
 
-    if (searchTerm.trim() && entry.searchMatches) {
-        labelSpan.innerHTML = highlightText(entry.name, searchTerm, searchOptions);
+    if (entry.highlightRanges.length > 0) {
+        labelSpan.innerHTML = highlightText(entry);
     } else {
         labelSpan.textContent = entry.name;
     }
