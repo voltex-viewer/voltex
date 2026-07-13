@@ -166,9 +166,11 @@
 
 .tree-label {
     flex: 1;
+    min-width: 0;
     user-select: none;
     white-space: nowrap;
-    overflow: visible;
+    overflow: hidden;
+    text-overflow: ellipsis;
     line-height: 1;
 }
 
