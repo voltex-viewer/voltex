@@ -171,7 +171,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1;
+    /* Must exceed the font's full glyph extent: overflow:hidden clips at the
+       content box, and descenders/underscores draw below the em box */
+    line-height: 20px;
 }
 
 .tree-label mark {
