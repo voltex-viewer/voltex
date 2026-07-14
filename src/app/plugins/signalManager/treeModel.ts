@@ -68,11 +68,13 @@ export function buildTreeFromSources(sources: SignalSource[]): TreeEntry[] {
         const entry = new TreeEntry(node.fullPath, node.signalSource);
         entry.parent = parent;
         entries.push(entry);
-        toVisit.push(
-            ...Array.from(node.children.entries())
-                .sort((a, b) => naturalCompare(b[0], a[0]))
-                .map(v => [v[1], entry] as [TreeNode, TreeEntry | null])
-        );
+        // Push individually: spreading into push() overflows the argument
+        // limit when a node has a very large number of children
+        const children = Array.from(node.children.entries())
+            .sort((a, b) => naturalCompare(b[0], a[0]));
+        for (const [, child] of children) {
+            toVisit.push([child, entry]);
+        }
     }
 
     return entries;
