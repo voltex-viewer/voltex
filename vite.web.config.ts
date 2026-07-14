@@ -17,7 +17,7 @@ function coiServiceWorkerPlugin() {
     transformIndexHtml(html: string) {
       return html.replace(
         '<head>',
-        '<head>\n    <script src="coi-serviceworker.js"></script>'
+        '<head>\n    <script>window.coi = { coepCredentialless: () => false, coepDegrade: () => false };</script>\n    <script src="coi-serviceworker.js"></script>'
       );
     }
   };
