@@ -12,8 +12,26 @@
         { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
     ],
     "file_handlers": [
-        { "action": "./", "accept": { "application/octet-stream": [".mf4", ".mdf"] } },
-        { "action": "./", "accept": { "text/csv": [".csv"] } },
-        { "action": "./", "accept": { "application/zip": [".vxpkg"] } }
+        {
+            "action": "./",
+            "accept": { "application/octet-stream": [".mf4", ".mdf"] },
+            "icons": [
+                { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }
+            ]
+        },
+        {
+            "action": "./",
+            "accept": { "text/csv": [".csv"] },
+            "icons": [
+                { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }
+            ]
+        },
+        {
+            "action": "./",
+            "accept": { "application/zip": [".vxpkg"] },
+            "icons": [
+                { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }
+            ]
+        }
     ]
 }
