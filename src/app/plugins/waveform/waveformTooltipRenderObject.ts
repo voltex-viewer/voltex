@@ -1,4 +1,5 @@
-import { hexToRgba, type RenderBounds, type Signal, type WebGLUtils, type RenderContext, type RenderObject, type Row } from "@voltex-viewer/plugin-api";
+import { nameSeparator } from '../../displayNames';
+import { hexToRgba, type RenderBounds, type Signal, type SignalMetadataManager, type WebGLUtils, type RenderContext, type RenderObject, type Row } from "@voltex-viewer/plugin-api";
 import { WaveformConfig } from './waveformConfig';
 import { WaveformRowHoverOverlayRenderObject } from './waveformRowHoverOverlayRenderObject';
 
@@ -25,6 +26,7 @@ export class WaveformTooltipRenderObject {
         parent: RenderObject,
         private config: WaveformConfig,
         private waveformOverlays: Map<Row, WaveformRowHoverOverlayRenderObject>,
+        private signalMetadata: SignalMetadataManager,
         zIndex: number = 10000) { // Very high z-index to appear on top
         parent.addChild({
             zIndex: zIndex,
@@ -36,11 +38,12 @@ export class WaveformTooltipRenderObject {
         try {
             const { signal, value, time, color, dataIndex, display, units } = signalData;
             const name = signal.source.name;
-                        
+            const displayName = this.signalMetadata.displayName(signal).join(nameSeparator);
+
             const formatFunction = new Function(
-                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'display', 'units',
+                'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'display', 'units', 'displayName',
                 `return ${this.config.formatTooltip}`);
-            return String(formatFunction(value, time, name, color, dataIndex, yScale, display, units));
+            return String(formatFunction(value, time, name, color, dataIndex, yScale, display, units, displayName));
         } catch (error) {
             console.warn('Error in custom tooltip formatter:', error);
             return "Error";

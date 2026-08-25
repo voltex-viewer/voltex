@@ -11,4 +11,5 @@ export * from './headerBlock';
 export * from './headerListBlock';
 export * from './idBlock';
 export * from './serializer';
+export * from './sourceInformationBlock';
 export * from './textBlock';

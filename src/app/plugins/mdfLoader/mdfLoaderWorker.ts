@@ -4,12 +4,14 @@ import {
     openMdfFile,
     type MdfFile,
     type MdfChannel,
+    type MdfChannelGroup,
     type MdfDataGroup,
     type SerializableConversionData,
 } from '@voltex-viewer/mdf-reader';
 import { RenderMode } from '@voltex-viewer/plugin-api';
 import { SharedBufferSequence as SharedBufferFloat64Sequence, SharedBufferBigInt64Sequence, SharedBufferBigUint64Sequence } from './sharedBufferSequence';
 import type { WorkerMessage, WorkerResponse, SignalMetadata } from './workerTypes';
+import { disambiguateNames, findDuplicateNameIndices, type NamingEntry } from './signalNaming';
 
 type SharedBuffer = SharedBufferFloat64Sequence | SharedBufferBigInt64Sequence | SharedBufferBigUint64Sequence;
 
@@ -75,29 +77,68 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 },
             });
 
-            const signals: SignalMetadata[] = [];
+            const collected: {
+                dataGroup: MdfDataGroup;
+                channelGroup: MdfChannelGroup;
+                channel: MdfChannel;
+                timeChannel: MdfChannel | undefined;
+                dgIndex: number;
+                cgIndex: number;
+            }[] = [];
 
-            for (const dataGroup of mdfFile.getGroups()) {
-                for (const channelGroup of dataGroup.channelGroups) {
+            const dataGroups = mdfFile.getGroups();
+            for (let dgIndex = 0; dgIndex < dataGroups.length; dgIndex++) {
+                const dataGroup = dataGroups[dgIndex];
+                for (let cgIndex = 0; cgIndex < dataGroup.channelGroups.length; cgIndex++) {
+                    const channelGroup = dataGroup.channelGroups[cgIndex];
                     const timeChannel = channelGroup.channels.find(c => c.channelType === ChannelType.Time);
                     for (const channel of channelGroup.channels) {
                         if (channel.channelType !== ChannelType.Signal) continue;
-                        signalDataMap.set(signalId, {
-                            mdfFile,
-                            dataGroup,
-                            channel,
-                            timeChannel,
-                        });
-
-                        signals.push({
-                            name: [mdfFile.filename, channel.name],
-                            signalId: signalId++,
-                            timeSequenceType: timeChannel?.numberType ?? NumberType.Float64,
-                            valuesSequenceType: channel.numberType,
-                        });
+                        collected.push({ dataGroup, channelGroup, channel, timeChannel, dgIndex, cgIndex });
                     }
                 }
             }
+
+            const namingEntries: NamingEntry[] = collected.map(c => ({
+                name: c.channel.name,
+                channelSource: null,
+                groupSource: null,
+                groupName: c.channelGroup.name,
+                dgIndex: c.dgIndex,
+                cgIndex: c.cgIndex,
+            }));
+
+            const duplicates = findDuplicateNameIndices(namingEntries.map(e => e.name));
+            let lastProgressUpdate = 0;
+            for (const index of duplicates) {
+                const { channel, channelGroup } = collected[index];
+                namingEntries[index].channelSource = await channel.getSource();
+                namingEntries[index].groupSource = await channelGroup.getSource();
+
+                const now = performance.now();
+                if (now - lastProgressUpdate > 100) {
+                    self.postMessage({ type: 'fileLoadingProgress', channelCount: collected.length } as WorkerResponse);
+                    lastProgressUpdate = now;
+                }
+            }
+
+            const namePaths = disambiguateNames(namingEntries);
+
+            const signals: SignalMetadata[] = collected.map((c, i) => {
+                signalDataMap.set(signalId, {
+                    mdfFile,
+                    dataGroup: c.dataGroup,
+                    channel: c.channel,
+                    timeChannel: c.timeChannel,
+                });
+
+                return {
+                    name: [mdfFile.filename, ...namePaths[i]],
+                    signalId: signalId++,
+                    timeSequenceType: c.timeChannel?.numberType ?? NumberType.Float64,
+                    valuesSequenceType: c.channel.numberType,
+                };
+            });
 
             const duration = performance.now() - start;
             console.log(`Loaded ${signals.length} signal sources from ${message.file.name} in ${duration.toFixed(1)} ms`);

@@ -8,9 +8,44 @@ import type { DataGroupBlock } from './v4/dataGroupBlock';
 import type { ChannelGroupBlock } from './v4/channelGroupBlock';
 import { DataType, type ChannelBlock } from './v4/channelBlock';
 import type { TextBlock } from './v4/textBlock';
+import type { SourceInformationBlock } from './v4/sourceInformationBlock';
 import type { DataTableBlock } from './v4/dataTableBlock';
 
-async function createMdf4File(groups: { name: string; channels: { name: string; type: 'time' | 'signal'; dataType: DataType; bitCount: number; values: number[] }[] }[]): Promise<File> {
+interface TestSource {
+    name?: string;
+    path?: string;
+    sourceType?: number;
+    busType?: number;
+}
+
+function makeSource(source: TestSource | undefined): SourceInformationBlock<'instanced'> | null {
+    if (!source) return null;
+    return {
+        txName: typeof source.name === 'string' ? { data: source.name } : null,
+        txPath: typeof source.path === 'string' ? { data: source.path } : null,
+        comment: null,
+        sourceType: source.sourceType ?? 0,
+        busType: source.busType ?? 0,
+        flags: 0,
+    };
+}
+
+interface TestChannel {
+    name: string;
+    type: 'time' | 'signal';
+    dataType: DataType;
+    bitCount: number;
+    values: number[];
+    source?: TestSource;
+}
+
+interface TestGroup {
+    name: string;
+    channels: TestChannel[];
+    source?: TestSource;
+}
+
+async function createMdf4File(groups: TestGroup[]): Promise<File> {
     const context = new SerializeContext();
 
     let lastDataGroup: DataGroupBlock<'instanced'> | null = null;
@@ -45,7 +80,7 @@ async function createMdf4File(groups: { name: string; channels: { name: string; 
                 channelNext: lastChannel,
                 component: null,
                 txName: channelName,
-                siSource: null,
+                siSource: makeSource(channel.source),
                 conversion: null,
                 data: null,
                 unit: null,
@@ -78,7 +113,7 @@ async function createMdf4File(groups: { name: string; channels: { name: string; 
             channelGroupNext: null,
             channelFirst: lastChannel,
             acquisitionName: { data: group.name },
-            acquisitionSource: null,
+            acquisitionSource: makeSource(group.source),
             sampleReductionFirst: null,
             comment: null,
             recordId: 0n,
@@ -294,6 +329,112 @@ describe('mdfFile v4', () => {
 
         expect(timeBuf.values).toEqual([0, 1, 2]);
         expect(signalBuf.values).toEqual([10, 20, 30]);
+    });
+
+    it('should read source information for channels and groups', async () => {
+        const file = await createMdf4File([
+            {
+                name: 'Group1',
+                source: { name: 'CAN1', path: 'Bus/CAN1', sourceType: 2, busType: 2 },
+                channels: [
+                    { name: 'Time', type: 'time', dataType: DataType.FloatLe, bitCount: 64, values: [0, 1] },
+                    {
+                        name: 'Speed',
+                        type: 'signal',
+                        dataType: DataType.FloatLe,
+                        bitCount: 64,
+                        values: [10, 20],
+                        source: { name: 'EngineData', path: 'CAN1.EngineData', sourceType: 1, busType: 2 },
+                    },
+                ],
+            },
+        ]);
+
+        const mdf = await openMdfFile(file);
+        const channelGroup = mdf.getGroups()[0].channelGroups[0];
+
+        const groupSource = await channelGroup.getSource();
+        expect(groupSource).toEqual({ name: 'CAN1', path: 'Bus/CAN1', sourceType: 2, busType: 2 });
+
+        const channelSource = await channelGroup.channels.find(c => c.name === 'Speed')!.getSource();
+        expect(channelSource).toEqual({ name: 'EngineData', path: 'CAN1.EngineData', sourceType: 1, busType: 2 });
+    });
+
+    it('should return null source information when there is no source block', async () => {
+        const file = await createMdf4File([
+            {
+                name: 'Group1',
+                channels: [
+                    { name: 'Time', type: 'time', dataType: DataType.FloatLe, bitCount: 64, values: [0, 1] },
+                    { name: 'Speed', type: 'signal', dataType: DataType.FloatLe, bitCount: 64, values: [10, 20] },
+                ],
+            },
+        ]);
+
+        const mdf = await openMdfFile(file);
+        const channelGroup = mdf.getGroups()[0].channelGroups[0];
+
+        expect(await channelGroup.getSource()).toBeNull();
+        expect(await channelGroup.channels.find(c => c.name === 'Speed')!.getSource()).toBeNull();
+    });
+
+    it('should read partial source information when only one text block is present', async () => {
+        const file = await createMdf4File([
+            {
+                name: 'Group1',
+                channels: [
+                    { name: 'Time', type: 'time', dataType: DataType.FloatLe, bitCount: 64, values: [0, 1] },
+                    {
+                        name: 'Speed',
+                        type: 'signal',
+                        dataType: DataType.FloatLe,
+                        bitCount: 64,
+                        values: [10, 20],
+                        source: { name: 'ECU1' },
+                    },
+                ],
+            },
+        ]);
+
+        const mdf = await openMdfFile(file);
+        const channels = mdf.getGroups()[0].channelGroups[0].channels;
+        const source = await channels.find(c => c.name === 'Speed')!.getSource();
+
+        expect(source).toEqual({ name: 'ECU1', path: null, sourceType: 0, busType: 0 });
+    });
+
+    it('should keep duplicate channel names as they appear in the file', async () => {
+        const file = await createMdf4File([
+            {
+                name: 'Group1',
+                channels: [
+                    { name: 'Time', type: 'time', dataType: DataType.FloatLe, bitCount: 64, values: [0, 1] },
+                    { name: 'Speed', type: 'signal', dataType: DataType.FloatLe, bitCount: 64, values: [10, 20] },
+                ],
+            },
+            {
+                name: 'Group2',
+                channels: [
+                    { name: 'Time', type: 'time', dataType: DataType.FloatLe, bitCount: 64, values: [0, 1] },
+                    { name: 'Speed', type: 'signal', dataType: DataType.FloatLe, bitCount: 64, values: [30, 40] },
+                ],
+            },
+        ]);
+
+        const mdf = await openMdfFile(file);
+        const groups = mdf.getGroups();
+        expect(groups.length).toBe(2);
+
+        const channelGroups = groups.map(g => g.channelGroups[0]);
+        const speedChannels = channelGroups.map(cg => cg.channels.find(c => c.name === 'Speed')!);
+        expect(speedChannels.map(c => c.name)).toEqual(['Speed', 'Speed']);
+
+        const buffers = speedChannels.map(() => makeBuffer());
+        await mdf.read(speedChannels.map((channel, i) => ({ channel, buffer: buffers[i] })));
+
+        const byGroupName = new Map(channelGroups.map((cg, i) => [cg.name, buffers[i].values]));
+        expect(byGroupName.get('Group1')).toEqual([10, 20]);
+        expect(byGroupName.get('Group2')).toEqual([30, 40]);
     });
 
     it('benchmark: read 1 signal from group with 100 channels', async () => {

@@ -1,7 +1,8 @@
 import { type Signal, type SignalMetadataManager, type SignalMetadata, RenderMode, DEFAULT_VALUE } from '@voltex-viewer/plugin-api';
+import { shortestUniqueSuffixes } from './displayNames';
 
 const defaultColors = [
-    '#00eaff', '#ff6b6b', '#51cf66', '#ffd43b', 
+    '#00eaff', '#ff6b6b', '#51cf66', '#ffd43b',
     '#845ef7', '#ff8cc8', '#74c0fc', '#ffa8a8',
     '#8ce99a', '#ffec99', '#b197fc', '#ffc9c9'
 ];
@@ -13,8 +14,13 @@ function generateDefaultColor(name: string): string {
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash;
     }
-    
+
     return defaultColors[Math.abs(hash) % defaultColors.length];
+}
+
+function metadataKey(signal: Signal): string {
+    const name = signal.source.name;
+    return (name.length > 1 ? name.slice(1) : name).join('\u0000');
 }
 
 type InternalSignalMetadata = {
@@ -25,19 +31,20 @@ type InternalSignalMetadata = {
 
 export class SignalMetadataManagerImpl implements SignalMetadataManager {
     private metadata = new Map<string, InternalSignalMetadata>();
+    private displayNames = new Map<Signal, string[]>();
 
     get(signal: Signal): SignalMetadata {
-        const signalName = signal.source.name[signal.source.name.length - 1];
-        let internalMetadata = this.metadata.get(signalName);
+        const key = metadataKey(signal);
+        let internalMetadata = this.metadata.get(key);
         if (!internalMetadata) {
             internalMetadata = {
-                color: generateDefaultColor(signal.source.name[signal.source.name.length - 1]),
+                color: generateDefaultColor(key),
                 renderMode: undefined,
                 display: 'decimal',
             };
-            this.metadata.set(signalName, internalMetadata);
+            this.metadata.set(key, internalMetadata);
         }
-        
+
         return new Proxy(internalMetadata, {
             get: (target, prop) => {
                 if (prop === 'renderMode') {
@@ -50,7 +57,7 @@ export class SignalMetadataManagerImpl implements SignalMetadataManager {
                 if (prop === 'color') {
                     const value = target.color;
                     if (value === DEFAULT_VALUE) {
-                        return generateDefaultColor(signal.source.name[signal.source.name.length - 1]);
+                        return generateDefaultColor(key);
                     }
                     return value;
                 }
@@ -73,5 +80,15 @@ export class SignalMetadataManagerImpl implements SignalMetadataManager {
     set(signal: Signal, metadata: SignalMetadata): void {
         const existing = this.get(signal);
         Object.assign(existing, metadata);
+    }
+
+    displayName(signal: Signal): string[] {
+        return this.displayNames.get(signal) ?? [signal.source.name[signal.source.name.length - 1]];
+    }
+
+    updatePlottedSignals(signals: Signal[]): void {
+        const unique = Array.from(new Set(signals));
+        const suffixes = shortestUniqueSuffixes(unique.map(signal => signal.source.name));
+        this.displayNames = new Map(unique.map((signal, index) => [signal, suffixes[index]]));
     }
 }

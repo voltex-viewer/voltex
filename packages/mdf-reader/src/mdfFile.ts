@@ -4,18 +4,27 @@ import { SerializableConversionData } from './conversion';
 import * as v3 from './v3';
 import * as v4 from './v4';
 
+export interface MdfSource {
+    readonly name: string | null;
+    readonly path: string | null;
+    readonly sourceType: number;
+    readonly busType: number;
+}
+
 export interface MdfChannel {
     readonly name: string;
     readonly channelType: ChannelType;
     readonly numberType: NumberType;
     getConversion(): Promise<SerializableConversionData>;
     getUnit(): Promise<string | null>;
+    getSource(): Promise<MdfSource | null>;
 }
 
 export interface MdfChannelGroup {
     readonly name: string | null;
     readonly channels: MdfChannel[];
     readonly rowCount: number;
+    getSource(): Promise<MdfSource | null>;
 }
 
 export interface MdfDataGroup {
@@ -54,6 +63,7 @@ interface LazySignal {
     channel: AbstractChannel;
     conversionLink: number | bigint;
     unitLink: number | bigint;
+    sourceLink: number | bigint;
 }
 
 interface CachedGroup {
@@ -93,6 +103,10 @@ class MdfChannelImpl implements MdfChannel {
         const conversion = await this.getConversion();
         return conversion.unit;
     }
+
+    getSource(): Promise<MdfSource | null> {
+        return this.mdf.loadSource(this.lazy.sourceLink);
+    }
 }
 
 class MdfChannelGroupImpl implements MdfChannelGroup {
@@ -102,7 +116,13 @@ class MdfChannelGroupImpl implements MdfChannelGroup {
         public readonly dataGroup: MdfDataGroupImpl,
         public readonly name: string | null,
         public readonly rowCount: number,
+        private readonly mdf: MdfFileImpl,
+        private readonly sourceLink: number | bigint,
     ) {}
+
+    getSource(): Promise<MdfSource | null> {
+        return this.mdf.loadSource(this.sourceLink);
+    }
 }
 
 class MdfDataGroupImpl implements MdfDataGroup {
@@ -116,6 +136,7 @@ class MdfFileImpl implements MdfFile {
     startTime?: number | undefined;
     private dataGroups: MdfDataGroupImpl[] = [];
     private reader: BufferedFileReader;
+    private sourceCache = new Map<bigint, Promise<MdfSource | null>>();
 
     private constructor(reader: BufferedFileReader) {
         this.reader = reader;
@@ -172,7 +193,7 @@ class MdfFileImpl implements MdfFile {
             for await (const channelGroup of v3.iterateChannelGroupBlocks(dgBlock.channelGroupFirst, this.reader)) {
                 totalRows += channelGroup.numberOfRecords;
                 const groupChannels: AbstractChannel[] = [];
-                const cgImpl = new MdfChannelGroupImpl(dgImpl, null, channelGroup.numberOfRecords);
+                const cgImpl = new MdfChannelGroupImpl(dgImpl, null, channelGroup.numberOfRecords, this, 0);
 
                 for await (const channel of v3.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
                     const name = channel.longName && v3.isNonNullLink(channel.longName)
@@ -197,6 +218,7 @@ class MdfFileImpl implements MdfFile {
                         channel: abstractChannel,
                         conversionLink: v3.getLink(channel.conversion),
                         unitLink: 0,
+                        sourceLink: 0,
                     };
                     cgImpl.channels.push(new MdfChannelImpl(lazy, this, cgImpl));
 
@@ -256,7 +278,7 @@ class MdfFileImpl implements MdfFile {
             for await (const channelGroup of v4.iterateChannelGroupBlocks(dgBlock.channelGroupFirst, this.reader)) {
                 const cgName = (await v4.readTextBlock(channelGroup.acquisitionName, this.reader))?.data ?? null;
                 const groupChannels: AbstractChannel[] = [];
-                const cgImpl = new MdfChannelGroupImpl(dgImpl, cgName, Number(channelGroup.cycleCount));
+                const cgImpl = new MdfChannelGroupImpl(dgImpl, cgName, Number(channelGroup.cycleCount), this, v4.getLink(channelGroup.acquisitionSource as v4.Link<unknown>));
 
                 for await (const channel of v4.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
                     const channelName = (await v4.readTextBlock(channel.txName, this.reader))?.data ?? "";
@@ -279,6 +301,7 @@ class MdfFileImpl implements MdfFile {
                         channel: abstractChannel,
                         conversionLink: v4.getLink(channel.conversion as v4.Link<unknown>),
                         unitLink: v4.getLink(channel.unit as v4.Link<unknown>),
+                        sourceLink: v4.getLink(channel.siSource as v4.Link<unknown>),
                     };
                     cgImpl.channels.push(new MdfChannelImpl(lazy, this, cgImpl));
 
@@ -322,6 +345,33 @@ class MdfFileImpl implements MdfFile {
         } else {
             return this.loadConversionV3(conversionLink as number);
         }
+    }
+
+    loadSource(link: number | bigint): Promise<MdfSource | null> {
+        if (this.version < 400 || this.version >= 500 || link === 0 || link === 0n) {
+            return Promise.resolve(null);
+        }
+        const linkValue = link as bigint;
+        let pending = this.sourceCache.get(linkValue);
+        if (!pending) {
+            pending = this.readSource(linkValue);
+            this.sourceCache.set(linkValue, pending);
+        }
+        return pending;
+    }
+
+    private async readSource(link: bigint): Promise<MdfSource | null> {
+        const block = await v4.readSourceInformationBlock(v4.newNonNullLink<v4.SourceInformationBlock>(link), this.reader);
+        const [name, path] = await Promise.all([
+            v4.readTextBlock(block.txName, this.reader),
+            v4.readTextBlock(block.txPath, this.reader),
+        ]);
+        return {
+            name: name?.data ?? null,
+            path: path?.data ?? null,
+            sourceType: block.sourceType,
+            busType: block.busType,
+        };
     }
 
     async loadTextBlock(link: number | bigint): Promise<string | null> {

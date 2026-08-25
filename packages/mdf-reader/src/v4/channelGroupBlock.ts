@@ -1,6 +1,7 @@
 import { Link, readBlock, MaybeLinked, GenericBlock, NonNullLink, isNonNullLink } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelBlock, resolveChannelOffset } from './channelBlock';
+import { SourceInformationBlock, resolveSourceInformationOffset } from './sourceInformationBlock';
 import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
@@ -8,7 +9,7 @@ export interface ChannelGroupBlock<TMode extends 'linked' | 'instanced' = 'linke
     channelGroupNext: MaybeLinked<ChannelGroupBlock<TMode> | null, TMode>;
     channelFirst: MaybeLinked<ChannelBlock<TMode> | null, TMode>;
     acquisitionName: MaybeLinked<TextBlock | null, TMode>;
-    acquisitionSource: MaybeLinked<unknown, TMode>;
+    acquisitionSource: MaybeLinked<SourceInformationBlock<TMode> | null, TMode>;
     sampleReductionFirst: MaybeLinked<unknown, TMode>;
     comment: MaybeLinked<unknown, TMode>;
     recordId: bigint;
@@ -26,7 +27,7 @@ export function deserializeChannelGroupBlock(block: GenericBlock): ChannelGroupB
         channelGroupNext: block.links[0] as Link<ChannelGroupBlock>,
         channelFirst: block.links[1] as Link<ChannelBlock>,
         acquisitionName: block.links[2] as Link<TextBlock>,
-        acquisitionSource: block.links[3] as Link<unknown>,
+        acquisitionSource: block.links[3] as Link<SourceInformationBlock>,
         sampleReductionFirst: block.links[4] as Link<unknown>,
         comment: block.links[5] as Link<unknown>,
         recordId: view.getBigUint64(0, true),
@@ -73,6 +74,7 @@ export function resolveChannelGroupOffset(context: SerializeContext, block: Chan
             resolveChannelGroupOffset(context, block.channelGroupNext);
             resolveChannelOffset(context, block.channelFirst);
             resolveTextBlockOffset(context, block.acquisitionName);
+            resolveSourceInformationOffset(context, block.acquisitionSource);
         });
 }
 

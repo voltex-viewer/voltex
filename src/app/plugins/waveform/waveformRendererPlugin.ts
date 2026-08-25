@@ -38,7 +38,7 @@ export default (context: PluginContext): void => {
             lineWidth: 1.5,
             dotVisibilityThreshold: 200,
             targetFps: 120,
-            formatTooltip: "name[name.length - 1] + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2))))) + units",
+            formatTooltip: "displayName + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2))))) + units",
             hoverEnabled: true,
             downsamplingMode: 'lossless' as const,
             enumExpansionEnabled: true,
@@ -47,7 +47,7 @@ export default (context: PluginContext): void => {
 
     // Create a single global tooltip render object
     const waveformOverlays: Map<Row, WaveformRowHoverOverlayRenderObject> = new Map();
-    new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays);
+    new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays, context.signalMetadata);
 
     const buffers = new Map<Signal, SignalBufferData>();
     const dotOverlayBuffers = new Map<Signal, BufferData>();

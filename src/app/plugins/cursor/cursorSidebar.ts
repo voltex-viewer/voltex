@@ -1,5 +1,6 @@
 import type { PluginContext, Signal, Row } from '@voltex-viewer/plugin-api';
 import { formatValueForDisplay, signalShift } from '@voltex-viewer/plugin-api';
+import { nameSeparator } from '../../displayNames';
 import type { CursorRenderObject } from './cursorRenderObject';
 import type { CursorConfig } from './cursorPlugin';
 import { formatInstant } from './timeFormat';
@@ -289,7 +290,7 @@ export class CursorSidebar {
             
             const nameCell = document.createElement('td');
             nameCell.className = 'signal-name';
-            nameCell.textContent = signalInfo.name[signalInfo.name.length - 1] + (signalInfo.signal.values.unit ? ` (${signalInfo.signal.values.unit})` : '');
+            nameCell.textContent = signalInfo.name.join(nameSeparator) + (signalInfo.signal.values.unit ? ` (${signalInfo.signal.values.unit})` : '');
             signalRow.appendChild(nameCell);
 
             const display = this.context.signalMetadata.get(signalInfo.signal).display;
@@ -353,7 +354,7 @@ export class CursorSidebar {
         for (const row of rows) {
             for (const signal of row.signals) {
                 signals.push({
-                    name: signal.source.name,
+                    name: this.context.signalMetadata.displayName(signal),
                     signal: signal
                 });
             }
@@ -411,7 +412,7 @@ export class CursorSidebar {
         let maxWidth = 100; // Minimum width
         
         for (const signalInfo of signals) {
-            const name = signalInfo.name[signalInfo.name.length - 1] || '';
+            const name = signalInfo.name.join(nameSeparator);
             // Rough estimate: 7 pixels per character
             const width = name.length * 7 + 16; // Add padding
             maxWidth = Math.max(maxWidth, width);

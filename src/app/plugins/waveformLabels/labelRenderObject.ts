@@ -1,3 +1,4 @@
+import { nameSeparator } from '../../displayNames';
 import { hexToRgba, RenderObject, type RenderBounds, type Row, type Signal, type SignalMetadataManager, type RenderContext } from '@voltex-viewer/plugin-api';
 
 export class LabelRenderObject {
@@ -78,18 +79,33 @@ export class LabelRenderObject {
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             });
 
+            const qualifierFont = utils.getDefaultFont(undefined, '9px');
+            const qualifierColor = this.row.selected ? '#dbe4f7' : '#8b93a3';
+
             this.channels.forEach((channel, index) => {
                 const y = index * channelHeight + channelHeight / 2 - 6; // Center vertically within the channel's section
-                const channelName = channel.source.name[channel.source.name.length - 1];
-                utils.drawText(
-                    channelName,
-                    padding, // Start after color bar + small gap
-                    y,
-                    { width: labelWidth, height: bounds.height },
-                    {
-                        fillStyle: textColor
-                    }
-                );
+                const nameParts = this.signalMetadata.displayName(channel);
+                const channelName = nameParts[nameParts.length - 1];
+                const qualifier = nameParts.slice(0, -1).join(nameSeparator);
+                const textBounds = { width: labelWidth, height: bounds.height };
+                if (qualifier.length === 0) {
+                    utils.drawText(
+                        channelName,
+                        padding, // Start after color bar + small gap
+                        y,
+                        textBounds,
+                        {
+                            fillStyle: textColor
+                        }
+                    );
+                } else if (channelHeight >= 22) {
+                    utils.drawText(channelName, padding, y - 5, textBounds, { fillStyle: textColor });
+                    utils.drawText(qualifier, padding, y + 7, textBounds, { font: qualifierFont, fillStyle: qualifierColor });
+                } else {
+                    utils.drawText(channelName, padding, y, textBounds, { fillStyle: textColor });
+                    const nameWidth = utils.measureText(channelName).renderWidth;
+                    utils.drawText(qualifier, padding + nameWidth + 4, y + 1, textBounds, { font: qualifierFont, fillStyle: qualifierColor });
+                }
             });
         }
         

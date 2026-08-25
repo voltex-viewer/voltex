@@ -176,6 +176,7 @@ export interface SignalMetadata {
 export interface SignalMetadataManager {
     get(signal: Signal): SignalMetadata;
     set(signal: Signal, value: WithDefaults<SignalMetadata>): void;
+    displayName(signal: Signal): string[];
 }
 
 export interface RenderObjectArgs extends Partial<MouseEventHandlers> {

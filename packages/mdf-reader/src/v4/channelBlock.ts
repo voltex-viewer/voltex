@@ -1,6 +1,7 @@
 import { Link, NonNullLink, isNonNullLink, readBlock, MaybeLinked, GenericBlock } from './common';
 import { resolveTextBlockOffset, TextBlock } from './textBlock';
 import { ChannelConversionBlock, resolveChannelConversionOffset } from './channelConversionBlock';
+import { SourceInformationBlock, resolveSourceInformationOffset } from './sourceInformationBlock';
 import { SerializeContext, type SerializeWriteFunction } from './serializer';
 import { BufferedFileReader } from '../bufferedFileReader';
 
@@ -35,7 +36,7 @@ export interface ChannelBlock<TMode extends 'linked' | 'instanced' = 'linked'> {
     channelNext: MaybeLinked<ChannelBlock<TMode> | null, TMode>;
     component: MaybeLinked<unknown, TMode>;
     txName: MaybeLinked<TextBlock | null, TMode>;
-    siSource: MaybeLinked<unknown, TMode>;
+    siSource: MaybeLinked<SourceInformationBlock<TMode> | null, TMode>;
     conversion: MaybeLinked<ChannelConversionBlock<TMode> | null, TMode>;
     data: MaybeLinked<unknown, TMode>;
     unit: MaybeLinked<TextBlock | null, TMode>;
@@ -65,7 +66,7 @@ export function deserializeChannelBlock(block: GenericBlock): ChannelBlock<'link
         channelNext: block.links[0] as Link<ChannelBlock>,
         component: block.links[1] as Link<unknown>,
         txName: block.links[2] as Link<TextBlock>,
-        siSource: block.links[3] as Link<unknown>,
+        siSource: block.links[3] as Link<SourceInformationBlock>,
         conversion: block.links[4] as Link<ChannelConversionBlock>,
         data: block.links[5] as Link<unknown>,
         unit: block.links[6] as Link<TextBlock>,
@@ -136,6 +137,7 @@ export function resolveChannelOffset(context: SerializeContext, block: ChannelBl
         block => {
             resolveChannelOffset(context, block.channelNext);
             resolveTextBlockOffset(context, block.txName);
+            resolveSourceInformationOffset(context, block.siSource);
             resolveChannelConversionOffset(context, block.conversion);
             resolveTextBlockOffset(context, block.unit);
             resolveTextBlockOffset(context, block.comment);

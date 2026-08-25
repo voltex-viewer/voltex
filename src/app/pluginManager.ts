@@ -1,4 +1,4 @@
-import type { PluginModule, PluginContext, SignalMetadataManager, RowsChangedCallback, SidebarEntryArgs, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, Command, WritableFile } from '@voltex-viewer/plugin-api';
+import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntryArgs, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, Command, WritableFile } from '@voltex-viewer/plugin-api';
 import { RenderObjectImpl } from './renderObject';
 import type { WebGlContext, WaveformState } from "@voltex-viewer/plugin-api";
 import { RowChangedEvent } from './rowManager';
@@ -10,6 +10,7 @@ import { RowContainerRenderObject } from './rowContainerRenderObject';
 import { RowImpl } from './rowImpl';
 import { bigPush } from './bigPush';
 import { SidebarEntryImpl } from './verticalSidebar';
+import { SignalMetadataManagerImpl } from './signalMetadataManager';
 
 interface ActivePlugin {
     pluginFunction: PluginFunction;
@@ -46,7 +47,7 @@ export class PluginManager {
     constructor(
         private state: WaveformState,
         private webgl: WebGlContext,
-        private signalMetadata: SignalMetadataManager,
+        private signalMetadata: SignalMetadataManagerImpl,
         private signalSources: SignalSourceManager,
         private rowManager: RowContainerRenderObject,
         private rootRenderObject: RenderObjectImpl,
@@ -58,6 +59,7 @@ export class PluginManager {
         private commandManager: CommandManager,
     ) {
         rowManager.onChange((event: RowChangedEvent) => {
+            this.signalMetadata.updatePlottedSignals(rowManager.getAllRows().flatMap(row => row.signals));
             this.onRowsChanged(event);
         });
 
