@@ -70,12 +70,25 @@ export default (context: PluginContext): void => {
         }
     });
 
+    const signalCache = new WeakMap<SignalSource, Promise<Signal>>();
+
+    function getSignal(signalSource: SignalSource): Promise<Signal> {
+        let signal = signalCache.get(signalSource);
+        if (!signal) {
+            signal = signalSource.signal();
+            // Let a failed load be retried
+            signal.catch(() => signalCache.delete(signalSource));
+            signalCache.set(signalSource, signal);
+        }
+        return signal;
+    }
+
     async function plotAllFilteredSignals(): Promise<void> {
         const filteredEntries = sidebar.getFilteredLeafEntries();
         if (filteredEntries.length === 0) return;
 
         const loadedSignals = await Promise.all(
-            filteredEntries.map(e => e.signalSource!.signal())
+            filteredEntries.map(e => getSignal(e.signalSource!))
         );
 
         const lineSignals: Signal[] = [];
@@ -96,17 +109,7 @@ export default (context: PluginContext): void => {
     }
 
     async function addSignalToWaveform(signalSource: SignalSource): Promise<void> {
-        function getExistingSignal(): Signal | null {
-            for (const row of context.getRows()) {
-                for (const signal of row.signals) {
-                    if (signal.source === signalSource) {
-                        return signal;
-                    }
-                }
-            }
-            return null;
-        }
-        context.createRows({ channels: [getExistingSignal() ?? await signalSource.signal()] });
+        context.createRows({ channels: [await getSignal(signalSource)] });
         context.requestRender();
     }
 
@@ -196,7 +199,7 @@ export default (context: PluginContext): void => {
         for (const info of plottedSignalInfo) {
             const newSource = newSourcesByNameSuffix.get(info.nameSuffix);
             if (newSource) {
-                signalPromises.push(newSource.signal());
+                signalPromises.push(getSignal(newSource));
             } else {
                 const placeholderName = [newFileName, ...info.nameSuffix.split('|')];
                 const placeholder = new PlaceholderSignalSource(placeholderName);
