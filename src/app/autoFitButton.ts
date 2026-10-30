@@ -1,5 +1,5 @@
 import type { RenderObject, RenderBounds, RenderContext, MouseEvent } from "@voltex-viewer/plugin-api";
-import { getAbsoluteBounds, px } from "@voltex-viewer/plugin-api";
+import { px } from "@voltex-viewer/plugin-api";
 
 export class AutoFitButton {
     private autoFit: boolean = true;
@@ -11,26 +11,25 @@ export class AutoFitButton {
         size: number;
     } | null = null;
 
+    private readonly size = 24;
+    private readonly padding = 4;
+
     readonly renderObject: RenderObject;
 
     constructor(
         parent: RenderObject,
-        private containerRenderObject: RenderObject,
         private scrollbarWidth: number,
         private onToggle: () => void,
     ) {
-        const padding = 4;
         this.renderObject = parent.addChild({
             zIndex: 3001,
             viewport: true,
             x: px(0),
-            y: px(padding),
-            width: px(24),
-            height: px(24),
+            y: px(this.padding),
+            width: px(this.size),
+            height: px(this.size),
             render: (context: RenderContext, bounds: RenderBounds): boolean => {
                 this.render(context, bounds);
-                const containerBounds = getAbsoluteBounds(this.containerRenderObject);
-                this.renderObject.x = px(containerBounds.width - 24 - padding - this.scrollbarWidth);
                 return false;
             },
             onMouseDown: (event: MouseEvent) => {
@@ -56,6 +55,10 @@ export class AutoFitButton {
 
     setAutoFit(enabled: boolean): void {
         this.autoFit = enabled;
+    }
+
+    updateLayout(containerWidth: number): void {
+        this.renderObject.x = px(containerWidth - this.size - this.padding - this.scrollbarWidth);
     }
 
     private ensureBuffers(gl: WebGL2RenderingContext, size: number): void {

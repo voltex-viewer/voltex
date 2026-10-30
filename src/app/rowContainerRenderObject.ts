@@ -117,7 +117,6 @@ export class RowContainerRenderObject {
         
         this.autoFitButton = new AutoFitButton(
             parent,
-            this.renderObject,
             this.scrollbarWidth,
             () => this.setAutoFit(!this.autoFitButton.enabled)
         );
@@ -987,6 +986,8 @@ export class RowContainerRenderObject {
         const containerBounds = getAbsoluteBounds(this.renderObject);
         const labelWidth = this.labelWidth;
         const mainWidth = Math.max(0, containerBounds.width - labelWidth);
+
+        this.autoFitButton.updateLayout(containerBounds.width);
 
         for (const row of this.rows) {
             row.labelArea.width = px(labelWidth);
