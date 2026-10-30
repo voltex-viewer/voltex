@@ -1,36 +1,23 @@
 export const nameSeparator = ' › ';
 
 export function shortestUniqueSuffixes(paths: readonly (readonly string[])[]): string[][] {
+    // The same signal plotted more than once has an identical path, but it doesn't need distinguishing from itself, so
+    // only consider distinct items.
+    const distinct = new Map<string, readonly string[]>();
     let maxLength = 0;
     for (const path of paths) {
+        distinct.set(key(path), path);
         maxLength = Math.max(maxLength, path.length);
     }
 
     for (let depth = 1; depth <= maxLength; depth++) {
-        const suffixes = paths.map(path => suffix(path, depth));
-        if (new Set(suffixes.map(key)).size === suffixes.length) {
-            return suffixes;
+        const suffixes = Array.from(distinct.values(), path => key(suffix(path, depth)));
+        if (new Set(suffixes).size === suffixes.length) {
+            return paths.map(path => suffix(path, depth));
         }
     }
 
-    return numberIdenticalPaths(paths.map(path => suffix(path, maxLength)));
-}
-
-function numberIdenticalPaths(suffixes: string[][]): string[][] {
-    const counts = new Map<string, number>();
-    for (const parts of suffixes) {
-        counts.set(key(parts), (counts.get(key(parts)) ?? 0) + 1);
-    }
-
-    const occurrences = new Map<string, number>();
-    return suffixes.map(parts => {
-        if (counts.get(key(parts)) === 1) {
-            return parts;
-        }
-        const occurrence = occurrences.get(key(parts)) ?? 0;
-        occurrences.set(key(parts), occurrence + 1);
-        return [...parts.slice(0, -1), `${parts[parts.length - 1]}#${occurrence}`];
-    });
+    return paths.map(path => suffix(path, maxLength));
 }
 
 function suffix(path: readonly string[], depth: number): string[] {

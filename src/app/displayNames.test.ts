@@ -82,11 +82,27 @@ describe('shortestUniqueSuffixes', () => {
         ])).toEqual([['Speed'], ['CAN1', 'Speed']]);
     });
 
-    it('numbers identical paths', () => {
+    it('shows the same signal plotted twice by its leaf name', () => {
         expect(shortestUniqueSuffixes([
             ['a.mf4', 'Speed'],
             ['a.mf4', 'Speed'],
-        ])).toEqual([['a.mf4', 'Speed#0'], ['a.mf4', 'Speed#1']]);
+        ])).toEqual([['Speed'], ['Speed']]);
+    });
+
+    it('does not expand other signals because of a repeated signal', () => {
+        expect(shortestUniqueSuffixes([
+            ['a.mf4', 'Speed'],
+            ['a.mf4', 'Speed'],
+            ['a.mf4', 'Rpm'],
+        ])).toEqual([['Speed'], ['Speed'], ['Rpm']]);
+    });
+
+    it('still expands a repeated signal when it collides with another', () => {
+        expect(shortestUniqueSuffixes([
+            ['a.mf4', 'Speed'],
+            ['a.mf4', 'Speed'],
+            ['b.mf4', 'Speed'],
+        ])).toEqual([['a.mf4', 'Speed'], ['a.mf4', 'Speed'], ['b.mf4', 'Speed']]);
     });
 
     it('handles an empty input', () => {
