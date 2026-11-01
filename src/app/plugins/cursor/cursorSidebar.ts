@@ -1,5 +1,6 @@
 import type { PluginContext, Signal, Row } from '@voltex-viewer/plugin-api';
 import { formatValueForDisplay, signalShift } from '@voltex-viewer/plugin-api';
+import { displayValue, type NeighbourCache } from '@voltex-viewer/signal-utils';
 import { nameSeparator } from '../../displayNames';
 import type { CursorRenderObject } from './cursorRenderObject';
 import type { CursorConfig } from './cursorPlugin';
@@ -16,7 +17,8 @@ export class CursorSidebar {
         private context: PluginContext,
         private cursors: CursorRenderObject[],
         private onRemoveCursor: (cursor: CursorRenderObject) => void,
-        private config: CursorConfig
+        private config: CursorConfig,
+        private neighbours: NeighbourCache
     ) {}
 
     render(): HTMLElement {
@@ -179,6 +181,9 @@ export class CursorSidebar {
         return container;
     }
 
+    // Called again once a tile the values come from has loaded
+    private readonly refresh = (): void => this.updateContent();
+
     updateContent(): void {
         if (!this.container) return;
 
@@ -290,7 +295,7 @@ export class CursorSidebar {
             
             const nameCell = document.createElement('td');
             nameCell.className = 'signal-name';
-            nameCell.textContent = signalInfo.name.join(nameSeparator) + (signalInfo.signal.values.unit ? ` (${signalInfo.signal.values.unit})` : '');
+            nameCell.textContent = signalInfo.name.join(nameSeparator) + (signalInfo.signal.unit ? ` (${signalInfo.signal.unit})` : '');
             signalRow.appendChild(nameCell);
 
             const display = this.context.signalMetadata.get(signalInfo.signal).display;
@@ -367,44 +372,13 @@ export class CursorSidebar {
         const cursorTime = cursor.getPosition();
         if (cursorTime === null) return null;
 
-        if (signal.time.length === 0) return null;
-
         // Convert the cursor's internal time to this signal's relative time before searching, so
         // sample-and-hold lands on the right sample when the signal is shifted in real-time mode.
         const shift = signalShift(signal, this.context.state);
 
-        // Find the index at or before the cursor time
-        const index = this.binarySearchFloor(signal.time, cursorTime - shift);
-        
-        // If cursor is before the first sample, return null
-        if (index < 0) {
-            return null;
-        }
-
-        // Return the value at this index (sample-and-hold)
-        return signal.values.convertedValueAt 
-            ? signal.values.convertedValueAt(index)
-            : signal.values.valueAt(index);
-    }
-
-    private binarySearchFloor(sequence: { length: number; valueAt(index: number): number }, target: number): number {
-        let left = 0;
-        let right = sequence.length - 1;
-        let result = -1;
-        
-        while (left <= right) {
-            const mid = Math.floor((left + right) / 2);
-            const midValue = sequence.valueAt(mid);
-            
-            if (midValue <= target) {
-                result = mid;
-                left = mid + 1;
-            } else {
-                right = mid - 1;
-            }
-        }
-        
-        return result;
+        // The sample at or before the cursor (sample-and-hold), which is null before the first sample
+        const floor = this.neighbours.neighboursAt(signal, cursorTime - shift, this.refresh)?.floor;
+        return floor ? displayValue(signal, floor) : null;
     }
 
     private calculateSignalColumnWidth(signals: Array<{ name: string[], signal: Signal }>): number {

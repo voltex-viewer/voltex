@@ -1,31 +1,99 @@
-import { RenderMode, type PluginContext, type RenderBounds, type RenderContext, type Row, type Signal } from '@voltex-viewer/plugin-api';
+import { RenderMode, signalShift, type PluginContext, type RenderBounds, type RenderContext, type Row, type Signal } from '@voltex-viewer/plugin-api';
 import { waveformConfigSchema } from './waveformConfig';
 import { WaveformRenderObject } from './waveformRenderObject';
 import { WaveformRowHoverOverlayRenderObject } from './waveformRowHoverOverlayRenderObject';
 import { WaveformTooltipRenderObject } from './waveformTooltipRenderObject';
 import { WaveformShaders } from './waveformShaders';
-import { createGradientDownsampler } from './downsamplers/gradientDownsampler';
-import { createEnumDownsampler } from './downsamplers/enumDownsampler';
-import type { Downsampler } from './downsamplers/types';
-import { createRawDownsampler } from './downsamplers/rawDownsampler';
+import { LodView, type LodGeometry } from './lod/lodView';
+import { EnumRuns } from './lod/enumRuns';
 import {
     animationLerpFactor,
     ExpandedEnumResources,
 } from './expandedEnum';
-import { EnumRunIndex } from './enumRunIndex';
 
 export interface BufferData {
     timeHighBuffer: WebGLBuffer;
     timeLowBuffer: WebGLBuffer;
     valueBuffer: WebGLBuffer;
-    downsamplingMode: string;
     bufferCapacity: number;
     bufferLength: number;
+    blocks?: { buffer: WebGLBuffer; count: number };
+    runs?: EnumRuns;
 }
 
-interface SignalBufferData extends BufferData {
-    generator: Downsampler;
-    overwriteNext: boolean;
+type UploadedKind = 'lines' | 'enum';
+
+export interface SignalBufferData extends BufferData {
+    blocks: { buffer: WebGLBuffer; count: number; capacity: number };
+    runs: EnumRuns;
+    lod: LodView;
+    uploaded: UploadedKind | null;
+    // Draws the same points as dots, when they are every sample and few enough to see apart
+    dots: BufferData;
+}
+
+function isEnumMode(mode: RenderMode): boolean {
+    return mode === RenderMode.Enum || mode === RenderMode.ExpandedEnum;
+}
+
+// Grows by powers of two, so most uploads only write into the existing storage
+function grownCapacity(capacity: number, needed: number): number {
+    return capacity >= needed ? capacity : Math.max(256, 1 << Math.ceil(Math.log2(needed)));
+}
+
+function writeBuffer(gl: WebGL2RenderingContext, buffer: WebGLBuffer, data: Float32Array, reallocateBytes: number | null): void {
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    if (reallocateBytes !== null) gl.bufferData(gl.ARRAY_BUFFER, reallocateBytes, gl.DYNAMIC_DRAW);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+}
+
+// Times are split into high and low parts for emulated double precision
+const scratch = {
+    timeHigh: new Float32Array(1024),
+    timeLow: new Float32Array(1024),
+    value: new Float32Array(1024),
+};
+
+function uploadPoints(gl: WebGL2RenderingContext, bufferData: SignalBufferData, length: number, time: (i: number) => number, value: (i: number) => number): void {
+    if (scratch.value.length < length) {
+        const size = grownCapacity(scratch.value.length, length);
+        scratch.timeHigh = new Float32Array(size);
+        scratch.timeLow = new Float32Array(size);
+        scratch.value = new Float32Array(size);
+    }
+    for (let i = 0; i < length; i++) {
+        const t = time(i);
+        const high = Math.fround(t);
+        scratch.timeHigh[i] = high;
+        scratch.timeLow[i] = t - high;
+        scratch.value[i] = value(i);
+    }
+    const capacity = grownCapacity(bufferData.bufferCapacity, length);
+    const pointBytes = capacity !== bufferData.bufferCapacity ? capacity * 4 : null;
+    writeBuffer(gl, bufferData.timeHighBuffer, scratch.timeHigh.subarray(0, length), pointBytes);
+    writeBuffer(gl, bufferData.timeLowBuffer, scratch.timeLow.subarray(0, length), pointBytes);
+    writeBuffer(gl, bufferData.valueBuffer, scratch.value.subarray(0, length), pointBytes);
+    bufferData.bufferCapacity = capacity;
+    bufferData.bufferLength = length;
+}
+
+function uploadLines(gl: WebGL2RenderingContext, bufferData: SignalBufferData, geometry: LodGeometry): void {
+    uploadPoints(gl, bufferData, geometry.length, i => geometry.time[i], i => geometry.value[i]);
+
+    const blocks = bufferData.blocks;
+    const blockCapacity = grownCapacity(blocks.capacity, geometry.blockCount);
+    const blockBytes = blockCapacity !== blocks.capacity ? blockCapacity * 24 : null;
+    writeBuffer(gl, blocks.buffer, geometry.blocks.subarray(0, geometry.blockCount * 6), blockBytes);
+    blocks.capacity = blockCapacity;
+    blocks.count = geometry.blockCount;
+}
+
+// One point per run, then one to end the last run
+function uploadEnum(gl: WebGL2RenderingContext, bufferData: SignalBufferData, runs: EnumRuns): void {
+    const last = runs.count - 1;
+    const length = last < 0 ? 0 : runs.end(last) > runs.start(last) ? runs.count + 1 : runs.count;
+    uploadPoints(gl, bufferData, length, i => i <= last ? runs.start(i) : runs.end(last), i => runs.value(Math.min(i, last)));
+    bufferData.blocks.count = 0;
 }
 
 export default (context: PluginContext): void => {
@@ -40,7 +108,6 @@ export default (context: PluginContext): void => {
             targetFps: 120,
             formatTooltip: "displayName + ': ' + (typeof(display) === 'string' ? display : value.toFixed(Math.min(6, Math.max(0, Math.ceil(Math.log10(Math.abs(yScale)) + 2))))) + units",
             hoverEnabled: true,
-            downsamplingMode: 'lossless' as const,
             enumExpansionEnabled: true,
             minExpandedWidth: 50,
         });
@@ -50,8 +117,6 @@ export default (context: PluginContext): void => {
     new WaveformTooltipRenderObject(context.rootRenderObject, config, waveformOverlays, context.signalMetadata);
 
     const buffers = new Map<Signal, SignalBufferData>();
-    const dotOverlayBuffers = new Map<Signal, BufferData>();
-    const enumRunIndices = new Map<Signal, EnumRunIndex>();
     
     // Create shared instance geometry for line segments (2 triangles, 6 vertices)
     const segmentInstanceGeometry = new Float32Array([
@@ -92,36 +157,37 @@ export default (context: PluginContext): void => {
     // Frame timing variables
     let frameStartTime = 0;
     const frameTimeOverhead = 2; // ms overhead to avoid losing performance
+    let firstSignal = 0;
 
-    const maxPoints = 4096;
-
-    type DownsamplingMode = typeof config.downsamplingMode | 'enum';
-
-    const downsamplerFactories: Record<DownsamplingMode, (signal: Signal) => Downsampler> = {
-        off: (signal) => createRawDownsampler(signal, maxPoints),
-        aggressive: (signal) => createGradientDownsampler(signal, 1, maxPoints),
-        normal: (signal) => createGradientDownsampler(signal, 0.1, maxPoints),
-        lossless: (signal) => createGradientDownsampler(signal, 0, maxPoints),
-        enum: (signal) => createEnumDownsampler(signal, maxPoints),
+    const updateLod = (signal: Signal, bufferData: SignalBufferData, deadline: number): boolean => {
+        const gl = context.webgl.gl;
+        const state = context.state;
+        const view = bufferData.lod;
+        const dpr = window.devicePixelRatio || 1;
+        const start = state.offset / state.pxPerSecond - signalShift(signal, state);
+        const end = start + gl.canvas.width / dpr / state.pxPerSecond;
+        // Data held back by the display delay is about to scroll into view, so fetch its tiles early
+        const aheadTo = end >= state.displayEndTime - signalShift(signal, state) ? Math.max(end, signal.timeRange[1]) : end;
+        const { changed, busy } = view.update(start, end, state.pxPerSecond * dpr, deadline, aheadTo);
+        if (changed) {
+            bufferData.runs.build(view.geometry!);
+        }
+        // The render mode can change at any time, so the same view is uploaded either way
+        const kind: UploadedKind = isEnumMode(context.signalMetadata.get(signal).renderMode) ? 'enum' : 'lines';
+        if (view.geometry && (changed || bufferData.uploaded !== kind)) {
+            if (kind === 'enum') uploadEnum(gl, bufferData, bufferData.runs);
+            else uploadLines(gl, bufferData, view.geometry);
+            bufferData.uploaded = kind;
+        }
+        const geometry = view.geometry;
+        const showDots = kind === 'lines' && geometry !== null && geometry.raw &&
+            pointsBetween(geometry, start, end) <= config.dotVisibilityThreshold;
+        bufferData.dots.bufferLength = showDots ? bufferData.bufferLength : 0;
+        return busy;
     };
-
-    let currentDownsamplingMode = config.downsamplingMode;
 
     context.onBeforeRender(() => {
         frameStartTime = performance.now();
-        
-        // Check if downsampling mode changed and recreate generators
-        if (currentDownsamplingMode !== config.downsamplingMode) {
-            currentDownsamplingMode = config.downsamplingMode;
-            for (const [signal, bufferData] of buffers.entries()) {
-                const metadata = context.signalMetadata.get(signal);
-                const mode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
-                bufferData.downsamplingMode = mode;
-                bufferData.generator = downsamplerFactories[mode](signal);
-                bufferData.bufferLength = 0;
-                bufferData.overwriteNext = false;
-            }
-        }
         
         // Adapt chunk size based on previous frame performance
         const targetFrameTime = 1000 / config.targetFps; // Convert FPS to milliseconds
@@ -129,188 +195,23 @@ export default (context: PluginContext): void => {
         let anyBufferNeedsUpdate = false;
         const availableTime = Math.max(1, targetFrameTime - frameTimeOverhead);
 
-        for (const [signal, index] of enumRunIndices) {
-            const remainingTime = availableTime - (performance.now() - frameStartTime);
-            if (remainingTime <= 0) {
-                anyBufferNeedsUpdate = true;
-                break;
-            }
-            if (index.process(signal, 100000)) {
-                anyBufferNeedsUpdate = true;
-            }
-        }
+        const frameDeadline = frameStartTime + availableTime;
+        const entries = [...buffers.entries()];
+        // Started from a different signal each frame, so the same ones aren't always left with no time to fetch
+        const first = entries.length > 0 ? firstSignal++ % entries.length : 0;
+        for (let k = 0; k < entries.length; k++) {
+            const [signal, bufferData] = entries[(first + k) % entries.length];
+            const now = performance.now();
+            // Shared out, so one large signal doesn't hold up the others. Out of time, signals still update from the
+            // tiles they have, so none are left showing a view that is no longer on screen.
+            const deadline = now + Math.max(0, frameDeadline - now) / (entries.length - k);
 
-        for (const [signal, bufferData] of buffers.entries()) {
-            const remainingTime = availableTime - (performance.now() - frameStartTime);
-            if (remainingTime <= 0) {
-                anyBufferNeedsUpdate = true;
-                break;
-            }
-
-            const gl = context.webgl.gl as WebGL2RenderingContext;
-            const seqLen = Math.min(signal.time.length, signal.values.length);
-            
-            if (bufferData.bufferCapacity < seqLen) {
-                // Power-of-two growth strategy
-                const newCapacity = Math.max(256, 1 << Math.ceil(Math.log2(seqLen)));
-                
-                // Create new buffers
-                const newTimeHighBuffer = gl.createBuffer()!;
-                const newTimeLowBuffer = gl.createBuffer()!;
-                const newValueBuffer = gl.createBuffer()!;
-                
-                // Allocate new buffers
-                gl.bindBuffer(gl.ARRAY_BUFFER, newTimeHighBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
-                gl.bindBuffer(gl.ARRAY_BUFFER, newTimeLowBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
-                gl.bindBuffer(gl.ARRAY_BUFFER, newValueBuffer);
-                gl.bufferData(gl.ARRAY_BUFFER, newCapacity * 4, gl.DYNAMIC_DRAW);
-                
-                // Copy existing data on GPU if there's any
-                if (bufferData.bufferLength > 0) {
-                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.timeHighBuffer);
-                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newTimeHighBuffer);
-                    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, bufferData.bufferLength * 4);
-
-                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.timeLowBuffer);
-                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newTimeLowBuffer);
-                    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, bufferData.bufferLength * 4);
-                    
-                    gl.bindBuffer(gl.COPY_READ_BUFFER, bufferData.valueBuffer);
-                    gl.bindBuffer(gl.COPY_WRITE_BUFFER, newValueBuffer);
-                    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, bufferData.bufferLength * 4);
-                }
-                
-                // Delete old buffers and swap
-                gl.deleteBuffer(bufferData.timeHighBuffer);
-                gl.deleteBuffer(bufferData.timeLowBuffer);
-                gl.deleteBuffer(bufferData.valueBuffer);
-                bufferData.timeHighBuffer = newTimeHighBuffer;
-                bufferData.timeLowBuffer = newTimeLowBuffer;
-                bufferData.valueBuffer = newValueBuffer;
-                bufferData.bufferCapacity = newCapacity;
-            }
-
-            const result = bufferData.generator.next();
-            if (result.done) throw new Error('Downsampler generator unexpectedly returned');
-            
-            const { hasMore, overwriteNext } = result.value;
-            const bufferOffset = bufferData.generator.buffer.length;
-
-            if (bufferData.overwriteNext && bufferOffset > 0 && bufferData.bufferLength > 0) {
-                bufferData.bufferLength--;
-            }
-
-            // Upload new data
-            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeHighBuffer);
-            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.buffer.timeHighBuffer.subarray(0, bufferOffset));
-            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.timeLowBuffer);
-            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.buffer.timeLowBuffer.subarray(0, bufferOffset));
-            gl.bindBuffer(gl.ARRAY_BUFFER, bufferData.valueBuffer);
-            gl.bufferSubData(gl.ARRAY_BUFFER, bufferData.bufferLength * 4, bufferData.generator.buffer.valueBuffer.subarray(0, bufferOffset));
-            bufferData.bufferLength += bufferOffset;
-            
-            if (bufferOffset > 0) {
-                bufferData.overwriteNext = overwriteNext ?? false;
-            }
-
-            if (hasMore) {
-                anyBufferNeedsUpdate = true;
-            }
+            const needsMore = updateLod(signal, bufferData, deadline);
+            anyBufferNeedsUpdate ||= needsMore;
         }
         return anyBufferNeedsUpdate;
     });
 
-    // Add a render callback that updates the dot buffer and conditionally renders
-    context.rootRenderObject.addChild({
-        zIndex: -100,
-        render: (renderContext, bounds) => {
-            const { state } = renderContext;
-            
-            for (const [channel, dotRenderBuffer] of dotOverlayBuffers.entries()) {
-                // Calculate visible time range
-                const viewStartTime = state.offset / state.pxPerSecond;
-                const viewEndTime = (state.offset + bounds.width) / state.pxPerSecond;
-                
-                // Binary search for visible point range
-                let startIdx = 0;
-                let endIdx = channel.time.length - 1;
-                
-                // Find first visible point
-                let left = 0, right = channel.time.length - 1;
-                while (left <= right) {
-                    const mid = Math.floor((left + right) / 2);
-                    const time = channel.time.valueAt(mid);
-                    if (time < viewStartTime) {
-                        left = mid + 1;
-                    } else {
-                        startIdx = mid;
-                        right = mid - 1;
-                    }
-                }
-                
-                // Find last visible point
-                left = startIdx;
-                right = channel.time.length - 1;
-                while (left <= right) {
-                    const mid = Math.floor((left + right) / 2);
-                    const time = channel.time.valueAt(mid);
-                    if (time <= viewEndTime) {
-                        endIdx = mid;
-                        left = mid + 1;
-                    } else {
-                        right = mid - 1;
-                    }
-                }
-                
-                const visibleCount = endIdx - startIdx + 1;
-                
-                const pointVisibilityThreshold = config.dotVisibilityThreshold;
-                if (visibleCount > pointVisibilityThreshold || visibleCount <= 0) {
-                    dotRenderBuffer.bufferLength = 0;
-                    continue;
-                }
-                
-                // Allocate buffer if needed
-                if (dotRenderBuffer.bufferCapacity < pointVisibilityThreshold) {
-                    const gl = context.webgl.gl;
-                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeHighBuffer);
-                    gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
-                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeLowBuffer);
-                    gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
-                    gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
-                    gl.bufferData(gl.ARRAY_BUFFER, pointVisibilityThreshold * 4, gl.DYNAMIC_DRAW);
-                    dotRenderBuffer.bufferCapacity = pointVisibilityThreshold;
-                }
-                
-                // Copy visible points to dot buffer
-                const dotTimeHighArr = new Float32Array(visibleCount);
-                const dotTimeLowArr = new Float32Array(visibleCount);
-                const dotValueArr = new Float32Array(visibleCount);
-                for (let i = 0; i < visibleCount; i++) {
-                    const time = channel.time.valueAt(startIdx + i);
-                    const high = Math.fround(time);
-                    dotTimeHighArr[i] = high;
-                    dotTimeLowArr[i] = time - high;
-                    dotValueArr[i] = channel.values.valueAt(startIdx + i);
-                }
-                
-                const gl = context.webgl.gl;
-                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeHighBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotTimeHighArr);
-                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.timeLowBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotTimeLowArr);
-                gl.bindBuffer(gl.ARRAY_BUFFER, dotRenderBuffer.valueBuffer);
-                gl.bufferSubData(gl.ARRAY_BUFFER, 0, dotValueArr);
-                
-                dotRenderBuffer.bufferLength = visibleCount;
-            }
-            
-            return false;
-        }
-    });
-    
     context.onRowsChanged((event) => {
         for (const row of event.added) {
             const rowSignals: Signal[] = [];
@@ -319,32 +220,27 @@ export default (context: PluginContext): void => {
             for (const channel of row.signals) {
                 // Create buffers
                 if (!buffers.has(channel)) {
-                    const timeHighBuffer = context.webgl.gl.createBuffer();
-                    if (!timeHighBuffer) {
-                        throw new Error('Failed to create WebGL buffer for sequence');
-                    }
-                    const timeLowBuffer = context.webgl.gl.createBuffer();
-                    if (!timeLowBuffer) {
-                        throw new Error('Failed to create WebGL buffer for sequence');
-                    }
-                    const valueBuffer = context.webgl.gl.createBuffer();
-                    if (!valueBuffer) {
-                        throw new Error('Failed to create WebGL buffer for sequence');
-                    }
-                    const metadata = context.signalMetadata.get(channel);
-                    const downsamplingMode: DownsamplingMode = metadata.renderMode === RenderMode.Enum ? 'enum' : config.downsamplingMode;
-                    if (downsamplingMode === 'enum') {
-                        enumRunIndices.set(channel, new EnumRunIndex());
-                    }
+                    const createBuffer = () => {
+                        const buffer = context.webgl.gl.createBuffer();
+                        if (!buffer) {
+                            throw new Error('Failed to create WebGL buffer for sequence');
+                        }
+                        return buffer;
+                    };
+                    const timeHighBuffer = createBuffer();
+                    const timeLowBuffer = createBuffer();
+                    const valueBuffer = createBuffer();
                     buffers.set(channel, {
                         timeHighBuffer,
                         timeLowBuffer,
                         valueBuffer,
-                        downsamplingMode,
                         bufferCapacity: 0,
                         bufferLength: 0,
-                        generator: downsamplerFactories[downsamplingMode](channel),
-                        overwriteNext: false,
+                        blocks: { buffer: createBuffer(), count: 0, capacity: 0 },
+                        runs: new EnumRuns(),
+                        lod: new LodView(channel, () => context.requestRender()),
+                        uploaded: null,
+                        dots: { timeHighBuffer, timeLowBuffer, valueBuffer, bufferCapacity: 0, bufferLength: 0 },
                     });
                 }
                 
@@ -387,7 +283,6 @@ export default (context: PluginContext): void => {
                     row,
                     expandedEnumResources,
                     0,
-                    enumRunIndices.get(channel) ?? null,
                 );
                 enumRenderObjects.set(channel, enumRenderObject);
                 
@@ -403,9 +298,8 @@ export default (context: PluginContext): void => {
                         }
                         
                         // ExpandedEnum always expands, Enum uses heuristic
-                        const enumRunIndex = enumRunIndices.get(channel);
                         const shouldBeExpanded = metadata.renderMode === RenderMode.ExpandedEnum ||
-                            (config.enumExpansionEnabled && isEnumRunIndexReady(channel, enumRunIndex) && shouldUseExpandedMode(channel, ctx, bounds, expandedState.wasExpanded, config.minExpandedWidth, enumRunIndex));
+                            (config.enumExpansionEnabled && shouldUseExpandedMode(channel, ctx, bounds, expandedState.wasExpanded, config.minExpandedWidth, buffer.runs));
                         
                         const targetProgress = shouldBeExpanded ? 1 : 0;
                         expandedState.wasExpanded = shouldBeExpanded;
@@ -418,24 +312,6 @@ export default (context: PluginContext): void => {
                     }
                 });
 
-                // Create dot overlay buffers
-                const dotTimeHighBuffer = context.webgl.gl.createBuffer();
-                const dotTimeLowBuffer = context.webgl.gl.createBuffer();
-                const dotValueBuffer = context.webgl.gl.createBuffer();
-                if (!dotTimeHighBuffer || !dotTimeLowBuffer || !dotValueBuffer) {
-                    throw new Error('Failed to create WebGL buffers for dot overlay');
-                }
-                
-                // Create BufferData wrapper for the dot render object
-                const dotRenderBuffer: BufferData = {
-                    timeHighBuffer: dotTimeHighBuffer,
-                    timeLowBuffer: dotTimeLowBuffer,
-                    valueBuffer: dotValueBuffer,
-                    downsamplingMode: 'off',
-                    bufferCapacity: 0,
-                    bufferLength: 0,
-                };
-                dotOverlayBuffers.set(channel, dotRenderBuffer);
                 const dotOverlayMetadata = new Proxy(metadata, {
                     get: (target, prop) => {
                         if (prop === 'renderMode') {
@@ -449,7 +325,7 @@ export default (context: PluginContext): void => {
                     row.mainArea,
                     context.webgl.gl,
                     config,
-                    dotRenderBuffer,
+                    buffer.dots,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
                     dotOverlayMetadata,
@@ -501,21 +377,28 @@ export default (context: PluginContext): void => {
                 context.webgl.gl.deleteBuffer(bufferData.timeHighBuffer);
                 context.webgl.gl.deleteBuffer(bufferData.timeLowBuffer);
                 context.webgl.gl.deleteBuffer(bufferData.valueBuffer);
+                context.webgl.gl.deleteBuffer(bufferData.blocks.buffer);
                 buffers.delete(signal);
-                enumRunIndices.delete(signal);
             }
         }
-        
-        for (const [signal, dotBufferData] of dotOverlayBuffers.entries()) {
-            if (!activeSignals.has(signal)) {
-                context.webgl.gl.deleteBuffer(dotBufferData.timeHighBuffer);
-                context.webgl.gl.deleteBuffer(dotBufferData.timeLowBuffer);
-                context.webgl.gl.deleteBuffer(dotBufferData.valueBuffer);
-                dotOverlayBuffers.delete(signal);
-            }
-        }
+
     });
 };
+
+function lowerBound(time: Float64Array, length: number, t: number): number {
+    let lo = 0;
+    let hi = length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (time[mid] < t) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo;
+}
+
+function pointsBetween(geometry: LodGeometry, start: number, end: number): number {
+    return lowerBound(geometry.time, geometry.length, end) - lowerBound(geometry.time, geometry.length, start);
+}
 
 function shouldUseExpandedMode(
     signal: Signal,
@@ -523,7 +406,7 @@ function shouldUseExpandedMode(
     bounds: RenderBounds,
     wasExpanded: boolean,
     minExpandedWidth: number,
-    enumRunIndex: EnumRunIndex,
+    runs: EnumRuns,
 ): boolean {
     const { state } = context;
     const startTime = state.offset / state.pxPerSecond;
@@ -533,40 +416,28 @@ function shouldUseExpandedMode(
     const maxTransitionsHysteresis = 5;
     const maxPossibleThreshold = maxTransitionsForExpansion + maxTransitionsHysteresis;
 
-    const nullValue = "null" in signal.values ? signal.values.null : null;
+    const nullValue = signal.null ?? null;
 
-    const [visibleRunStart, visibleRunEnd] = enumRunIndex.getVisibleRunRange(signal, startTime, endTime);
+    const [visibleRunStart, visibleRunEnd] = runs.visibleRange(startTime, endTime);
 
     let visibleTransitions = 0;
     let hasNarrowSegment = false;
-    const lastRun = enumRunIndex.runCount - 1;
 
     for (let run = visibleRunStart; run <= visibleRunEnd; run++) {
-        const value = enumRunIndex.value(run);
-        const segmentStartTime = signal.time.valueAt(enumRunIndex.startIndex(run));
-        const segmentEndTime = run < lastRun
-            ? signal.time.valueAt(enumRunIndex.startIndex(run + 1))
-            : signal.time.valueAt(enumRunIndex.endIndex(run));
-        const segmentWidth = (segmentEndTime - segmentStartTime) * state.pxPerSecond;
-        const isNullSegment = nullValue !== null && value === nullValue;
+        const segmentWidth = (runs.end(run) - runs.start(run)) * state.pxPerSecond;
+        const isNullSegment = nullValue !== null && runs.value(run) === nullValue;
 
         if (!isNullSegment && segmentWidth < minExpandedWidth) {
             hasNarrowSegment = true;
         }
 
-        visibleTransitions++;
-        if (visibleTransitions > maxPossibleThreshold) {
+        // Changes hidden inside a run count too. If they aren't known (NaN), the run could hide any number.
+        visibleTransitions += 1 + runs.hidden(run);
+        if (!(visibleTransitions <= maxPossibleThreshold)) {
             return false;
         }
     }
 
     const threshold = wasExpanded ? maxPossibleThreshold : maxTransitionsForExpansion;
     return visibleTransitions <= threshold && hasNarrowSegment;
-}
-
-function isEnumRunIndexReady(signal: Signal, enumRunIndex: EnumRunIndex | undefined): enumRunIndex is EnumRunIndex {
-    if (!enumRunIndex || enumRunIndex.runCount === 0) return false;
-
-    const maxUpdateIndex = Math.min(signal.time.length, signal.values.length);
-    return maxUpdateIndex > 0 && enumRunIndex.endIndex(enumRunIndex.runCount - 1) >= maxUpdateIndex - 1;
 }

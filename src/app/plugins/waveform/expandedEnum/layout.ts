@@ -1,65 +1,21 @@
 import type { Signal } from "@voltex-viewer/plugin-api";
-import type { EnumRunIndex } from '../enumRunIndex';
+import type { EnumRuns } from '../lod/enumRuns';
 
 export interface ExpandedSegment {
-    startBufferIndex: number;
-    endBufferIndex: number;
+    startTime: number;
+    endTime: number;
     originalStartX: number;
     originalEndX: number;
     renderStartX: number;
     renderEndX: number;
     value: number;
-}
-
-export function binarySearchTimeIndex(
-    signal: Signal,
-    targetTime: number,
-    left: number,
-    right: number,
-    findStart: boolean
-): number {
-    if (left > right) {
-        return findStart ? left : right;
-    }
-
-    let result = findStart ? right + 1 : left - 1;
-    const signalLength = Math.min(signal.time.length, signal.values.length);
-
-    while (left <= right) {
-        const mid = Math.floor((left + right) / 2);
-        const midTime = signal.time.valueAt(mid);
-
-        if (findStart) {
-            if (mid + 1 < signalLength) {
-                const nextTime = signal.time.valueAt(mid + 1);
-                if (nextTime >= targetTime) {
-                    result = mid;
-                    right = mid - 1;
-                } else {
-                    left = mid + 1;
-                }
-            } else {
-                if (midTime <= targetTime) {
-                    result = mid;
-                }
-                right = mid - 1;
-            }
-        } else {
-            if (midTime <= targetTime) {
-                result = mid;
-                left = mid + 1;
-            } else {
-                right = mid - 1;
-            }
-        }
-    }
-
-    return Math.max(0, Math.min(signalLength - 1, result));
+    /** The exact value, for 64-bit sources */
+    exact?: bigint | undefined;
 }
 
 export function computeExpandedLayout(
     signal: Signal,
-    enumRunIndex: EnumRunIndex,
+    runs: EnumRuns,
     startRun: number,
     endRun: number,
     pxPerSecond: number,
@@ -68,7 +24,7 @@ export function computeExpandedLayout(
     viewportWidth: number,
     minExpandedWidth: number
 ): ExpandedSegment[] {
-    const runCount = enumRunIndex.runCount;
+    const runCount = runs.count;
     if (runCount === 0) return [];
 
     const clampedStartRun = Math.max(0, Math.min(startRun, runCount - 1));
@@ -81,33 +37,29 @@ export function computeExpandedLayout(
     const rightSegments: ExpandedSegment[] = [];
     let totalExtraNeeded = 0;
     let totalShrinkable = 0;
-    const lastRun = runCount - 1;
 
     const createSegmentFromRun = (runIdx: number): ExpandedSegment | null => {
         if (runIdx < clampedStartRun || runIdx > clampedEndRun) return null;
 
-        const segStartIdx = enumRunIndex.startIndex(runIdx);
-        const segEndIdx = enumRunIndex.endIndex(runIdx);
-        const value = enumRunIndex.value(runIdx);
-        const segmentStartTime = signal.time.valueAt(segStartIdx);
-        const segmentEndTime = runIdx < lastRun
-            ? signal.time.valueAt(enumRunIndex.startIndex(runIdx + 1))
-            : signal.time.valueAt(segEndIdx);
+        const value = runs.value(runIdx);
+        const segmentStartTime = runs.start(runIdx);
+        const segmentEndTime = runs.end(runIdx);
         const originalStartX = segmentStartTime * pxPerSecond - offset;
         const originalEndX = segmentEndTime * pxPerSecond - offset;
         const originalWidth = originalEndX - originalStartX;
 
         const seg: ExpandedSegment = {
-            startBufferIndex: segStartIdx,
-            endBufferIndex: segEndIdx,
+            startTime: segmentStartTime,
+            endTime: segmentEndTime,
             originalStartX,
             originalEndX,
             renderStartX: 0,
             renderEndX: originalWidth,
             value,
+            exact: runs.exact(runIdx),
         };
 
-        const isNullValue = "null" in signal.values && value === signal.values.null;
+        const isNullValue = signal.null !== undefined && value === signal.null;
         if (!isNullValue && originalWidth < minExpandedWidth) {
             const extraNeeded = minExpandedWidth - originalWidth;
             totalExtraNeeded += extraNeeded;
@@ -126,10 +78,8 @@ export function computeExpandedLayout(
     let right = clampedEndRun;
     while (left <= right) {
         const mid = (left + right) >>> 1;
-        const runStartTime = signal.time.valueAt(enumRunIndex.startIndex(mid));
-        const runEndTime = mid < lastRun
-            ? signal.time.valueAt(enumRunIndex.startIndex(mid + 1))
-            : signal.time.valueAt(enumRunIndex.endIndex(mid));
+        const runStartTime = runs.start(mid);
+        const runEndTime = runs.end(mid);
 
         if (centerTime < runStartTime) {
             right = mid - 1;
@@ -179,7 +129,7 @@ export function computeExpandedLayout(
     const segments = [...leftSegments.reverse(), ...rightSegments];
     if (segments.length === 0) return [];
 
-    const nullValue = "null" in signal.values ? signal.values.null : null;
+    const nullValue = signal.null ?? null;
 
     if (totalExtraNeeded > 0 && totalShrinkable > 0) {
         const shrinkRatio = Math.min(1, totalExtraNeeded / totalShrinkable);

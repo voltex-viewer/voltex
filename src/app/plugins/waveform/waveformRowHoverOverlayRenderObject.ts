@@ -1,7 +1,10 @@
-import { hexToRgba, RenderMode, type RenderContext, type Sequence, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent, SignalMetadata, formatValueForDisplay } from '@voltex-viewer/plugin-api';
+import { hexToRgba, RenderMode, type RenderContext, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent, type Sample, SignalMetadata, formatValueForDisplay } from '@voltex-viewer/plugin-api';
+import { displayValue, NeighbourCache } from '@voltex-viewer/signal-utils';
 import { type WaveformConfig } from './waveformConfig';
 import type { SignalTooltipData, TooltipData } from './waveformTooltipRenderObject';
-import type { BufferData } from './waveformRendererPlugin';
+import type { BufferData, SignalBufferData } from './waveformRendererPlugin';
+import { estimateSample, type SampleEstimate } from './lod/estimate';
+import { lodLevel } from './lod/lodView';
 import type { WaveformShaders } from './waveformShaders';
 import { WaveformRenderObject } from './waveformRenderObject';
 import {
@@ -10,31 +13,29 @@ import {
     ExpandedEnumGeometryRenderer,
 } from './expandedEnum';
 
-class HighlightSignal implements Signal {
-    constructor(
-        public readonly source: Signal['source'],
-        public readonly time: ArraySequence,
-        public readonly values: ArraySequence,
-        public readonly renderHint: RenderMode,
-        public readonly startTime?: number | undefined,
-    ) {
-    }
+type HoveredSample = SampleEstimate;
 
-    updateData(time: number[], values: number[], converted?: (number | bigint | string)[]): void {
-        this.time.updateData(time);
-        this.values.updateData(values, converted);
-    }
+function isEnumMode(mode: RenderMode): boolean {
+    return mode === RenderMode.Enum || mode === RenderMode.ExpandedEnum;
+}
+
+function fromNeighbours(floor: Sample | null, next: Sample | null, time: number, nearest: boolean): HoveredSample | null {
+    const sample = (point: Sample, after: Sample | null): HoveredSample => ({ point, next: after, exact: true });
+    if (!nearest) return floor && sample(floor, next);
+    if (floor && (!next || time - floor.time <= next.time - time)) return sample(floor, next);
+    return next && sample(next, null);
 }
 
 export class WaveformRowHoverOverlayRenderObject {
+    private readonly neighbours = new NeighbourCache();
     private mouse: { offsetX: number; offsetY: number; clientX: number; clientY: number } | null = null;
-    private readonly highlightSignals: Map<Signal, HighlightSignal> = new Map();
+    
     private readonly highlightBuffers: Map<Signal, BufferData> = new Map();
     private _tooltipData: TooltipData | null = null;
     
     // Expanded mode highlight
     private expandedHighlightRenderer: ExpandedEnumGeometryRenderer | null = null;
-    private expandedHighlightData: { signal: Signal; segment: ExpandedSegment; dataIndex: number } | null = null;
+    private expandedHighlightData: { signal: Signal; segment: ExpandedSegment; sample: HoveredSample } | null = null;
 
     constructor(
         parent: RenderObject,
@@ -42,7 +43,7 @@ export class WaveformRowHoverOverlayRenderObject {
         config: WaveformConfig,
         private readonly row: Row,
         private readonly signals: Signal[],
-        signalBuffers: Map<Signal, BufferData>,
+        private readonly signalBuffers: Map<Signal, SignalBufferData>,
         sharedInstanceGeometryBuffer: WebGLBuffer,
         sharedBevelJoinGeometryBuffer: WebGLBuffer,
         private readonly waveformPrograms: WaveformShaders,
@@ -100,14 +101,7 @@ export class WaveformRowHoverOverlayRenderObject {
                     }
                 });
 
-                const highlightSignal = new HighlightSignal(
-                    signal.source,
-                    new ArraySequence(),
-                    new ArraySequence(),
-                    RenderMode.Dots, // This is ignored as the render metadata proxy provides the correct mode
-                    signal.startTime, // keep the highlight aligned with the source in real-time mode
-                );
-                this.highlightSignals.set(signal, highlightSignal);
+                
 
                 // Create dedicated highlight buffers for this signal
                 const highlightTimeHighBuffer = context.webgl.gl.createBuffer();
@@ -121,7 +115,6 @@ export class WaveformRowHoverOverlayRenderObject {
                     timeHighBuffer: highlightTimeHighBuffer,
                     timeLowBuffer: highlightTimeLowBuffer,
                     valueBuffer: highlightValueBuffer,
-                    downsamplingMode: 'off',
                     bufferCapacity: 0,
                     bufferLength: 0,
                 };
@@ -142,9 +135,9 @@ export class WaveformRowHoverOverlayRenderObject {
                     bufferData,
                     sharedInstanceGeometryBuffer,
                     sharedBevelJoinGeometryBuffer,
-                    highlightMetadata,
+                                        highlightMetadata,
                     waveformPrograms,
-                    highlightSignal,
+                    signal,
                     row,
                     null, // No expanded enum resources for highlight
                     95
@@ -170,7 +163,7 @@ export class WaveformRowHoverOverlayRenderObject {
             this.expandedHighlightRenderer.dispose();
         }
         
-        this.highlightSignals.clear();
+        
         this.highlightBuffers.clear();
     }
 
@@ -194,9 +187,6 @@ export class WaveformRowHoverOverlayRenderObject {
             for (const buffer of this.highlightBuffers.values()) {
                 buffer.bufferLength = 0;
             }
-            for (const signal of this.highlightSignals.values()) {
-                signal.updateData([], []);
-            }
             return false;
         }
 
@@ -212,24 +202,31 @@ export class WaveformRowHoverOverlayRenderObject {
             
             if (!mainRenderObject) continue;
             
-            const dataIndex = mainRenderObject.getIndexForPosition(
+            const time = mainRenderObject.getTimeForPosition(
                 this.mouse.offsetX,
                 this.mouse.offsetY,
                 bounds.height,
                 state
             );
-            
-            const dataPoint = this.getSignalValueAtIndex(signal, dataIndex, signalMetadata);
-            if (dataPoint !== null && dataPoint.display !== "null") {
-                signalData.push({
-                    ...dataPoint,
-                    signal: signal,
-                    color: signalMetadata.color,
-                    units: signal.values.unit || '',
-                });
-                
-                this.updateHighlightSignal(signal, dataPoint.dataIndex, context, signalMetadata.renderMode);
-            }
+
+            const highlightBufferData = this.highlightBuffers.get(signal);
+            if (highlightBufferData) highlightBufferData.bufferLength = 0;
+
+            const sample = this.hoveredSample(signal, time, signalMetadata.renderMode, context.dpr);
+            if (sample === null) continue;
+            const display = formatValueForDisplay(displayValue(signal, sample.point), signalMetadata.display);
+            if (display === "null") continue;
+            signalData.push({
+                time: sample.point.time,
+                value: sample.point.value,
+                // Marked as an estimate until the exact samples load
+                display: sample.exact ? display : `≈ ${display}`,
+                signal: signal,
+                color: signalMetadata.color,
+                units: signal.unit || '',
+            });
+
+            this.updateHighlightSignal(signal, sample, context, signalMetadata.renderMode);
         }
 
         // Update tooltip with aggregated data or hide if no valid data
@@ -248,63 +245,60 @@ export class WaveformRowHoverOverlayRenderObject {
         return false;
     }
 
+    // Enum signals show the sample in force at the time, others the nearest one. The points already drawn often
+    // pin it down, and otherwise give an estimate until the exact samples load.
+    private hoveredSample(signal: Signal, time: number, renderMode: RenderMode, dpr: number): HoveredSample | null {
+        const nearest = !isEnumMode(renderMode);
+        const geometry = this.signalBuffers.get(signal)?.lod.geometry ?? null;
+        const columnWidth = Math.pow(2, lodLevel(this.context.state.pxPerSecond * dpr));
+        const estimate = geometry && estimateSample(geometry, time, columnWidth, nearest, signal.null);
+        let sample: HoveredSample | null = estimate?.exact ? estimate : null;
+        if (!sample) {
+            const around = this.neighbours.neighboursAt(signal, time, () => this.context.requestRender());
+            sample = around ? fromNeighbours(around.floor, around.next, time, nearest) : estimate;
+        }
+        // Over a gap there is nothing to show
+        return sample && sample.point.value !== signal.null ? sample : null;
+    }
+
     private updateHighlightSignal(
         signal: Signal,
-        dataIndex: number,
+        sample: HoveredSample,
         context: RenderContext,
         renderMode: RenderMode
     ): void {
-        const highlightSignal = this.highlightSignals.get(signal);
         const { gl } = context.render;
-        
-        const signalLength = Math.min(signal.time.length, signal.values.length);
-        if (dataIndex >= signalLength) return;
 
         // Check if the main render object is in expanded mode
         const mainRenderObject = this.mainRenderObjects.get(signal);
         const isExpandedMode = mainRenderObject && mainRenderObject.expandedModeProgress > 0;
         if (isExpandedMode && renderMode === RenderMode.Enum) {
-            // Use expanded mode rendering - clear normal highlight buffer
-            const highlightBufferData = this.highlightBuffers.get(signal);
-            if (highlightBufferData) {
-                highlightBufferData.bufferLength = 0;
-            }
-            
             // Get the expanded segment for this data point
-            const startTime = signal.time.valueAt(dataIndex);
-            const segment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state);
+            const segment = mainRenderObject.getExpandedSegmentForTime(sample.point.time, context.state);
             if (segment) {
-                this.expandedHighlightData = { signal, segment, dataIndex };
+                this.expandedHighlightData = { signal, segment, sample };
             }
             return;
         }
 
-        const indices = [];
+        const points: Sample[] = [];
         if (renderMode === RenderMode.Enum) {
-            if (dataIndex >= signalLength - 1) return;
-            
-            indices.push(dataIndex, dataIndex + 1);
+            if (sample.next === null) return;
+            points.push(sample.point, sample.next);
         } else {
-            indices.push(dataIndex);
+            points.push(sample.point);
         }
-
-        const timeSourceData = indices.map(i => signal.time.valueAt(i));
-        const valueSourceData = indices.map(i => signal.values.valueAt(i));
-        const convertedSourceData = signal.values.convertedValueAt ? indices.map(i => signal.values.convertedValueAt!(i)) : undefined;
-        // Update the highlight signal's data
-        if (!highlightSignal) return;
-        highlightSignal.updateData(timeSourceData, valueSourceData, convertedSourceData);
 
         // Get the highlight buffer data directly from our stored references
         const highlightBufferData = this.highlightBuffers.get(signal);
         if (highlightBufferData) {
             // Convert points to separate time high/low and value arrays for WebGL buffers
-            const timeHighData = new Float32Array(timeSourceData.length);
-            const timeLowData = new Float32Array(timeSourceData.length);
-            const valueData = new Float32Array(valueSourceData);
-            
-            for (let i = 0; i < timeSourceData.length; i++) {
-                const time = timeSourceData[i];
+            const timeHighData = new Float32Array(points.length);
+            const timeLowData = new Float32Array(points.length);
+            const valueData = new Float32Array(points.map(p => p.value));
+
+            for (let i = 0; i < points.length; i++) {
+                const time = points[i].time;
                 const high = Math.fround(time);
                 timeHighData[i] = high;
                 timeLowData[i] = time - high;
@@ -318,63 +312,17 @@ export class WaveformRowHoverOverlayRenderObject {
 
             gl.bindBuffer(gl.ARRAY_BUFFER, highlightBufferData.valueBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, valueData, gl.DYNAMIC_DRAW);
-            
+
             // Update buffer metadata
-            highlightBufferData.bufferLength = indices.length;
-            highlightBufferData.bufferCapacity = indices.length;
+            highlightBufferData.bufferLength = points.length;
+            highlightBufferData.bufferCapacity = points.length;
         }
-    }
-
-    private getSignalValueAtIndex(signal: Signal, dataIndex: number, signalMetadata: SignalMetadata): { time: number; value: number; display: string; dataIndex: number } | null {
-        const signalLength = Math.min(signal.time.length, signal.values.length);
-        if (signalLength === 0 || dataIndex < 0 || dataIndex >= signalLength) return null;
-
-        const nullValue = "null" in signal.values ? signal.values.null : null;
-        const hasNull = nullValue !== null;
-
-        // If the value at dataIndex is null, find the nearest non-null value
-        let actualIndex = dataIndex;
-        if (hasNull) {
-            const isNull = (idx: number) => Math.abs(signal.values.valueAt(idx) - nullValue) < 0.001;
-            if (isNull(actualIndex)) {
-                // Search outward from dataIndex to find nearest non-null
-                let left = dataIndex - 1;
-                let right = dataIndex + 1;
-                while (left >= 0 || right < signalLength) {
-                    if (left >= 0 && !isNull(left)) {
-                        actualIndex = left;
-                        break;
-                    }
-                    if (right < signalLength && !isNull(right)) {
-                        actualIndex = right;
-                        break;
-                    }
-                    left--;
-                    right++;
-                }
-                // If no non-null value found, return null
-                if (isNull(actualIndex)) return null;
-            }
-        }
-
-        const dataTime = signal.time.valueAt(actualIndex);
-        const value = signal.values.valueAt(actualIndex);
-        let display: number | bigint | string = value;
-        if (signal.values.convertedValueAt) {
-            display = signal.values.convertedValueAt(actualIndex);
-        }
-        return {
-            time: dataTime,
-            value,
-            display: formatValueForDisplay(display, signalMetadata.display),
-            dataIndex: actualIndex,
-        };
     }
 
     private renderExpandedHighlight(context: RenderContext, bounds: RenderBounds): boolean {
         if (!this.expandedHighlightData) return false;
         
-        const { signal, segment, dataIndex } = this.expandedHighlightData;
+                const { signal, segment, sample } = this.expandedHighlightData;
         
         const mainRenderObject = this.mainRenderObjects.get(signal);
         if (!mainRenderObject || mainRenderObject.expandedModeProgress <= 0) {
@@ -383,26 +331,22 @@ export class WaveformRowHoverOverlayRenderObject {
         }
         
         // Re-query the segment position for current frame (tracks animation)
-        const startTime = signal.time.valueAt(segment.startBufferIndex);
-        const updatedSegment = mainRenderObject.getExpandedSegmentForTime(startTime, context.state);
+        const updatedSegment = mainRenderObject.getExpandedSegmentForTime(segment.startTime, context.state);
         if (!updatedSegment) {
             return false;
         }
         
         // Construct sub-segment: narrow original bounds (specific data index) + full segment render bounds
         const { state } = context;
-        const signalLength = Math.min(signal.time.length, signal.values.length);
-        const highlightStartTime = signal.time.valueAt(dataIndex);
-        const highlightEndTime = dataIndex + 1 < signalLength 
-            ? signal.time.valueAt(dataIndex + 1) 
-            : highlightStartTime;
+                const highlightStartTime = sample.point.time;
+        const highlightEndTime = sample.next?.time ?? highlightStartTime;
         
         const highlightOrigStartX = highlightStartTime * state.pxPerSecond - state.offset;
         const highlightOrigEndX = highlightEndTime * state.pxPerSecond - state.offset;
         
         const highlightSegment: ExpandedSegment = {
-            startBufferIndex: dataIndex,
-            endBufferIndex: Math.min(dataIndex + 1, signalLength - 1),
+            startTime: highlightStartTime,
+            endTime: highlightEndTime,
             originalStartX: highlightOrigStartX,
             originalEndX: highlightOrigEndX,
             renderStartX: updatedSegment.renderStartX,
@@ -432,41 +376,5 @@ export class WaveformRowHoverOverlayRenderObject {
         );
         
         return false;
-    }
-}
-
-class ArraySequence implements Sequence {
-    private data: number[];
-    convertedValueAt?(index: number): number | bigint | string;
-
-    constructor() {
-        this.data = [];
-    }
-
-    get min(): number {
-        if (this.data.length === 0) return 0;
-        return Math.min(...this.data);
-    }
-
-    get max(): number {
-        if (this.data.length === 0) return 0;
-        return Math.max(...this.data);
-    }
-
-    get length(): number {
-        return this.data.length;
-    }
-
-    valueAt(index: number): number {
-        return this.data[index];
-    }
-
-    updateData(newData: number[], convertedData?: (number | bigint | string)[]): void {
-        this.data = newData;
-        if (typeof convertedData !== 'undefined') {
-            this.convertedValueAt = (index: number) => convertedData[index];
-        } else {
-            delete this.convertedValueAt;
-        }
     }
 }

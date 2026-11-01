@@ -1,4 +1,5 @@
-import { InMemorySequence, SequenceSignal, SignalSource, PluginContext, RenderMode, Signal, InMemoryFloat64Sequence } from '@voltex-viewer/plugin-api';
+import { SignalSource, PluginContext, RenderMode, Signal } from '@voltex-viewer/plugin-api';
+import { InMemorySequence, InMemoryFloat64Sequence, rawSamples, SequenceSignal } from '@voltex-viewer/signal-utils';
 
 class CsvSource implements SignalSource {
     constructor(public readonly name: string[], private _signal: Signal) {}
@@ -136,22 +137,26 @@ export default (context: PluginContext): void => {
             const bufferSize = 1024 * 1024;
             let buffer = '';
 
-            const signalData = signals.map(s => ({
-                time: s.time,
-                values: s.values,
-                index: 0,
-                length: s.time.length
+            const signalData = await Promise.all(signals.map(async signal => {
+                const time: number[] = [];
+                const text: string[] = [];
+                for await (const chunk of rawSamples(signal)) {
+                    for (let i = 0; i < chunk.time.length; i++) {
+                        const value = chunk.exact?.[i] ?? chunk.value[i];
+                        time.push(chunk.time[i]);
+                        text.push((signal.format ? signal.format(value) : value).toString());
+                    }
+                }
+                return { time, text };
             }));
 
             const rows: Map<number, string[][]> = new Map();
             
             for (let i = 0; i < signalData.length; i++) {
                 const data = signalData[i];
-                for (let j = 0; j < data.length; j++) {
-                    const timestamp = data.time.valueAt(j);
-                    const value = data.values.convertedValueAt ? 
-                        data.values.convertedValueAt(j) : 
-                        data.values.valueAt(j);
+                for (let j = 0; j < data.time.length; j++) {
+                    const timestamp = data.time[j];
+                    const value = data.text[j];
                     
                     if (!rows.has(timestamp)) {
                         rows.set(timestamp, []);
@@ -164,7 +169,7 @@ export default (context: PluginContext): void => {
                         targetRow[0] = timestamp.toString();
                         timestampRows.push(targetRow);
                     }
-                    targetRow[i + 1] = value.toString();
+                    targetRow[i + 1] = value;
                 }
             }
 

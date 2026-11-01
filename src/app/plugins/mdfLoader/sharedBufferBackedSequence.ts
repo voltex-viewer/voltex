@@ -1,4 +1,4 @@
-import { Sequence } from '@voltex-viewer/plugin-api';
+import type { Sequence } from '@voltex-viewer/signal-utils';
 
 type TypedArray = Float64Array | BigInt64Array | BigUint64Array;
 type TypedArrayConstructor = Float64ArrayConstructor | BigInt64ArrayConstructor | BigUint64ArrayConstructor;
@@ -30,6 +30,9 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
         }
         if (unit) {
             this.unit = unit;
+        }
+        if (arrayConstructor !== Float64Array) {
+            this.exactAt = (index: number) => this.array[index] as bigint;
         }
         this.toNumber = (arrayConstructor === Float64Array 
             ? (v: ArrayValue<T>) => v as number 
@@ -82,15 +85,14 @@ export class SharedBufferBackedSequence<T extends TypedArray> implements Sequenc
         return this.toNumber(rawValue);
     }
 
-    convertedValueAt(index: number): number | string {
-        const rawValue = this.array[index] as ArrayValue<T>;
-        
-        if (this.conversion) {
-            const result = this.conversion(rawValue);
-            if (typeof result !== 'undefined') {
-                return result;
-            }
-        }
-        return this.toNumber(rawValue);
+    exactAt?: (index: number) => bigint;
+
+    format(value: number | bigint): number | bigint | string {
+        if (!this.conversion) return value;
+        // 64-bit conversions take the exact stored value, so their result is what to show
+        if (typeof value === 'bigint') return (this.conversion as (value: bigint) => number | bigint | string)(value);
+        // Text conversions leave the plotted value raw, so only those need converting again
+        const result = (this.conversion as (value: number) => number | string)(value);
+        return typeof result === 'string' ? result : value;
     }
 }

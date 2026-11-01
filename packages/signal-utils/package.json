@@ -1,0 +1,42 @@
+{
+  "name": "@voltex-viewer/signal-utils",
+  "version": "0.6.0",
+  "description": "Helpers for building and querying Voltex signals",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "voltex",
+    "plugin",
+    "waveform",
+    "signals"
+  ],
+  "author": "tgillbe",
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/voltex-viewer/voltex.git"
+  },
+  "peerDependencies": {
+    "@voltex-viewer/plugin-api": "^0.6.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2"
+  }
+}

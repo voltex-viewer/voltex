@@ -1,9 +1,11 @@
-import { InMemorySequence, InMemoryFloat64Sequence, InMemorySignal, PluginContext, RenderMode, Signal, SignalSource } from '@voltex-viewer/plugin-api';
-import { FunctionSignal, FunctionTimeSequence, SequenceSignal } from '@voltex-viewer/plugin-api';
+import { PluginContext, RenderMode, Signal, SignalSource } from '@voltex-viewer/plugin-api';
+import { FunctionTimeSequence, FunctionValueSequence, InMemoryFloat64Sequence, InMemorySequence, type Sequence, SequenceSignal } from '@voltex-viewer/signal-utils';
 import * as t from 'io-ts';
+import { AsyncSineSignal } from './asyncSineSignal';
 
 const configSchema = t.type({
     realTimeLoading: t.boolean,
+    asyncLodDelayMs: t.number,
 });
 
 function seededRandom(seed: number) {
@@ -14,49 +16,60 @@ function seededRandom(seed: number) {
     };
 }
 
-function wrapRealTimeSignal(signal: Signal, isRealTimeEnabled: () => boolean): Signal {
+// Never decreases, so samples don't disappear when real-time loading is turned on
+function realTimeLength(length: () => number, samplesBy: (elapsed: number) => number, isRealTimeEnabled: () => boolean): () => number {
     const startTime = performance.now() / 1000;
     let maxExposedLength = 1;
-    
-    const getExposedLength = () => {
+    return () => {
         if (!isRealTimeEnabled()) {
-            maxExposedLength = signal.time.length;
-            return maxExposedLength;
+            maxExposedLength = length();
+        } else {
+            const elapsed = performance.now() / 1000 - startTime;
+            maxExposedLength = Math.max(maxExposedLength, Math.min(length(), samplesBy(elapsed)));
         }
-        const elapsed = performance.now() / 1000 - startTime;
-        let count = 0;
-        while (count < signal.time.length && signal.time.valueAt(count) <= elapsed) {
-            count++;
-        }
-        maxExposedLength = Math.max(Math.max(maxExposedLength, count));
         return maxExposedLength;
     };
+}
 
-    const wrapped: Signal = {
-        source: signal.source,
-        time: {
-            get length() { return getExposedLength(); },
-            valueAt: (index: number) => signal.time.valueAt(index),
-            min: signal.time.min,
-            get max() { return signal.time.valueAt(getExposedLength() - 1); },
-        },
-        values: {
-            get length() { return getExposedLength(); },
-            valueAt: (index: number) => signal.values.valueAt(index),
-            convertedValueAt: (index: number) => signal.values.convertedValueAt?.(index) ?? signal.values.valueAt(index),
-            min: signal.values.min,
-            max: signal.values.max,
-        },
-        renderHint: signal.renderHint,
+// Shows the first `length()` samples, as though the rest haven't arrived yet
+function prefix(sequence: Sequence, length: () => number): Sequence {
+    const wrapped: Sequence = {
+        get length() { return Math.min(sequence.length, length()); },
+        valueAt: (index: number) => sequence.valueAt(index),
+        get min() { return sequence.min; },
+        get max() { return sequence.max; },
     };
-    if (signal.values.null !== undefined) {
-        wrapped.values.null = signal.values.null;
-    }
+    if (sequence.null !== undefined) wrapped.null = sequence.null;
+    if (sequence.format) wrapped.format = value => sequence.format!(value);
     return wrapped;
 }
 
+function realTimeSignal(source: SignalSource, time: Sequence, values: Sequence, renderHint: RenderMode, isRealTimeEnabled: () => boolean): Signal {
+    const length = Math.min(time.length, values.length);
+    const exposed = realTimeLength(
+        () => length,
+        elapsed => {
+            // Samples at or before the elapsed time
+            let lo = 0;
+            let hi = length;
+            while (lo < hi) {
+                const mid = (lo + hi) >>> 1;
+                if (time.valueAt(mid) <= elapsed) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        },
+        isRealTimeEnabled,
+    );
+    return new SequenceSignal(source, prefix(time, exposed), prefix(values, exposed), renderHint);
+}
+
+function realTimeFunctionSignal(source: SignalSource, time: Sequence, generator: (time: number) => number, min: number, max: number, renderHint: RenderMode, isRealTimeEnabled: () => boolean): Signal {
+    return realTimeSignal(source, time, new FunctionValueSequence(generator, time, min, max), renderHint, isRealTimeEnabled);
+}
+
 export default async (context: PluginContext) => {
-    const config = context.loadConfig(configSchema, { realTimeLoading: false });
+    const config = context.loadConfig(configSchema, { realTimeLoading: false, asyncLodDelayMs: 30 });
     const isRealTimeEnabled = () => config.realTimeLoading;
 
     const freq = 1;
@@ -81,66 +94,71 @@ export default async (context: PluginContext) => {
 
     const squareWaveSource: SignalSource = {
         name: ['Demo Signals', 'Square Wave'],
-        signal: () => Promise.resolve(wrapRealTimeSignal(new FunctionSignal(
+        signal: () => Promise.resolve(realTimeFunctionSignal(
             squareWaveSource,
             time,
             (t: number) => Math.sin(2 * Math.PI * freq * t) >= 0 ? 1 : 0,
             0,
             1,
-            RenderMode.Discrete
-        ), isRealTimeEnabled)),
+            RenderMode.Discrete,
+            isRealTimeEnabled,
+        )),
     };
     
     const triangleWaveSource: SignalSource = {
         name: ['Demo Signals', 'Triangle Wave'],
-        signal: () => Promise.resolve(wrapRealTimeSignal(new FunctionSignal(
+        signal: () => Promise.resolve(realTimeFunctionSignal(
             triangleWaveSource,
             time,
             (t: number) => 1000 * (2 * Math.abs(2 * (t * freq - Math.floor(t * freq + 0.5))) - 1),
             -1000,
             1000,
             RenderMode.Lines,
-        ), isRealTimeEnabled)),
+            isRealTimeEnabled,
+        )),
     };
     
     const sawtoothWaveSource: SignalSource = {
         name: ['Demo Signals', 'Sawtooth Wave'],
-        signal: () => Promise.resolve(wrapRealTimeSignal(new FunctionSignal(
+        signal: () => Promise.resolve(realTimeFunctionSignal(
             sawtoothWaveSource,
             time,
             (t: number) => 2 * (t * freq - Math.floor(t * freq + 0.5)),
             -1,
             1,
             RenderMode.Lines,
-        ), isRealTimeEnabled)),
+            isRealTimeEnabled,
+        )),
     };
     
     const sineWaveSource: SignalSource = {
         name: ['Demo Signals', 'Sine Wave'],
-        signal: () => Promise.resolve(wrapRealTimeSignal(new FunctionSignal(
+        signal: () => Promise.resolve(realTimeFunctionSignal(
             sineWaveSource,
             time,
             (t: number) => Math.sin(2 * Math.PI * freq * t),
             -1,
             1,
             RenderMode.Lines,
-        ), isRealTimeEnabled)),
+            isRealTimeEnabled,
+        )),
     };
     
     const flatSignalSource: SignalSource = {
         name: ['Demo Signals', 'Flat Signal'],
-        signal: () => Promise.resolve(wrapRealTimeSignal(new FunctionSignal(
+        signal: () => Promise.resolve(realTimeFunctionSignal(
             flatSignalSource,
             time,
             (_t: number) => 0,
             0,
             0,
             RenderMode.Lines,
-        ), isRealTimeEnabled)),
+            isRealTimeEnabled,
+        )),
     };
     
-    const random = seededRandom(42);
-    const randomTime = new InMemorySequence();
+        const random = seededRandom(42);
+    const randomTime = new InMemoryFloat64Sequence();
     let currentTime = 0;
     for (let i = 0; i < 100; i++) {
         randomTime.push(currentTime);
@@ -151,11 +169,11 @@ export default async (context: PluginContext) => {
 
     const randomPoints: SignalSource = {
         name: ['Demo Signals', 'Random Points'],
-        signal: () => Promise.resolve(wrapRealTimeSignal(new InMemorySignal(
-            randomPoints,
-            Array.from({ length: randomTime.length }, (_, i) => [randomTime.valueAt(i), random() * 2 - 1] as [number, number]),
-            RenderMode.Lines,
-        ), isRealTimeEnabled)),
+                signal: () => {
+            const values = new InMemorySequence();
+            values.push(...Array.from({ length: randomTime.length }, () => random() * 2 - 1));
+            return Promise.resolve(realTimeSignal(randomPoints, randomTime, values, RenderMode.Lines, isRealTimeEnabled));
+        },
     };
     
     const trafficLightSource: SignalSource = {
@@ -201,7 +219,7 @@ export default async (context: PluginContext) => {
                 }
             }
             
-            return Promise.resolve(wrapRealTimeSignal(new SequenceSignal(trafficLightSource, timeSeq, valueSeq, RenderMode.Enum), isRealTimeEnabled));
+            return Promise.resolve(realTimeSignal(trafficLightSource, timeSeq, valueSeq, RenderMode.Enum, isRealTimeEnabled));
         },
     };
 
@@ -225,7 +243,7 @@ export default async (context: PluginContext) => {
                 }
             }
             
-            return Promise.resolve(wrapRealTimeSignal(new SequenceSignal(sineWithGapsSource, timeSeq, valueSeq, RenderMode.Lines), isRealTimeEnabled));
+            return Promise.resolve(realTimeSignal(sineWithGapsSource, timeSeq, valueSeq, RenderMode.Lines, isRealTimeEnabled));
         },
     };
 
@@ -241,11 +259,26 @@ export default async (context: PluginContext) => {
             timeSeq.push(0);
             valueSeq.push(0);
             
-            return Promise.resolve(wrapRealTimeSignal(new SequenceSignal(blipSource, timeSeq, valueSeq, RenderMode.Enum), isRealTimeEnabled));
+            return Promise.resolve(realTimeSignal(blipSource, timeSeq, valueSeq, RenderMode.Enum, isRealTimeEnabled));
         },
     };
 
-    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, sineWithGapsSource, flatSignalSource, randomPoints, trafficLightSource, blipSource];
+        // Far too many samples to keep in memory, so it only exists as tiles, like a remote source
+    const asyncSineSource: SignalSource = {
+        name: ['Demo Signals', 'Async LOD Sine'],
+        signal: () => {
+            const sampleRate = 1e9;
+            const length = 100 * sampleRate;
+            const loadedLength = realTimeLength(
+                () => length,
+                elapsed => Math.floor(elapsed * sampleRate) + 1,
+                isRealTimeEnabled,
+            );
+            return Promise.resolve(new AsyncSineSignal(asyncSineSource, sampleRate, sampleRate / 1000, length, () => config.asyncLodDelayMs, loadedLength));
+        },
+    };
+
+    const sources = [squareWaveSource, triangleWaveSource, sawtoothWaveSource, sineWaveSource, sineWithGapsSource, flatSignalSource, randomPoints, trafficLightSource, blipSource, asyncSineSource];
     
     context.signalSources.add(sources);
     context.createRows(...await Promise.all(sources.map(async source => ({ channels: [await source.signal()] }))));

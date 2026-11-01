@@ -7,6 +7,7 @@ import {
     type WebGLUtils,
     signalShift
 } from '@voltex-viewer/plugin-api';
+import type { NeighbourCache } from '@voltex-viewer/signal-utils';
 
 const alpha = 0.8;
 
@@ -23,6 +24,7 @@ export class CursorRenderObject {
         private context: PluginContext,
         private cursorNumber: number,
         private color: string,
+        private neighbours: NeighbourCache,
         initialTime: number | null,
         hoveredRow?: Row
     ) {
@@ -120,12 +122,11 @@ export class CursorRenderObject {
         // Only snap to signals in the hovered row
         for (const signal of hoveredRow.signals) {
             const shift = signalShift(signal, this.context.state);
-            const localTime = time - shift;
-            const startIndex = this.binarySearch(signal.time, localTime - snapDistanceTime);
-            const endIndex = this.binarySearch(signal.time, localTime + snapDistanceTime);
-
-            for (let i = startIndex; i <= endIndex && i < signal.time.length; i++) {
-                const pointTime = signal.time.valueAt(i) + shift;
+            // The nearest sample is one of the two either side
+            const around = this.neighbours.neighboursAt(signal, time - shift);
+            for (const point of [around?.floor, around?.next]) {
+                if (!point) continue;
+                const pointTime = point.time + shift;
                 const distance = Math.abs(pointTime - time);
 
                 if (distance < nearestDistance) {
@@ -136,22 +137,6 @@ export class CursorRenderObject {
         }
 
         return nearestTime !== null ? nearestTime : time;
-    }
-
-    private binarySearch(sequence: { length: number; valueAt(index: number): number }, target: number): number {
-        let left = 0;
-        let right = sequence.length - 1;
-        
-        while (left < right) {
-            const mid = Math.floor((left + right) / 2);
-            if (sequence.valueAt(mid) < target) {
-                left = mid + 1;
-            } else {
-                right = mid;
-            }
-        }
-        
-        return left;
     }
 
     private render(renderContext: RenderContext, bounds: RenderBounds): boolean {

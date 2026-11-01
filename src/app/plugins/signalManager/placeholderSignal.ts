@@ -1,17 +1,14 @@
-import { RenderMode, Sequence, Signal, SignalSource } from '@voltex-viewer/plugin-api';
-
-class EmptySequence implements Sequence {
-    get min(): number { return 0; }
-    get max(): number { return 0; }
-    get length(): number { return 0; }
-    valueAt(): number { return 0; }
-}
+import { RenderMode, Signal, SignalSource, type Tile } from '@voltex-viewer/plugin-api';
 
 class PlaceholderSignal implements Signal {
-    readonly time: Sequence = new EmptySequence();
-    readonly values: Sequence = new EmptySequence();
     readonly renderHint = RenderMode.Lines;
+    readonly timeRange = [Infinity, -Infinity] as const;
+    readonly valueRange = [Infinity, -Infinity] as const;
     constructor(public source: SignalSource) {}
+
+    tile(): Tile {
+        return { time: new Float64Array(0), value: new Float64Array(0), changes: new Uint32Array(0), samples: 0, before: null, after: null };
+    }
 }
 
 export class PlaceholderSignalSource implements SignalSource {

@@ -8,12 +8,6 @@ export const waveformConfigSchema = t.type({
     targetFps: t.number,
     hoverEnabled: t.boolean,
     formatTooltip: t.string,
-    downsamplingMode: t.union([
-        t.literal('aggressive'),
-        t.literal('normal'),
-        t.literal('lossless'),
-        t.literal('off')
-    ]),
     enumExpansionEnabled: t.boolean,
     minExpandedWidth: t.number,
 });

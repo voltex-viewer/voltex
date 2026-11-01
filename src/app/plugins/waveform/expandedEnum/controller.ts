@@ -1,7 +1,7 @@
 import type { RenderContext, RenderBounds, Signal, SignalMetadata } from '@voltex-viewer/plugin-api';
 import type { WaveformShaders } from '../waveformShaders';
 import type { WaveformConfig } from '../waveformConfig';
-import type { EnumRunIndex } from '../enumRunIndex';
+import type { EnumRuns } from '../lod/enumRuns';
 import {
     type ExpandedSegment,
     computeExpandedLayout,
@@ -27,7 +27,7 @@ export class ExpandedEnumController {
     constructor(
         gl: WebGL2RenderingContext,
         private signal: Signal,
-        private enumRunIndex: EnumRunIndex | null,
+        private runs: EnumRuns,
         private config: WaveformConfig,
         shaders: WaveformShaders,
         resources: ExpandedEnumResources
@@ -46,26 +46,26 @@ export class ExpandedEnumController {
     update(context: RenderContext, bounds: RenderBounds): ExpandedEnumUpdateResult {
         const { state } = context;
 
-        if (!this.enumRunIndex || this.enumRunIndex.runCount === 0) {
+        if (this.runs.count === 0) {
             this.currentSegments = [];
             return { segments: this.currentSegments, needsRedraw: false };
         }
 
-        const indexedLastRun = this.enumRunIndex.runCount - 1;
+        const lastRun = this.runs.count - 1;
 
         const startTime = state.offset / state.pxPerSecond;
         const endTime = (state.offset + bounds.width) / state.pxPerSecond;
-        const [visibleRunStart, visibleRunEnd] = this.enumRunIndex.getVisibleRunRange(this.signal, startTime, endTime);
+        const [visibleRunStart, visibleRunEnd] = this.runs.visibleRange(startTime, endTime);
 
         const maxTransitionsForExpansion = Math.floor(bounds.width / this.config.minExpandedWidth);
         const extraRuns = Math.ceil(maxTransitionsForExpansion / 2);
         const startRun = Math.max(0, visibleRunStart - extraRuns);
-        const endRun = Math.min(indexedLastRun, visibleRunEnd + extraRuns);
+        const endRun = Math.min(lastRun, visibleRunEnd + extraRuns);
 
         const viewportCenterX = bounds.width / 2;
         const segments = computeExpandedLayout(
             this.signal,
-            this.enumRunIndex,
+            this.runs,
             startRun,
             endRun,
             state.pxPerSecond,
@@ -151,7 +151,8 @@ export class ExpandedEnumController {
         return null;
     }
 
-    getIndexForPosition(
+    /** The time under a position, mapped back from the expanded layout. */
+    getTimeForPosition(
         screenX: number,
         screenY: number,
         boundsHeight: number,
@@ -159,7 +160,7 @@ export class ExpandedEnumController {
         offset: number
     ): number {
         const segments = this.currentSegments;
-        if (segments.length === 0) return 0;
+        if (segments.length === 0) return (screenX + offset) / pxPerSecond;
 
         const progress = this.animationState.progress;
         const topEndY = boundsHeight * topHeightRatio;
@@ -180,34 +181,20 @@ export class ExpandedEnumController {
 
         for (let i = 0; i < segments.length; i++) {
             const seg = segments[i];
-            const startTime = this.signal.time.valueAt(seg.startBufferIndex);
-            const endTime = this.signal.time.valueAt(seg.endBufferIndex);
-
-            const topStartX = startTime * pxPerSecond - offset;
-            const topEndX = endTime * pxPerSecond - offset;
+            const topStartX = seg.startTime * pxPerSecond - offset;
+            const topEndX = seg.endTime * pxPerSecond - offset;
 
             const leftX = topStartX + (seg.renderStartX - topStartX) * t;
             const rightX = topEndX + (seg.renderEndX - topEndX) * t;
 
             if (screenX >= leftX && screenX < rightX) {
                 const segmentWidth = rightX - leftX;
-                if (segmentWidth <= 0) return seg.startBufferIndex;
+                if (segmentWidth <= 0) return seg.startTime;
 
                 const ratio = (screenX - leftX) / segmentWidth;
                 const originalX = topStartX + ratio * (topEndX - topStartX);
                 const originalTime = (originalX + offset) / pxPerSecond;
-
-                let left = seg.startBufferIndex;
-                let right = seg.endBufferIndex - 1;
-                while (left < right) {
-                    const mid = Math.floor((left + right) / 2);
-                    if (this.signal.time.valueAt(mid + 1) <= originalTime) {
-                        left = mid + 1;
-                    } else {
-                        right = mid;
-                    }
-                }
-                return left;
+                return originalTime;
             }
 
             const centerX = (leftX + rightX) / 2;
@@ -218,7 +205,7 @@ export class ExpandedEnumController {
             }
         }
 
-        return segments[closestSegIndex].startBufferIndex;
+        return segments[closestSegIndex].startTime;
     }
 
     reset(): void {

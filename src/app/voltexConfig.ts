@@ -8,6 +8,7 @@ export const voltexConfigSchema = t.type({
     sidebarWidth: t.number,
     timeMode: t.union([t.literal('relative'), t.literal('realtime')]),
     timeZone: t.string,
+    displayDelayMs: t.number,
     keybindings: t.type({
         'select-all-rows': Keybinding,
         'clear-selection': Keybinding,

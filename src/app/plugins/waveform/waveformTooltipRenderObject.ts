@@ -8,7 +8,6 @@ export interface SignalTooltipData {
     time: number;
     value: number;
     display: string;
-    dataIndex: number;
     color: string;
     units: string;
 }
@@ -36,14 +35,15 @@ export class WaveformTooltipRenderObject {
 
     private formatValue(signalData: SignalTooltipData, yScale: number): string {
         try {
-            const { signal, value, time, color, dataIndex, display, units } = signalData;
+            const { signal, value, time, color, display, units } = signalData;
             const name = signal.source.name;
             const displayName = this.signalMetadata.displayName(signal).join(nameSeparator);
 
             const formatFunction = new Function(
                 'value', 'time', 'name', 'color', 'dataIndex', 'yScale', 'display', 'units', 'displayName',
                 `return ${this.config.formatTooltip}`);
-            return String(formatFunction(value, time, name, color, dataIndex, yScale, display, units, displayName));
+            // Samples have no index now they come from tiles, but formats written for it still run
+            return String(formatFunction(value, time, name, color, undefined, yScale, display, units, displayName));
         } catch (error) {
             console.warn('Error in custom tooltip formatter:', error);
             return "Error";

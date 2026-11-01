@@ -6,6 +6,7 @@ import { CommandManager } from './commandManager';
 import { AutoFitButton } from './autoFitButton';
 import { PluginConfigManager } from './pluginConfigManager';
 import { voltexPluginName, VoltexConfig } from './voltexConfig';
+import { DisplayDelay } from './displayDelay';
 
 type ResizeState = 
     | { type: 'none' }
@@ -64,6 +65,10 @@ export class RowContainerRenderObject {
     private lastSignalMaxTime: number = -Infinity;
     private isRealTimeTracking: boolean = false;
     private autoFitButton: AutoFitButton;
+
+    private readonly displayDelay = new DisplayDelay();
+    private displayDelayMs = 0;
+    private rowsChanged = true;
     
     // Constants
     private readonly minLabelWidth = 40;
@@ -100,20 +105,12 @@ export class RowContainerRenderObject {
                 this.setLabelWidth(voltexCfg.labelAreaWidth);
                 this.state.timeMode = voltexCfg.timeMode;
                 this.state.timeZone = voltexCfg.timeZone;
+                this.displayDelayMs = voltexCfg.displayDelayMs;
                 this.requestRender();
             }
         });
         
-        this.renderObject = parent.addChild({
-            render: (_context: RenderContext, bounds: RenderBounds): boolean => {
-                this.updateReferenceWallTime();
-                this.rows.forEach(row => {
-                    row.updateSignalBounds();
-                    if (row.verticalAutoFit) row.fitVertical();
-                });
-                return this.updateAutoFit(bounds);
-            }
-        });
+        this.renderObject = parent.addChild({});
         
         this.autoFitButton = new AutoFitButton(
             parent,
@@ -1102,6 +1099,8 @@ export class RowContainerRenderObject {
         this.updateRowPositions();
         this.requestRender();
         
+        this.rowsChanged = true;
+
         // Notify of the change
         for (const callback of this.changeCallbacks) {
             callback({ added: addedRows, removed: removedRows });
@@ -1350,6 +1349,16 @@ export class RowContainerRenderObject {
         gl.disableVertexAttribArray(positionLocation);
     }
 
+    updateView(bounds: RenderBounds): boolean {
+        this.updateReferenceWallTime();
+        const catchingUp = this.updateDisplayEndTime();
+        this.rows.forEach(row => {
+            row.updateSignalBounds();
+            if (row.verticalAutoFit) row.fitVertical();
+        });
+        return this.updateAutoFit(bounds) || catchingUp;
+    }
+
     // Origin of the internal time coordinate: the earliest signal start time, or 0 when none.
     private updateReferenceWallTime(): void {
         let min = Infinity;
@@ -1369,10 +1378,11 @@ export class RowContainerRenderObject {
 
         for (const row of this.rows) {
             for (const signal of row.signals) {
-                if (signal.time.length > 0) {
+                const [start, end] = signal.timeRange;
+                if (start <= end) {
                     const shift = signalShift(signal, this.state);
-                    minTime = Math.min(minTime, signal.time.min + shift);
-                    maxTime = Math.max(maxTime, signal.time.max + shift);
+                    minTime = Math.min(minTime, start + shift);
+                    maxTime = Math.max(maxTime, end + shift);
                 }
             }
         }
@@ -1383,13 +1393,30 @@ export class RowContainerRenderObject {
         return { min: minTime, max: maxTime };
     }
 
+    private getDisplayedTimeRange(): { min: number; max: number } | null {
+        const range = this.getSignalTimeRange();
+        return range && { min: range.min, max: Math.max(range.min, Math.min(range.max, this.state.displayEndTime)) };
+    }
+
+    // Drawn a little behind the newest data, so sources that deliver data late keep in step with the rest
+    private updateDisplayEndTime(): boolean {
+        const newest = this.getSignalTimeRange()?.max ?? Infinity;
+        if (this.rowsChanged) {
+            // Show new signals in full straight away
+            this.displayDelay.reset(newest);
+            this.rowsChanged = false;
+        }
+        this.state.displayEndTime = this.displayDelay.update(newest, performance.now(), this.displayDelayMs);
+        return this.displayDelay.catchingUp;
+    }
+
     private updateAutoFit(bounds: RenderBounds): boolean {
         if (!this.autoFitButton.enabled) {
             this.isRealTimeTracking = false;
             return false;
         }
-        
-        const range = this.getSignalTimeRange();
+
+        const range = this.getDisplayedTimeRange();
         if (!range) {
             this.isRealTimeTracking = false;
             return false;
@@ -1398,7 +1425,8 @@ export class RowContainerRenderObject {
         const viewportWidth = bounds.width - this.labelWidth;
         if (viewportWidth <= 0) return false;
         
-        const isRealTime = range.max > this.lastSignalMaxTime;
+        // Data still waiting to be shown also counts as live
+        const isRealTime = range.max > this.lastSignalMaxTime || this.displayDelay.catchingUp;
         this.lastSignalMaxTime = range.max;
         this.isRealTimeTracking = isRealTime;
         
@@ -1455,7 +1483,7 @@ export class RowContainerRenderObject {
         if (this.autoFitButton.enabled !== enabled) {
             this.autoFitButton.setAutoFit(enabled);
             if (enabled) {
-                const range = this.getSignalTimeRange();
+                const range = this.getDisplayedTimeRange();
                 this.lastSignalMaxTime = range?.max ?? -Infinity;
             } else {
                 this.isRealTimeTracking = false;

@@ -1,6 +1,6 @@
 {
   "name": "@voltex-viewer/mdf-reader",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "description": "MDF (Measurement Data Format) file reader for MDF3 and MDF4",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

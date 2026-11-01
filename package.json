@@ -42,6 +42,7 @@
     "@js-temporal/polyfill": "^0.5.1",
     "@voltex-viewer/mdf-reader": "workspace:*",
     "@voltex-viewer/plugin-api": "workspace:*",
+    "@voltex-viewer/signal-utils": "workspace:*",
     "fp-ts": "^2.16.11",
     "io-ts": "^2.2.22"
   }

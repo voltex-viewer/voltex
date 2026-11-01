@@ -507,6 +507,8 @@ export class Renderer {
         
         let renderRequested = false;
 
+        // Before plugins, so they prepare the frame for where the view is now
+        renderRequested = this.rowContainer.updateView(this.getRootBounds()) || renderRequested;
         renderRequested = this.pluginManager.onBeforeRender(this.renderProfiler) || renderRequested;
         
         const gl = this.canvas.getContext('webgl2');

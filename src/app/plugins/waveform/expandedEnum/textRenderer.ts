@@ -27,7 +27,7 @@ export class ExpandedEnumTextRenderer {
         const baselineMetrics = utils.measureText('Ag');
         const y = bottomY + (bottomHeight - baselineMetrics.renderHeight) / 2;
 
-        const textBoundaryX = this.computeTextBoundaries(segments, signal, state.pxPerSecond, state.offset, progress);
+        const textBoundaryX = this.computeTextBoundaries(segments, state.pxPerSecond, state.offset, progress);
 
         for (let segIndex = 0; segIndex < segments.length; segIndex++) {
             const seg = segments[segIndex];
@@ -37,12 +37,8 @@ export class ExpandedEnumTextRenderer {
             const segWidth = segEndX - segStartX;
             if (segWidth < padding * 2 + 10) continue;
 
-            const displayText = formatValueForDisplay(
-                "convertedValueAt" in signal.values
-                    ? signal.values.convertedValueAt(seg.startBufferIndex)
-                    : seg.value,
-                metadata.display
-            );
+            const value = seg.exact ?? seg.value;
+            const displayText = formatValueForDisplay(signal.format ? signal.format(value) : value, metadata.display);
 
             if (displayText === "null") continue;
 
@@ -57,7 +53,6 @@ export class ExpandedEnumTextRenderer {
 
     private computeTextBoundaries(
         segments: ExpandedSegment[],
-        signal: Signal,
         pxPerSecond: number,
         offset: number,
         progress: number
@@ -65,14 +60,12 @@ export class ExpandedEnumTextRenderer {
         const textBoundaryX: number[] = [];
 
         for (const seg of segments) {
-            const startTime = signal.time.valueAt(seg.startBufferIndex);
-            const topX = startTime * pxPerSecond - offset;
+            const topX = seg.startTime * pxPerSecond - offset;
             textBoundaryX.push(topX + (seg.renderStartX - topX) * progress);
         }
 
         const lastSeg = segments[segments.length - 1];
-        const lastEndTime = signal.time.valueAt(lastSeg.endBufferIndex);
-        const lastTopX = lastEndTime * pxPerSecond - offset;
+        const lastTopX = lastSeg.endTime * pxPerSecond - offset;
         textBoundaryX.push(lastTopX + (lastSeg.renderEndX - lastTopX) * progress);
 
         return textBoundaryX;

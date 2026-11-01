@@ -1,6 +1,22 @@
-import { RenderMode, Sequence, Signal, SignalSource } from './plugin';
-
-export type ChannelPoint = [t: number, v: number];
+/** Samples held in memory. */
+export interface Sequence {
+    /** Minimum value in the sequence */
+    min: number;
+    /** Maximum value in the sequence */
+    max: number;
+    /** Number of values in the sequence */
+    length: number;
+    /** Optional value representing null/missing data */
+    null?: number;
+    /** Unit of measurement for the sequence values */
+    unit?: string;
+    /** Returns the value at the specified index used for plotting */
+    valueAt(index: number): number;
+    /** Returns the exact value at the specified index, for sequences of 64-bit integers */
+    exactAt?(index: number): bigint;
+    /** Returns the form of a value to display, given the exact value where there is one */
+    format?(value: number | bigint): number | bigint | string;
+}
 
 function convertToNumber(value: number, conversion?: (value: number) => number | string): number {
     if (conversion !== undefined) {
@@ -69,18 +85,11 @@ export class InMemorySequence implements Sequence {
         return convertToNumber(this._data[index], this.conversion);
     }
 
-    convertedValueAt(index: number): number | string {
-        const value = this._data[index];
-        if (this.conversion !== undefined) {
-            const result = this.conversion(value);
-            if (typeof result !== 'undefined') {
-                return result;
-            } else {
-                return value;
-            }
-        } else {
-            return value;
-        }
+    // Text conversions leave the plotted value raw, so only those need converting again
+    format(value: number | bigint): number | bigint | string {
+        if (this.conversion === undefined || typeof value === 'bigint') return value;
+        const result = this.conversion(value);
+        return typeof result === 'string' ? result : value;
     }
 }
 
@@ -184,18 +193,13 @@ export class InMemoryBigInt64Sequence implements Sequence {
         return convertToNumber(Number(this._data[index]), this._conversion);
     }
 
-    convertedValueAt(index: number): number | string {
-        const value = this._data[index];
-        if (this._bigConversion !== undefined) {
-            const result = this._bigConversion(value);
-            if (typeof result !== 'undefined') {
-                return result;
-            } else {
-                return Number(value);
-            }
-        } else {
-            return Number(value);
-        }
+    exactAt(index: number): bigint {
+        return this._data[index];
+    }
+
+    format(value: number | bigint): number | bigint | string {
+        if (typeof value !== 'bigint' || this._bigConversion === undefined) return value;
+        return this._bigConversion(value);
     }
 }
 
@@ -251,42 +255,13 @@ export class InMemoryBigUint64Sequence implements Sequence {
         return convertToNumber(Number(this._data[index]), this._conversion);
     }
 
-    convertedValueAt(index: number): number | string {
-        const value = this._data[index];
-        if (this._bigConversion !== undefined) {
-            const result = this._bigConversion(value);
-            if (typeof result !== 'undefined') {
-                return result;
-            } else {
-                return Number(value);
-            }
-        } else {
-            return Number(value);
-        }
+    exactAt(index: number): bigint {
+        return this._data[index];
     }
-}
 
-export class SequenceSignal implements Signal {
-    constructor(
-        public source: SignalSource,
-        public time: Sequence,
-        public values: Sequence,
-        public renderHint: RenderMode) {
-    }
-}
-
-export class InMemorySignal implements Signal {
-    source: SignalSource;
-    public readonly time: InMemorySequence;
-    public readonly values: InMemorySequence;
-    
-    constructor(source: SignalSource, data: ChannelPoint[], public renderHint: RenderMode) {
-        this.source = source;
-        this.time = new InMemorySequence();
-        this.values = new InMemorySequence();
-        
-        this.time.push(...data.map(([t]) => t));
-        this.values.push(...data.map(([, v]) => v));
+    format(value: number | bigint): number | bigint | string {
+        if (typeof value !== 'bigint' || this._bigConversion === undefined) return value;
+        return this._bigConversion(value);
     }
 }
 
@@ -339,19 +314,5 @@ export class FunctionValueSequence implements Sequence {
 
     valueAt(index: number): number {
         return this.generator(this.time.valueAt(index));
-    }
-}
-
-export class FunctionSignal implements Signal {
-    source: SignalSource;
-    private _generator: (time: number) => number;
-    public readonly time: Sequence;
-    public readonly values: FunctionValueSequence;
-    
-    constructor(source: SignalSource, time: Sequence, generator: (time: number) => number, minValue: number, maxValue: number, public renderHint: RenderMode, nullValue?: number) {
-        this.source = source;
-        this._generator = generator;
-        this.time = time;
-        this.values = new FunctionValueSequence(this._generator, this.time, minValue, maxValue, nullValue);
     }
 }

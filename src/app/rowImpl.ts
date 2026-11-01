@@ -79,8 +79,9 @@ export class RowImpl implements Row {
         let minValue = Infinity;
         let maxValue = -Infinity;
         for (const signal of this.signals) {
-            minValue = Math.min(minValue, signal.values.min);
-            maxValue = Math.max(maxValue, signal.values.max);
+            const [min, max] = signal.valueRange;
+            minValue = Math.min(minValue, min);
+            maxValue = Math.max(maxValue, max);
         }
         if (minValue !== Infinity && maxValue !== -Infinity) {
             this.minY = minValue;

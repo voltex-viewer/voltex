@@ -7,6 +7,7 @@ import enumFragmentShader from './shaders/enumFragment.glsl?raw';
 import expandedEnumFragmentShader from './shaders/expandedEnumFragment.glsl?raw';
 import dotVertexShader from './shaders/dotVertex.glsl?raw';
 import dotFragmentShader from './shaders/dotFragment.glsl?raw';
+import blockVertexShader from './shaders/blockVertex.glsl?raw';
 import { WebGLUtils } from '@voltex-viewer/plugin-api';
 import { TypedProgram } from './typedProgram';
 
@@ -53,6 +54,17 @@ export type ExpandedEnumUniforms = {
     u_borderWidth: number;
 };
 
+export type BlockUniforms = {
+    u_bounds: Vec2;
+    u_width: number;
+    u_timeOffsetHigh: number;
+    u_timeOffsetLow: number;
+    u_pxPerSecond: number;
+    u_yScale: number;
+    u_yOffset: number;
+    u_color: Vec4;
+};
+
 export type DotUniforms = {
     u_bounds: Vec2;
     u_width: number;
@@ -89,6 +101,16 @@ export type BevelJoinAttributes = {
     pointCValue: { buffer: WebGLBuffer; size: 1; stride: 4; offset: 8; divisor: 1; };
 };
 
+export type BlockAttributes = {
+    position: { buffer: WebGLBuffer; size: 2; };
+    startTimeHigh: { buffer: WebGLBuffer; size: 1; stride: 24; offset: 0; divisor: 1; };
+    startTimeLow: { buffer: WebGLBuffer; size: 1; stride: 24; offset: 4; divisor: 1; };
+    endTimeHigh: { buffer: WebGLBuffer; size: 1; stride: 24; offset: 8; divisor: 1; };
+    endTimeLow: { buffer: WebGLBuffer; size: 1; stride: 24; offset: 12; divisor: 1; };
+    minValue: { buffer: WebGLBuffer; size: 1; stride: 24; offset: 16; divisor: 1; };
+    maxValue: { buffer: WebGLBuffer; size: 1; stride: 24; offset: 20; divisor: 1; };
+};
+
 export type DotAttributes = {
     timePosHigh: { buffer: WebGLBuffer; size: 1; };
     timePosLow: { buffer: WebGLBuffer; size: 1; };
@@ -112,6 +134,7 @@ export class WaveformShaders {
     enumLine: TypedProgram<EnumLineUniforms, InstancedLineAttributes>;
     expandedEnum: TypedProgram<ExpandedEnumUniforms, ExpandedEnumAttributes>;
     dot: TypedProgram<DotUniforms, DotAttributes>;
+    block: TypedProgram<BlockUniforms, BlockAttributes>;
 
     constructor(gl: WebGL2RenderingContext, glUtils: WebGLUtils) {
         const instancedLineVS = glUtils.createShader('vertex-shader', instancedLineVertexShader);
@@ -123,17 +146,20 @@ export class WaveformShaders {
         const expandedEnumFS = glUtils.createShader('fragment-shader', expandedEnumFragmentShader);
         const dotVS = glUtils.createShader('vertex-shader', dotVertexShader);
         const dotFS = glUtils.createShader('fragment-shader', dotFragmentShader);
+        const blockVS = glUtils.createShader('vertex-shader', blockVertexShader);
 
         const instancedLineProgram = glUtils.createProgram(instancedLineVS, lineFS);
         const bevelJoinProgram = glUtils.createProgram(bevelJoinVS, lineFS);
         const enumLineProgram = glUtils.createProgram(enumVS, enumFS);
         const expandedEnumProgram = glUtils.createProgram(expandedEnumVS, expandedEnumFS);
         const dotProgram = glUtils.createProgram(dotVS, dotFS);
+        const blockProgram = glUtils.createProgram(blockVS, lineFS);
 
         this.instancedLine = new TypedProgram<InstancedLineUniforms, InstancedLineAttributes>(gl, instancedLineProgram);
         this.bevelJoin = new TypedProgram<InstancedLineUniforms, BevelJoinAttributes>(gl, bevelJoinProgram);
         this.enumLine = new TypedProgram<EnumLineUniforms, InstancedLineAttributes>(gl, enumLineProgram);
         this.expandedEnum = new TypedProgram<ExpandedEnumUniforms, ExpandedEnumAttributes>(gl, expandedEnumProgram);
         this.dot = new TypedProgram<DotUniforms, DotAttributes>(gl, dotProgram);
+        this.block = new TypedProgram<BlockUniforms, BlockAttributes>(gl, blockProgram);
     }
 }

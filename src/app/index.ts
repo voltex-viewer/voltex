@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         timeMode: 'relative',
         timeZone: 'local',
         referenceWallTime: 0,
+        displayEndTime: Infinity,
     }
 
     function requestRender() {

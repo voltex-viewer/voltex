@@ -175,11 +175,11 @@ export class HorizontalGridLabelRenderObject {
 function getUnits(signals: Signal[]): string | null {
     let unit = null;
     for (const signal of signals) {
-        if (signal.values.unit) {
-            if (unit && unit !== signal.values.unit) {
+        if (signal.unit) {
+            if (unit && unit !== signal.unit) {
                 return null; // Mixed units - do not display
             }
-            unit = signal.values.unit;
+            unit = signal.unit;
         }
     }
     return unit;

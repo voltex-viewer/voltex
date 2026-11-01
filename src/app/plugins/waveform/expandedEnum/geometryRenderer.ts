@@ -71,8 +71,8 @@ export class ExpandedEnumGeometryRenderer {
             u_timeOffsetLow: timeOffsetLow,
             u_pxPerSecond: state.pxPerSecond,
             u_color: [r, g, b, a],
-            u_nullValue: "null" in signal.values ? signal.values.null : signal.values.max + 1.0,
-            u_hasNullValue: "null" in signal.values,
+            u_nullValue: signal.null ?? 0,
+            u_hasNullValue: signal.null !== undefined,
             u_borderWidth: borderWidth,
         }, this.vao);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 18, segments.length);
@@ -125,8 +125,8 @@ export class ExpandedEnumGeometryRenderer {
             u_timeOffsetLow: timeOffsetLow,
             u_pxPerSecond: state.pxPerSecond,
             u_color: [r, g, b, a],
-            u_nullValue: "null" in signal.values ? signal.values.null : signal.values.max + 1.0,
-            u_hasNullValue: "null" in signal.values,
+            u_nullValue: signal.null ?? 0,
+            u_hasNullValue: signal.null !== undefined,
             u_borderWidth: borderWidth,
         }, this.vao);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 18, 1);
@@ -148,8 +148,7 @@ export class ExpandedEnumGeometryRenderer {
         for (let i = 0; i < segments.length; i++) {
             const seg = segments[i];
 
-            const startTime = signal.time.valueAt(seg.startBufferIndex);
-            const endTime = signal.time.valueAt(seg.endBufferIndex);
+            const { startTime, endTime } = seg;
             const startHigh = Math.fround(startTime);
             const endHigh = Math.fround(endTime);
 

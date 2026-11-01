@@ -1,7 +1,7 @@
 import { hexToRgba, RenderMode, Row, type RenderContext, type RenderBounds, type RenderObject, type Signal, type WaveformState, SignalMetadata, formatValueForDisplay, signalShift } from "@voltex-viewer/plugin-api";
 import type { BufferData } from './waveformRendererPlugin';
 import { WaveformConfig } from './waveformConfig';
-import { WaveformShaders, InstancedLineAttributes, BevelJoinAttributes, DotAttributes } from './waveformShaders';
+import { WaveformShaders, InstancedLineAttributes, BevelJoinAttributes, DotAttributes, BlockAttributes } from './waveformShaders';
 import { TypedVAO } from './typedProgram';
 import {
     type ExpandedSegment,
@@ -9,16 +9,17 @@ import {
     ExpandedEnumController,
     borderWidth,
 } from './expandedEnum';
-import type { EnumRunIndex } from './enumRunIndex';
 
 type LineVAO = TypedVAO<InstancedLineAttributes>;
 type BevelVAO = TypedVAO<BevelJoinAttributes>;
 type DotVAO = TypedVAO<DotAttributes>;
+type BlockVAO = TypedVAO<BlockAttributes>;
 
 export class WaveformRenderObject {
     private lineVAO: LineVAO | null = null;
     private bevelVAO: BevelVAO | null = null;
     private dotVAO: DotVAO | null = null;
+    private blockVAO: BlockVAO | null = null;
     private cachedRenderMode: RenderMode | null = null;
 
     private expandedController: ExpandedEnumController | null = null;
@@ -36,16 +37,15 @@ export class WaveformRenderObject {
         private row: Row,
         private expandedResources: ExpandedEnumResources | null,
         zIndex: number = 0,
-        private enumRunIndex: EnumRunIndex | null = null,
     ) {
         parent.addChild({
             zIndex: zIndex,
-            render: this.render.bind(this),
+            render: (context, bounds) => clipToDisplayEnd(context, () => this.render(context, bounds)),
         });
         // Separate child for expanded text to render above highlights
         parent.addChild({
             zIndex: 100,
-            render: this.renderExpandedTextPass.bind(this),
+            render: (context, bounds) => clipToDisplayEnd(context, () => this.renderExpandedTextPass(context, bounds)),
         });
     }
 
@@ -70,49 +70,13 @@ export class WaveformRenderObject {
         return this.expandedController.getSegmentForTime(time, state.pxPerSecond, this.effectiveOffset(state));
     }
 
-    getIndexForPosition(screenX: number, screenY: number, boundsHeight: number, state: WaveformState): number {
-        const renderMode = this.metadata.renderMode;
-        const pxPerSecond = state.pxPerSecond;
+    /** The time under a position, in the signal's own time. */
+    getTimeForPosition(screenX: number, screenY: number, boundsHeight: number, state: WaveformState): number {
         const offset = this.effectiveOffset(state);
-        const signalLength = Math.min(this.signal.time.length, this.signal.values.length);
-        if (signalLength === 0) return 0;
-
-        if (renderMode === RenderMode.ExpandedEnum && this.expandedController && this.expandedController.segments.length > 0) {
-            return this.expandedController.getIndexForPosition(screenX, screenY, boundsHeight, pxPerSecond, offset);
+        if (this.metadata.renderMode === RenderMode.ExpandedEnum && this.expandedController && this.expandedController.segments.length > 0) {
+            return this.expandedController.getTimeForPosition(screenX, screenY, boundsHeight, state.pxPerSecond, offset);
         }
-
-        // For all other modes, convert screenX to time and find index
-        const time = (offset + screenX) / pxPerSecond;
-
-        // Binary search to find the closest data point
-        let left = 0;
-        let right = signalLength - 1;
-        while (left < right) {
-            const mid = Math.floor((left + right) / 2);
-            if (this.signal.time.valueAt(mid) < time) {
-                left = mid + 1;
-            } else {
-                right = mid;
-            }
-        }
-
-        if (renderMode === RenderMode.Enum) {
-            // For enum signals, find the last data point <= mouse time
-            if (left < signalLength && this.signal.time.valueAt(left) > time && left > 0) {
-                return left - 1;
-            }
-            return left < signalLength ? left : signalLength - 1;
-        }
-
-        // For non-enum signals, use closest point
-        if (left > 0) {
-            const distToLeft = Math.abs(this.signal.time.valueAt(left) - time);
-            const distToPrev = Math.abs(this.signal.time.valueAt(left - 1) - time);
-            if (distToPrev < distToLeft) {
-                return left - 1;
-            }
-        }
-        return left < signalLength ? left : signalLength - 1;
+        return (offset + screenX) / state.pxPerSecond;
     }
 
     render(context: RenderContext, bounds: RenderBounds): boolean {
@@ -180,8 +144,8 @@ export class WaveformRenderObject {
                 u_yOffset: this.row.yOffset,
                 u_color: [r, g, b, a],
                 u_discrete: renderMode === RenderMode.Discrete,
-                u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
-                u_hasNullValue: "null" in this.signal.values,
+                u_nullValue: this.signal.null ?? 0,
+                u_hasNullValue: this.signal.null !== undefined,
             }, this.lineVAO);
             const instanceCount = this.bufferData.bufferLength - 1;
             if (instanceCount > 0) {
@@ -215,14 +179,42 @@ export class WaveformRenderObject {
                     u_yOffset: this.row.yOffset,
                     u_color: [r, g, b, a],
                     u_discrete: false,
-                    u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
-                    u_hasNullValue: "null" in this.signal.values,
+                    u_nullValue: this.signal.null ?? 0,
+                    u_hasNullValue: this.signal.null !== undefined,
                 }, this.bevelVAO);
                 const bevelInstanceCount = this.bufferData.bufferLength - 2;
                 if (bevelInstanceCount > 0) {
                     gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, bevelInstanceCount);
                 }
                 bevelProg.unbind();
+            }
+
+            const blocks = this.bufferData.blocks;
+            if (blocks && blocks.count > 0) {
+                const blockProg = this.waveformPrograms.block;
+                if (!this.blockVAO) {
+                    this.blockVAO = blockProg.createVAO({
+                        position: { buffer: this.sharedInstanceGeometryBuffer, size: 2 },
+                        startTimeHigh: { buffer: blocks.buffer, size: 1, stride: 24, offset: 0, divisor: 1 },
+                        startTimeLow: { buffer: blocks.buffer, size: 1, stride: 24, offset: 4, divisor: 1 },
+                        endTimeHigh: { buffer: blocks.buffer, size: 1, stride: 24, offset: 8, divisor: 1 },
+                        endTimeLow: { buffer: blocks.buffer, size: 1, stride: 24, offset: 12, divisor: 1 },
+                        minValue: { buffer: blocks.buffer, size: 1, stride: 24, offset: 16, divisor: 1 },
+                        maxValue: { buffer: blocks.buffer, size: 1, stride: 24, offset: 20, divisor: 1 },
+                    });
+                }
+                blockProg.bind({
+                    u_bounds: [bounds.width, bounds.height],
+                    u_width: this.config.lineWidth,
+                    u_timeOffsetHigh: timeOffsetHigh,
+                    u_timeOffsetLow: timeOffsetLow,
+                    u_pxPerSecond: state.pxPerSecond,
+                    u_yScale: this.row.yScale,
+                    u_yOffset: this.row.yOffset,
+                    u_color: [r, g, b, a],
+                }, this.blockVAO);
+                gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, blocks.count);
+                blockProg.unbind();
             }
         } else if (renderMode === RenderMode.Dots) {
             const prog = this.waveformPrograms.dot;
@@ -242,8 +234,8 @@ export class WaveformRenderObject {
                 u_yScale: this.row.yScale,
                 u_yOffset: this.row.yOffset,
                 u_color: [r, g, b, a],
-                u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
-                u_hasNullValue: "null" in this.signal.values,
+                u_nullValue: this.signal.null ?? 0,
+                u_hasNullValue: this.signal.null !== undefined,
             }, this.dotVAO);
             gl.drawArrays(gl.POINTS, 0, this.bufferData.bufferLength);
             prog.unbind();
@@ -266,8 +258,8 @@ export class WaveformRenderObject {
                 u_timeOffsetLow: timeOffsetLow,
                 u_pxPerSecond: state.pxPerSecond,
                 u_color: [r, g, b, a],
-                u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
-                u_hasNullValue: "null" in this.signal.values,
+                u_nullValue: this.signal.null ?? 0,
+                u_hasNullValue: this.signal.null !== undefined,
                 u_borderWidth: borderWidth,
             }, this.lineVAO);
             const instanceCount = this.bufferData.bufferLength - 1;
@@ -298,21 +290,17 @@ export class WaveformRenderObject {
         const baselineMetrics = utils.measureText('Ag');
         const y = (bounds.height - baselineMetrics.renderHeight) / 2;
 
-        if (!this.enumRunIndex || this.enumRunIndex.runCount === 0) return;
+        const enumRuns = this.bufferData.runs;
+        if (!enumRuns || enumRuns.count === 0) return;
 
-        const [visStart, visEnd] = this.enumRunIndex.getVisibleRunRange(this.signal, startTime, endTime);
+        const [visStart, visEnd] = enumRuns.visibleRange(startTime, endTime);
 
         // Collect renderable runs
         type RunEntry = { runIdx: number; pxWidth: number; startX: number; endX: number };
         const runs: RunEntry[] = [];
         for (let r = visStart; r <= visEnd; r++) {
-            const rStartTime = this.signal.time.valueAt(this.enumRunIndex.startIndex(r));
-            const rEndIdx = this.enumRunIndex.endIndex(r);
-            const rEndTime = r + 1 < this.enumRunIndex.runCount
-                ? this.signal.time.valueAt(this.enumRunIndex.startIndex(r + 1))
-                : this.signal.time.valueAt(rEndIdx);
-            const startX = rStartTime * state.pxPerSecond - enumOffset;
-            const endX = rEndTime * state.pxPerSecond - enumOffset;
+            const startX = enumRuns.start(r) * state.pxPerSecond - enumOffset;
+            const endX = enumRuns.end(r) * state.pxPerSecond - enumOffset;
             const pxWidth = endX - startX;
             if (pxWidth >= minRenderableWidth) {
                 runs.push({ runIdx: r, pxWidth, startX, endX });
@@ -322,12 +310,8 @@ export class WaveformRenderObject {
         runs.sort((a, b) => b.pxWidth - a.pxWidth);
 
         for (const run of runs) {
-            const startIdx = this.enumRunIndex.startIndex(run.runIdx);
-            const value = this.enumRunIndex.value(run.runIdx);
-            const enumText = formatValueForDisplay(
-                "convertedValueAt" in this.signal.values ? this.signal.values.convertedValueAt!(startIdx) : value,
-                this.metadata.display
-            );
+            const value = enumRuns.exact(run.runIdx) ?? enumRuns.value(run.runIdx);
+            const enumText = formatValueForDisplay(this.signal.format ? this.signal.format(value) : value, this.metadata.display);
             if (enumText === "null") continue;
 
             const textX = Math.max(padding, run.startX + padding);
@@ -367,8 +351,8 @@ export class WaveformRenderObject {
             u_timeOffsetLow: timeOffsetLow,
             u_pxPerSecond: state.pxPerSecond,
             u_color: [r, g, b, a],
-            u_nullValue: "null" in this.signal.values ? this.signal.values.null : this.signal.values.max + 1.0,
-            u_hasNullValue: "null" in this.signal.values,
+            u_nullValue: this.signal.null ?? 0,
+            u_hasNullValue: this.signal.null !== undefined,
             u_borderWidth: borderWidth,
         }, this.lineVAO);
         const instanceCount = this.bufferData.bufferLength - 1;
@@ -383,11 +367,11 @@ export class WaveformRenderObject {
         this.renderEnumBackground(context, bounds);
 
         // Create controller lazily when needed
-        if (!this.expandedController && this.expandedResources) {
+        if (!this.expandedController && this.expandedResources && this.bufferData.runs) {
             this.expandedController = new ExpandedEnumController(
                 this.gl,
                 this.signal,
-                this.enumRunIndex,
+                this.bufferData.runs,
                 this.config,
                 this.waveformPrograms,
                 this.expandedResources
@@ -410,6 +394,18 @@ export class WaveformRenderObject {
         }
         return false;
     }
+}
+
+function clipToDisplayEnd(context: RenderContext, draw: () => boolean): boolean {
+    const { state, viewport, dpr } = context;
+    const { gl } = context.render;
+    const endX = (state.displayEndTime * state.pxPerSecond - state.offset) * dpr;
+    if (endX >= viewport[2]) return draw();
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(viewport[0], viewport[1], Math.max(0, Math.ceil(endX)), viewport[3]);
+    const result = draw();
+    gl.disable(gl.SCISSOR_TEST);
+    return result;
 }
 
 export function drawTruncatedText(

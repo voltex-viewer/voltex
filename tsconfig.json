@@ -20,7 +20,8 @@
     "preserveConstEnums": true,
     "paths": {
       "@voltex-viewer/plugin-api": ["./packages/plugin-api/src/index.ts"],
-      "@voltex-viewer/mdf-reader": ["./packages/mdf-reader/src/index.ts"]
+      "@voltex-viewer/mdf-reader": ["./packages/mdf-reader/src/index.ts"],
+      "@voltex-viewer/signal-utils": ["./packages/signal-utils/src/index.ts"]
     }
   },
   "include": [

@@ -103,7 +103,7 @@ export default (context: PluginContext): void => {
 
         context.createRows(...otherSignals.map(signal => ({ channels: [signal] })));
         if (lineSignals.length > 0) {
-            const byUnit = Map.groupBy(lineSignals, signal => signal.values.unit);
+            const byUnit = Map.groupBy(lineSignals, signal => signal.unit);
             context.createRows(...byUnit.values().map(signals => ({ channels: signals })));
         }
     }

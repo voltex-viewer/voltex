@@ -1,4 +1,5 @@
-import { Sequence, MeasureInfo, PluginContext, RenderMode, SignalSource } from '@voltex-viewer/plugin-api';
+import { MeasureInfo, PluginContext, RenderMode, SignalSource } from '@voltex-viewer/plugin-api';
+import { type Sequence, SequenceSignal } from '@voltex-viewer/signal-utils';
 
 export default (context: PluginContext): void => {
     const profiler = context.renderProfiler;
@@ -12,14 +13,14 @@ export default (context: PluginContext): void => {
     const flameGraphSources: Array<{ name: string[]; source: SignalSource }> = [];
     
     // Create signal source for frame time data
-    const signalSource = {
+    const signalSource: SignalSource = {
         name: ['Profiler', 'Frame Time (ms)'],
-        signal: () => Promise.resolve({
-            source: signalSource,
-            time: new ProfilerTimeSequence(frameData),
-            values: new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
-            renderHint: RenderMode.Lines,
-        }),
+        signal: () => Promise.resolve(new SequenceSignal(
+            signalSource,
+            new ProfilerTimeSequence(frameData),
+            new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
+            RenderMode.Lines,
+        )),
     };
     
     // Function to create or update flame graph sources based on current depth
@@ -29,7 +30,7 @@ export default (context: PluginContext): void => {
 
         for (let depth = 0; depth < maxDepth; depth++) {
             if (!flameGraphSources[depth]) {
-                const depthSource = {
+                const depthSource: SignalSource = {
                     name: ['Profiler', `Depth ${depth}`],
                     signal: () => {
                         // Use the start time of the first measure entry (root of the stack)
@@ -67,12 +68,12 @@ export default (context: PluginContext): void => {
                             }
                         }
                         
-                        return Promise.resolve({
-                            source: depthSource,
-                            time: new FlameGraphTimeSequence(timelineData),
-                            values: new FlameGraphValueSequence(timelineData, nextId, idToNameMap),
-                            renderHint: RenderMode.Enum,
-                        });
+                        return Promise.resolve(new SequenceSignal(
+                            depthSource,
+                            new FlameGraphTimeSequence(timelineData),
+                            new FlameGraphValueSequence(timelineData, nextId, idToNameMap),
+                            RenderMode.Enum,
+                        ));
                     }
                 };
                 
@@ -362,11 +363,7 @@ class FlameGraphValueSequence implements Sequence {
         return this.timelineData[index].active;
     }
 
-    convertedValueAt(index: number): number | string {
-        return this.conversion(this.valueAt(index));
-    }
-    
-    conversion(value: number): string | number {
-        return this.valueTable.get(value) || value;
+    format(value: number | bigint): number | bigint | string {
+        return (typeof value === 'number' && this.valueTable.get(value)) || value;
     }
 }

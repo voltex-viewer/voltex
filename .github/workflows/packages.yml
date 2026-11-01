@@ -6,6 +6,7 @@ on:
     paths:
       - 'packages/plugin-api/**'
       - 'packages/mdf-reader/**'
+      - 'packages/signal-utils/**'
       - '.github/workflows/packages.yml'
       - 'package-lock.json'
   pull_request:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'packages/plugin-api/**'
       - 'packages/mdf-reader/**'
+      - 'packages/signal-utils/**'
       - '.github/workflows/packages.yml'
   release:
     types: [ published ]
@@ -42,12 +44,20 @@ jobs:
       working-directory: packages/mdf-reader
       run: npm run build
 
+    - name: Build signal-utils
+      working-directory: packages/signal-utils
+      run: npm run build
+
     - name: Validate plugin-api package
       working-directory: packages/plugin-api
       run: npm pack --dry-run
 
     - name: Validate mdf-reader package
       working-directory: packages/mdf-reader
+      run: npm pack --dry-run
+
+    - name: Validate signal-utils package
+      working-directory: packages/signal-utils
       run: npm pack --dry-run
 
     - name: Upload plugin-api artifacts
@@ -64,6 +74,13 @@ jobs:
         path: packages/mdf-reader/dist/
         retention-days: 7
 
+    - name: Upload signal-utils artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: signal-utils-dist
+        path: packages/signal-utils/dist/
+        retention-days: 7
+
     - name: Dry-run publish plugin-api
       if: github.event_name == 'pull_request'
       working-directory: packages/plugin-api
@@ -72,6 +89,11 @@ jobs:
     - name: Dry-run publish mdf-reader
       if: github.event_name == 'pull_request'
       working-directory: packages/mdf-reader
+      run: npm publish --dry-run
+
+    - name: Dry-run publish signal-utils
+      if: github.event_name == 'pull_request'
+      working-directory: packages/signal-utils
       run: npm publish --dry-run
 
   publish:

@@ -1,4 +1,5 @@
 import { type PluginContext, Keybinding, type MouseEvent, Row, type KeybindingBrand } from '@voltex-viewer/plugin-api';
+import { NeighbourCache } from '@voltex-viewer/signal-utils';
 import * as t from 'io-ts';
 import { CursorRenderObject } from './cursorRenderObject';
 import { CursorSidebar } from './cursorSidebar';
@@ -119,7 +120,9 @@ export default (context: PluginContext): void => {
         context.requestRender();
     };
 
-    const cursorSidebar = new CursorSidebar(context, cursors, removeCursor, config);
+    // Shared by the cursors and the sidebar, which look up samples at the same times
+    const neighbours = new NeighbourCache();
+    const cursorSidebar = new CursorSidebar(context, cursors, removeCursor, config, neighbours);
     
     context.addSidebarEntry({
         title: 'Cursors',
@@ -272,6 +275,7 @@ export default (context: PluginContext): void => {
                 context,
                 cursorNumber,
                 color,
+                neighbours,
                 initialTime,
                 hoveredRow
             );

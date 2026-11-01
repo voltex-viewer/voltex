@@ -255,6 +255,8 @@ export interface WaveformState {
     timeZone: string,
     /** Wall-clock origin (unix seconds, UTC) of the internal time coordinate */
     referenceWallTime: number,
+    /** Signals are drawn up to this time, held slightly behind the newest data so late sources keep in step */
+    displayEndTime: number,
 }
 
 export interface TextValue {
@@ -262,31 +264,59 @@ export interface TextValue {
     value?: number;
 }
 
-export interface Sequence {
-    /** Minimum value in the sequence */
-    min: number;
-    /** Maximum value in the sequence */
-    max: number;
-    /** Number of values in the sequence */
-    length: number;
-    /** Optional value representing null/missing data */
-    null?: number;
-    /** Unit of measurement for the sequence values */
-    unit?: string;
-    /** Returns the value at the specified index used for plotting */
-    valueAt(index: number): number;
-    /** Returns the converted/formatted value at the specified index used for tooltips/display */
-    convertedValueAt?(index: number): number | bigint | string;
+/** Columns per tile. Tile `index` at level L covers `tileColumns` columns of 2^L seconds each. */
+export const tileColumns = 512;
+
+export interface Sample {
+    time: number;
+    value: number;
+    /** Exact value, when it cannot be represented by a `number` */
+    exact?: bigint | undefined;
+}
+
+/**
+ * A downsampled span of a signal, covering `tileColumns` columns.
+ *
+ * Each column keeps its first, min, max and last samples, plus its first null. Columns with few samples keep all
+ * of them. Points are in time order, and `time`, `value`, `changes` and `exact` all have one entry per point.
+ */
+export interface Tile {
+    time: Float64Array;
+    value: Float64Array;
+    /** Exact value of each point, where it cannot be represented by a `number` */
+    exact?: BigInt64Array | BigUint64Array | undefined;
+    /** Number of value changes between each point and the previous one */
+    changes: Uint32Array;
+    /** Number of raw samples the tile covers */
+    samples: number;
+    /** Nearest sample before the tile, or null if the tile starts at or before the first sample */
+    before: Sample | null;
+    /** Nearest sample after the tile, or null if the tile ends at or after the last sample */
+    after: Sample | null;
+}
+
+export function tileDuration(level: number): number {
+    return tileColumns * Math.pow(2, level);
 }
 
 export interface Signal {
     source: SignalSource;
-    time: Sequence;
-    values: Sequence;
     renderHint: RenderMode;
     /** Optional absolute recording start, in unix seconds (UTC) */
     startTime?: number | undefined;
+    /** Unit of measurement for the values */
+    unit?: string | undefined;
+    /** Optional value representing null/missing data */
+    null?: number | undefined;
+    /** Times of the first and last samples, or [Infinity, -Infinity] if there are none */
+    readonly timeRange: readonly [number, number];
+    /** Smallest and largest values, or [Infinity, -Infinity] if there are none */
+    readonly valueRange: readonly [number, number];
+    tile(level: number, index: number): Tile | Promise<Tile>;
+    /** Returns the form of a value to display, given the exact value */
+    format?(value: number | bigint): number | bigint | string;
 }
+
 export interface RenderContext {
     canvas: HTMLCanvasElement;
     render: WebGlContext;
