@@ -1,5 +1,5 @@
 import { tileDuration, type Signal, type Tile, type Sample } from '@voltex-viewer/plugin-api';
-import { isRawTile, tileSample } from '@voltex-viewer/signal-utils';
+import { isRawTile, lodLevel, tileSample } from '@voltex-viewer/signal-utils';
 
 interface TileEntry {
     level: number;
@@ -8,6 +8,8 @@ interface TileEntry {
     // The end of the signal when the tile was requested, as a tile with nothing after it may have changed since
     end: number;
     loading: boolean;
+    // When the last request for it failed, so it's asked for again after a while rather than every frame
+    failedAt: number | null;
     // The update that last drew or fetched this tile, for least recently used eviction
     usedFrame: number;
 }
@@ -36,10 +38,9 @@ const maxAheadTiles = 256;
 const maxFinerLevels = 3;
 // Enough to reach the base tiles from the deepest zoom
 const maxCoarserLevels = 64;
-
-export function lodLevel(pxPerSecond: number): number {
-    return Math.floor(Math.log2(1 / pxPerSecond));
-}
+// Maximum number of requested tiles a signal can request at once
+const maxLoading = 8;
+const retryMs = 250;
 
 // The finest level where the whole signal fits in two tiles
 function baseLevel(start: number, end: number): number {
@@ -53,6 +54,7 @@ function baseLevel(start: number, end: number): number {
 export class LodView {
     private readonly levels = new Map<number, Map<number, TileEntry>>();
     private tileCount = 0;
+    private loadingCount = 0;
     private frame = 0;
     private shownPieces: Piece[] = [];
     private seenEnd: number;
@@ -78,12 +80,14 @@ export class LodView {
         this.frame++;
 
         let busy = false;
+        const now = performance.now();
         const fetch = (level: number, index: number): void => {
             const entry = this.entry(level, index);
             if (entry) entry.usedFrame = this.frame;
             const stale = entry !== undefined && !entry.loading && entry.end !== dataEnd && !complete(entry);
-            if (entry === undefined || stale) {
-                if (!busy && performance.now() < deadline) {
+            const retry = entry !== undefined && !entry.loading && entry.failedAt !== null && now - entry.failedAt >= retryMs;
+            if (entry === undefined || stale || retry) {
+                if (!busy && this.loadingCount < maxLoading && performance.now() < deadline) {
                     this.request(level, index, entry);
                 } else {
                     busy = true;
@@ -180,7 +184,7 @@ export class LodView {
     private request(level: number, index: number, existing: TileEntry | undefined): void {
         let entry = existing;
         if (!entry) {
-            entry = { level, index, tile: null, end: 0, loading: false, usedFrame: this.frame };
+            entry = { level, index, tile: null, end: 0, loading: false, failedAt: null, usedFrame: this.frame };
             let tiles = this.levels.get(level);
             if (!tiles) {
                 tiles = new Map();
@@ -196,16 +200,23 @@ export class LodView {
             return;
         }
         entry.loading = true;
+        this.loadingCount++;
         const loading = entry;
         result.then(
             tile => {
+                this.loadingCount--;
                 loading.loading = false;
+                loading.failedAt = null;
                 loading.tile = tile;
                 this.onTileLoaded();
             },
             (error: unknown) => {
+                this.loadingCount--;
                 loading.loading = false;
-                console.error(`Failed to load tile ${level}:${index}:`, error);
+                if (loading.failedAt === null) console.error(`Failed to load tile ${level}:${index}:`, error);
+                loading.failedAt = performance.now();
+                // Freed a slot for the tiles still waiting
+                this.onTileLoaded();
             },
         );
     }

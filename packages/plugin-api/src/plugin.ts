@@ -255,7 +255,7 @@ export interface WaveformState {
     timeZone: string,
     /** Wall-clock origin (unix seconds, UTC) of the internal time coordinate */
     referenceWallTime: number,
-    /** Signals are drawn up to this time, held slightly behind the newest data so late sources keep in step */
+    /** Signals are drawn up to this time */
     displayEndTime: number,
 }
 
@@ -312,6 +312,8 @@ export interface Signal {
     readonly timeRange: readonly [number, number];
     /** Smallest and largest values, or [Infinity, -Infinity] if there are none */
     readonly valueRange: readonly [number, number];
+    /** Whether more data may still arrive. */
+    readonly live: boolean;
     tile(level: number, index: number): Tile | Promise<Tile>;
     /** Returns the form of a value to display, given the exact value */
     format?(value: number | bigint): number | bigint | string;

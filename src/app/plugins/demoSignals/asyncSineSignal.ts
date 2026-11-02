@@ -17,6 +17,10 @@ export class AsyncSineSignal implements Signal {
         private readonly loadedLength: () => number,
     ) {}
 
+    get live(): boolean {
+        return this.loadedLength() < this.length;
+    }
+
     get timeRange(): readonly [number, number] {
         const loaded = Math.min(this.length, this.loadedLength());
         return loaded === 0 ? [Infinity, -Infinity] : [0, (loaded - 1) / this.sampleRate];

@@ -4,6 +4,7 @@ class PlaceholderSignal implements Signal {
     readonly renderHint = RenderMode.Lines;
     readonly timeRange = [Infinity, -Infinity] as const;
     readonly valueRange = [Infinity, -Infinity] as const;
+    readonly live = false;
     constructor(public source: SignalSource) {}
 
     tile(): Tile {

@@ -43,8 +43,8 @@ describe('MDF export', () => {
         floats.push(0.25, -3);
 
         const header = await buildMdfHeader([
-            new SequenceSignal(source(['file', 'Big']), bigTime, big, RenderMode.Lines),
-            new SequenceSignal(source(['file', 'Float']), floatTime, floats, RenderMode.Lines),
+            new SequenceSignal(source(['file', 'Big']), bigTime, big, RenderMode.Lines, () => false),
+            new SequenceSignal(source(['file', 'Float']), floatTime, floats, RenderMode.Lines, () => false),
         ], 0n);
         const values = await readBack(await serialize(header));
 

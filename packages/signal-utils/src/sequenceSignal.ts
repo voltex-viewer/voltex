@@ -10,8 +10,13 @@ export class SequenceSignal implements Signal {
         private readonly time: Sequence,
         private readonly values: Sequence,
         public renderHint: RenderMode,
+        private readonly isLive: () => boolean,
         public startTime?: number | undefined) {
         this.tiles = new SequenceTiles(time, values);
+    }
+
+    get live(): boolean {
+        return this.isLive();
     }
 
     get unit(): string | undefined {

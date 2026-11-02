@@ -96,7 +96,7 @@ export default (context: PluginContext): void => {
                         valuesSeq.push(numValue);
                     }
 
-                    const signal = new SequenceSignal(null!, seq.time, valuesSeq, codeToText.size >= 2 ? RenderMode.Enum : RenderMode.Lines);
+                    const signal = new SequenceSignal(null!, seq.time, valuesSeq, codeToText.size >= 2 ? RenderMode.Enum : RenderMode.Lines, () => false);
                     const source = new CsvSource(name, signal);
                     signal.source = source;
                     sources.push(source);
@@ -105,7 +105,7 @@ export default (context: PluginContext): void => {
                     for (const value of seq.numericValues) {
                         valuesSeq.push(value);
                     }
-                    const signal = new SequenceSignal(null!, seq.time, valuesSeq, RenderMode.Lines);
+                    const signal = new SequenceSignal(null!, seq.time, valuesSeq, RenderMode.Lines, () => false);
                     const source = new CsvSource(name, signal);
                     signal.source = source;
                     sources.push(source);

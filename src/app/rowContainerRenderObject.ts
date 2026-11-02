@@ -1,12 +1,13 @@
 import { RowImpl } from './rowImpl';
 import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters, MouseEvent, WheelEvent, MouseCaptureConfig } from "@voltex-viewer/plugin-api";
 import { getAbsoluteBounds, px, signalShift } from "@voltex-viewer/plugin-api";
+import { lodLevel } from '@voltex-viewer/signal-utils';
 import { RowChangedCallback } from './rowManager';
 import { CommandManager } from './commandManager';
 import { AutoFitButton } from './autoFitButton';
 import { PluginConfigManager } from './pluginConfigManager';
 import { voltexPluginName, VoltexConfig } from './voltexConfig';
-import { DisplayDelay } from './displayDelay';
+import { TileTracker } from './tileTracker';
 
 type ResizeState = 
     | { type: 'none' }
@@ -62,13 +63,12 @@ export class RowContainerRenderObject {
     private animationTarget: AnimationTarget;
     
     // Auto fit state
-    private lastSignalMaxTime: number = -Infinity;
     private isRealTimeTracking: boolean = false;
     private autoFitButton: AutoFitButton;
 
-    private readonly displayDelay = new DisplayDelay();
-    private displayDelayMs = 0;
-    private rowsChanged = true;
+    private readonly tileTracker = new TileTracker(() => this.requestRender());
+    // Whether displayEndTime should jump to the newest data
+    private displayEndStale = true;
     
     // Constants
     private readonly minLabelWidth = 40;
@@ -103,9 +103,9 @@ export class RowContainerRenderObject {
             if (name === voltexPluginName) {
                 const voltexCfg = cfg as VoltexConfig;
                 this.setLabelWidth(voltexCfg.labelAreaWidth);
+                if (this.state.timeMode !== voltexCfg.timeMode) this.displayEndStale = true;
                 this.state.timeMode = voltexCfg.timeMode;
                 this.state.timeZone = voltexCfg.timeZone;
-                this.displayDelayMs = voltexCfg.displayDelayMs;
                 this.requestRender();
             }
         });
@@ -1072,7 +1072,7 @@ export class RowContainerRenderObject {
         
         // Add new rows at specified indices (sort by index descending to avoid index shifting)
         for (const insert of [...rowsToAdd].reverse().sort((a, b) => b.index - a.index)) {
-            const channels = insert.row.channels ?? [];
+            const channels = (insert.row.channels ?? []).map(signal => this.tileTracker.track(signal));
             const row: RowImpl = new RowImpl(
                 this.renderObject,
                 channels,
@@ -1099,7 +1099,7 @@ export class RowContainerRenderObject {
         this.updateRowPositions();
         this.requestRender();
         
-        this.rowsChanged = true;
+        this.displayEndStale = true;
 
         // Notify of the change
         for (const callback of this.changeCallbacks) {
@@ -1351,12 +1351,12 @@ export class RowContainerRenderObject {
 
     updateView(bounds: RenderBounds): boolean {
         this.updateReferenceWallTime();
-        const catchingUp = this.updateDisplayEndTime();
+        this.updateDisplayEndTime();
         this.rows.forEach(row => {
             row.updateSignalBounds();
             if (row.verticalAutoFit) row.fitVertical();
         });
-        return this.updateAutoFit(bounds) || catchingUp;
+        return this.updateAutoFit(bounds);
     }
 
     // Origin of the internal time coordinate: the earliest signal start time, or 0 when none.
@@ -1398,16 +1398,27 @@ export class RowContainerRenderObject {
         return range && { min: range.min, max: Math.max(range.min, Math.min(range.max, this.state.displayEndTime)) };
     }
 
-    // Drawn a little behind the newest data, so sources that deliver data late keep in step with the rest
-    private updateDisplayEndTime(): boolean {
+    // Drawn up to where every live signal's tiles are loaded, so newer data only appears once all of it can be drawn
+    private updateDisplayEndTime(): void {
         const newest = this.getSignalTimeRange()?.max ?? Infinity;
-        if (this.rowsChanged) {
+        if (this.displayEndStale || !Number.isFinite(this.state.displayEndTime)) {
             // Show new signals in full straight away
-            this.displayDelay.reset(newest);
-            this.rowsChanged = false;
+            this.state.displayEndTime = newest;
+            this.displayEndStale = false;
+        } else {
+            const level = lodLevel(this.state.pxPerSecond * (window.devicePixelRatio || 1));
+            let ready = newest;
+            for (const row of this.rows) {
+                for (const signal of row.signals) {
+                    const [start, end] = signal.timeRange;
+                    // A signal that won't grow has nothing more to wait for
+                    if (!signal.live || start > end) continue;
+                    const shift = signalShift(signal, this.state);
+                    ready = Math.min(ready, this.tileTracker.readyUntil(signal, this.state.displayEndTime - shift, level) + shift);
+                }
+            }
+            this.state.displayEndTime = Math.max(this.state.displayEndTime, ready);
         }
-        this.state.displayEndTime = this.displayDelay.update(newest, performance.now(), this.displayDelayMs);
-        return this.displayDelay.catchingUp;
     }
 
     private updateAutoFit(bounds: RenderBounds): boolean {
@@ -1425,9 +1436,7 @@ export class RowContainerRenderObject {
         const viewportWidth = bounds.width - this.labelWidth;
         if (viewportWidth <= 0) return false;
         
-        // Data still waiting to be shown also counts as live
-        const isRealTime = range.max > this.lastSignalMaxTime || this.displayDelay.catchingUp;
-        this.lastSignalMaxTime = range.max;
+        const isRealTime = this.rows.some(row => row.signals.some(signal => signal.live));
         this.isRealTimeTracking = isRealTime;
         
         const padding = 0.05;
@@ -1482,12 +1491,7 @@ export class RowContainerRenderObject {
         }
         if (this.autoFitButton.enabled !== enabled) {
             this.autoFitButton.setAutoFit(enabled);
-            if (enabled) {
-                const range = this.getDisplayedTimeRange();
-                this.lastSignalMaxTime = range?.max ?? -Infinity;
-            } else {
-                this.isRealTimeTracking = false;
-            }
+            if (!enabled) this.isRealTimeTracking = false;
         }
         this.requestRender();
     }

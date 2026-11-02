@@ -61,7 +61,7 @@ function realTimeSignal(source: SignalSource, time: Sequence, values: Sequence, 
         },
         isRealTimeEnabled,
     );
-    return new SequenceSignal(source, prefix(time, exposed), prefix(values, exposed), renderHint);
+    return new SequenceSignal(source, prefix(time, exposed), prefix(values, exposed), renderHint, () => exposed() < length);
 }
 
 function realTimeFunctionSignal(source: SignalSource, time: Sequence, generator: (time: number) => number, min: number, max: number, renderHint: RenderMode, isRealTimeEnabled: () => boolean): Signal {

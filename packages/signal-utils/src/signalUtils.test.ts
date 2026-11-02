@@ -164,7 +164,7 @@ describe('SequenceTiles', () => {
 });
 
 function signal(time: number[], values: number[]): Signal {
-    const s = new SequenceSignal(null!, sequence(time), sequence(values), RenderMode.Lines);
+    const s = new SequenceSignal(null!, sequence(time), sequence(values), RenderMode.Lines, () => false);
     s.tile(0, 0);
     return s;
 }

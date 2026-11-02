@@ -20,6 +20,8 @@ export default (context: PluginContext): void => {
             new ProfilerTimeSequence(frameData),
             new ProfilerValueSequence(frameData, minFrameTime, maxFrameTime),
             RenderMode.Lines,
+            // A frame is added every render
+            () => true,
         )),
     };
     
@@ -73,6 +75,8 @@ export default (context: PluginContext): void => {
                             new FlameGraphTimeSequence(timelineData),
                             new FlameGraphValueSequence(timelineData, nextId, idToNameMap),
                             RenderMode.Enum,
+                            // Built from the frames so far, so it never grows
+                            () => false,
                         ));
                     }
                 };

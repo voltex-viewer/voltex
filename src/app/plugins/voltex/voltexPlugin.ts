@@ -7,7 +7,6 @@ export default (context: PluginContext): void => {
         sidebarWidth: 320,
         timeMode: 'relative',
         timeZone: 'local',
-        displayDelayMs: 150,
         keybindings: {
             'select-all-rows': 'ctrl+a',
             'clear-selection': 'escape',

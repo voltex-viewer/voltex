@@ -166,7 +166,6 @@ export default (context: PluginContext): void => {
         const dpr = window.devicePixelRatio || 1;
         const start = state.offset / state.pxPerSecond - signalShift(signal, state);
         const end = start + gl.canvas.width / dpr / state.pxPerSecond;
-        // Data held back by the display delay is about to scroll into view, so fetch its tiles early
         const aheadTo = end >= state.displayEndTime - signalShift(signal, state) ? Math.max(end, signal.timeRange[1]) : end;
         const { changed, busy } = view.update(start, end, state.pxPerSecond * dpr, deadline, aheadTo);
         if (changed) {

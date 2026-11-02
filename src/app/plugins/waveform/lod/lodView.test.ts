@@ -11,6 +11,7 @@ function growingSignal() {
         renderHint: RenderMode.Lines,
         get timeRange() { return [0, end] as const; },
         valueRange: [0, 1],
+        live: true,
         tile(level: number, index: number): Tile {
             // Only the view's level, not the base tiles kept alongside it
             if (level === 0) requests.push(index);
@@ -81,6 +82,7 @@ function asyncSignal(times: number[]) {
         renderHint: RenderMode.Lines,
         get timeRange() { return [times[0], times[end - 1]] as const; },
         valueRange: [0, 1],
+        live: true,
         tile(level: number, index: number): Promise<Tile> {
             return new Promise(resolve => pending.push(() => resolve(tileFor(level, index))));
         },
@@ -136,5 +138,69 @@ describe('LodView stand-ins', () => {
         const [first, last] = drawnRange(view);
         expect(first).toBeLessThanOrEqual(400);
         expect(last).toBeGreaterThanOrEqual(401);
+    });
+});
+
+// Tiles that load or fail when told to, recording what was asked for
+function controlledSignal(end: number) {
+    const requests: { level: number; index: number; resolve: () => void; reject: (e: Error) => void }[] = [];
+    const signal: Signal = {
+        source: { name: ['test'], signal: () => Promise.reject(new Error('unused')) },
+        renderHint: RenderMode.Lines,
+        get timeRange() { return [0, end] as const; },
+        valueRange: [0, 1],
+        live: true,
+        tile(level: number, index: number): Promise<Tile> {
+            return new Promise((resolve, reject) => {
+                const tile: Tile = {
+                    time: new Float64Array(0), value: new Float64Array(0), changes: new Uint32Array(0), samples: 0,
+                    before: null, after: { time: end, value: 0 },
+                };
+                requests.push({ level, index, resolve: () => resolve(tile), reject });
+            });
+        },
+    };
+    return { signal, requests };
+}
+
+describe('LodView requests', () => {
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it('keeps a few requests in flight, the tiles in view before those ahead', () => {
+        const { signal, requests } = controlledSignal(1e6);
+        const view = new LodView(signal, () => {});
+        // Level 0: tiles 0 to 2 in view (with margins -1 and 3), up to 255 more ahead
+        view.update(0, 1500, 1, Infinity, 1e6);
+        const atLevel0 = requests.filter(r => r.level === 0).map(r => r.index);
+        expect(requests.length).toBe(8);
+        expect(atLevel0.slice(0, 5)).toEqual([-1, 0, 1, 2, 3]);
+
+        view.update(0, 1500, 1, Infinity, 1e6);
+        expect(requests.length).toBe(8);
+    });
+
+    it('asks again for a tile that failed, after a while', async () => {
+        const { signal, requests } = controlledSignal(1000);
+        const view = new LodView(signal, () => {});
+        const errors: unknown[] = [];
+        const error = console.error;
+        console.error = (...args: unknown[]) => errors.push(args);
+        try {
+            view.update(0, 500, 1, Infinity);
+            const first = requests.find(r => r.level === 0 && r.index === 0)!;
+            first.reject(new Error('superseded by newer requests'));
+            await settle();
+
+            const before = requests.length;
+            view.update(0, 500, 1, Infinity);
+            expect(requests.length).toBe(before);
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+            view.update(0, 500, 1, Infinity);
+            expect(requests.slice(before).some(r => r.level === 0 && r.index === 0)).toBe(true);
+            expect(errors.length).toBe(1);
+        } finally {
+            console.error = error;
+        }
     });
 });

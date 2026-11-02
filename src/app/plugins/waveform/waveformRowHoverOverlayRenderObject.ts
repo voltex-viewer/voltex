@@ -1,10 +1,9 @@
 import { hexToRgba, RenderMode, type RenderContext, type Signal, type PluginContext, type RenderObject, type Row, type RenderBounds, type MouseEvent as PluginMouseEvent, type Sample, SignalMetadata, formatValueForDisplay } from '@voltex-viewer/plugin-api';
-import { displayValue, NeighbourCache } from '@voltex-viewer/signal-utils';
+import { displayValue, lodLevel, NeighbourCache } from '@voltex-viewer/signal-utils';
 import { type WaveformConfig } from './waveformConfig';
 import type { SignalTooltipData, TooltipData } from './waveformTooltipRenderObject';
 import type { BufferData, SignalBufferData } from './waveformRendererPlugin';
 import { estimateSample, type SampleEstimate } from './lod/estimate';
-import { lodLevel } from './lod/lodView';
 import type { WaveformShaders } from './waveformShaders';
 import { WaveformRenderObject } from './waveformRenderObject';
 import {

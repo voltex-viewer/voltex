@@ -16,3 +16,8 @@ export function displayValue(signal: Signal, point: Sample): number | bigint | s
     const value = point.exact ?? point.value;
     return signal.format ? signal.format(value) : value;
 }
+
+/** Level of the tiles drawn at a zoom */
+export function lodLevel(pxPerSecond: number): number {
+    return Math.floor(Math.log2(1 / pxPerSecond));
+}

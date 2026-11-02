@@ -183,7 +183,7 @@ export default (context: PluginContext): void => {
                             valuesSequence: values
                         });
                         
-                        return new SequenceSignal(source, time, values, startResponse.renderMode, response.startTime);
+                        return new SequenceSignal(source, time, values, startResponse.renderMode, () => false, response.startTime);
                     }
                 }));
                 
