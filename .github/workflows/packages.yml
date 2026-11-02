@@ -25,12 +25,12 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
-        node-version: '24'
+        node-version: '26'
         cache: 'npm'
 
     - name: Install dependencies
@@ -61,21 +61,21 @@ jobs:
       run: npm pack --dry-run
 
     - name: Upload plugin-api artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: plugin-api-dist
         path: packages/plugin-api/dist/
         retention-days: 7
 
     - name: Upload mdf-reader artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: mdf-reader-dist
         path: packages/mdf-reader/dist/
         retention-days: 7
 
     - name: Upload signal-utils artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: signal-utils-dist
         path: packages/signal-utils/dist/
@@ -106,12 +106,12 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
-        node-version: '24'
+        node-version: '26'
         cache: 'npm'
         registry-url: 'https://registry.npmjs.org'
 
