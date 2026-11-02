@@ -1,6 +1,6 @@
 {
   "name": "@voltex-viewer/signal-utils",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Helpers for building and querying Voltex signals",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,7 +34,7 @@
     "url": "https://github.com/voltex-viewer/voltex.git"
   },
   "peerDependencies": {
-    "@voltex-viewer/plugin-api": "^0.7.0"
+    "@voltex-viewer/plugin-api": "^0.7.1"
   },
   "devDependencies": {
     "typescript": "~5.9.2"

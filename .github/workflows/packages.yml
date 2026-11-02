@@ -121,7 +121,7 @@ jobs:
     - name: Check versions match tag
       run: |
         VERSION=${GITHUB_REF_NAME#v}
-        for p in plugin-api mdf-reader; do
+        for p in plugin-api mdf-reader signal-utils; do
           ACTUAL=$(node -p "require('./packages/$p/package.json').version")
           if [ "$ACTUAL" != "$VERSION" ]; then
             echo "::error::$p is $ACTUAL but the tag is $GITHUB_REF_NAME"
@@ -137,10 +137,18 @@ jobs:
       working-directory: packages/mdf-reader
       run: npm run build
 
+    - name: Build signal-utils
+      working-directory: packages/signal-utils
+      run: npm run build
+
     - name: Publish plugin-api to NPM
       working-directory: packages/plugin-api
       run: npm publish --access public --provenance
 
     - name: Publish mdf-reader to NPM
       working-directory: packages/mdf-reader
+      run: npm publish --access public --provenance
+
+    - name: Publish signal-utils to NPM
+      working-directory: packages/signal-utils
       run: npm publish --access public --provenance
