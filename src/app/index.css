@@ -166,6 +166,10 @@ body {
   font-size: 12px;
 }
 
+button, input, select, textarea {
+  font-family: inherit;
+}
+
 .vertical-sidebar {
     position: relative;
     top: 0;
