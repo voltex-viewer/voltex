@@ -79,7 +79,7 @@ export class RowContainerRenderObject {
     private readonly resizeZoneWidth = 5;
     private readonly resizeZoneHeight = 5;
     private readonly minPxPerSecond = 1e-7;  // ~100 years visible on a typical screen
-    private readonly maxPxPerSecond = 1e8;   // ~10 microseconds visible on a typical screen
+    private readonly maxPxPerSecond = 1e11;  // ~10 nanoseconds visible on a typical screen
     private readonly dragThreshold = 5; // pixels to move before starting drag
     private readonly autoScrollEdge = 40; // edge zone (px) that triggers auto-scroll while dragging
     private readonly maxAutoScrollSpeed = 15; // max auto-scroll speed (px per frame)
