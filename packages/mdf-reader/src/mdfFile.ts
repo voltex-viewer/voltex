@@ -4,6 +4,17 @@ import { SerializableConversionData } from './conversion';
 import * as v3 from './v3';
 import * as v4 from './v4';
 
+const v3ChannelTypes: Partial<Record<number, ChannelType>> = {
+    0: ChannelType.Signal,
+    1: ChannelType.Time,
+};
+
+const v4ChannelTypes: Partial<Record<number, ChannelType>> = {
+    0: ChannelType.Signal,
+    2: ChannelType.Time,
+    3: ChannelType.VirtualTime,
+};
+
 export interface MdfSource {
     readonly name: string | null;
     readonly path: string | null;
@@ -199,8 +210,7 @@ class MdfFileImpl implements MdfFile {
                     const name = channel.longName && v3.isNonNullLink(channel.longName)
                         ? (await v3.readTextBlock(channel.longName, this.reader))?.data ?? channel.name
                         : channel.name;
-                    const channelType = channel.channelType === 1 ? ChannelType.Time :
-                                        channel.channelType === 0 ? ChannelType.Signal : ChannelType.Unknown;
+                    const channelType = v3ChannelTypes[channel.channelType] ?? ChannelType.Unknown;
 
                     const abstractChannel: AbstractChannel = {
                         name: [this.filename, name],
@@ -282,8 +292,7 @@ class MdfFileImpl implements MdfFile {
 
                 for await (const channel of v4.iterateChannelBlocks(channelGroup.channelFirst, this.reader)) {
                     const channelName = (await v4.readTextBlock(channel.txName, this.reader))?.data ?? "";
-                    const channelType = channel.channelType === 2 ? ChannelType.Time :
-                                        channel.channelType === 0 ? ChannelType.Signal : ChannelType.Unknown;
+                    const channelType = v4ChannelTypes[channel.channelType] ?? ChannelType.Unknown;
 
                     const abstractChannel: AbstractChannel = {
                         name: [this.filename, channelName],

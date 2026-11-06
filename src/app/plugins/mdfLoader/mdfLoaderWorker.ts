@@ -1,5 +1,6 @@
 import {
     ChannelType,
+    isTimeChannel,
     NumberType,
     openMdfFile,
     type MdfFile,
@@ -91,7 +92,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
                 const dataGroup = dataGroups[dgIndex];
                 for (let cgIndex = 0; cgIndex < dataGroup.channelGroups.length; cgIndex++) {
                     const channelGroup = dataGroup.channelGroups[cgIndex];
-                    const timeChannel = channelGroup.channels.find(c => c.channelType === ChannelType.Time);
+                    const timeChannel = channelGroup.channels.find(c => isTimeChannel(c.channelType));
                     for (const channel of channelGroup.channels) {
                         if (channel.channelType !== ChannelType.Signal) continue;
                         collected.push({ dataGroup, channelGroup, channel, timeChannel, dgIndex, cgIndex });

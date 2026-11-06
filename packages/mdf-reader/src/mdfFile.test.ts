@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { openMdfFile } from './mdfFile';
-import { ChannelType } from './decoder';
+import { ChannelType, isTimeChannel } from './decoder';
+import { deserializeConversion } from './conversion';
+import { ConversionType } from './v4/channelConversionBlock';
 import { SerializeContext } from './v4/serializer';
 import { resolveHeaderOffset } from './v4/headerBlock';
 import type { Header } from './v4/headerBlock';
@@ -32,11 +34,12 @@ function makeSource(source: TestSource | undefined): SourceInformationBlock<'ins
 
 interface TestChannel {
     name: string;
-    type: 'time' | 'signal';
+    type: 'time' | 'virtual' | 'signal';
     dataType: DataType;
     bitCount: number;
     values: number[];
     source?: TestSource;
+    linear?: [intercept: number, slope: number];
 }
 
 interface TestGroup {
@@ -52,7 +55,7 @@ async function createMdf4File(groups: TestGroup[]): Promise<File> {
 
     for (const group of groups) {
         const recordSize = group.channels.reduce((acc, ch) => acc + Math.ceil(ch.bitCount / 8), 0);
-        const recordCount = group.channels[0]?.values.length ?? 0;
+        const recordCount = Math.max(0, ...group.channels.map(ch => ch.values.length));
         const dataBuffer = new ArrayBuffer(recordSize * recordCount);
         const dataView = new DataView(dataBuffer);
 
@@ -63,7 +66,7 @@ async function createMdf4File(groups: TestGroup[]): Promise<File> {
             const channelName: TextBlock = { data: channel.name };
             const byteSize = Math.ceil(channel.bitCount / 8);
 
-            for (let i = 0; i < channel.values.length; i++) {
+            for (let i = 0; i < channel.values.length && channel.bitCount > 0; i++) {
                 const offset = i * recordSize + byteOffset;
                 if (channel.bitCount === 64) {
                     dataView.setFloat64(offset, channel.values[i], true);
@@ -81,11 +84,15 @@ async function createMdf4File(groups: TestGroup[]): Promise<File> {
                 component: null,
                 txName: channelName,
                 siSource: makeSource(channel.source),
-                conversion: null,
+                conversion: channel.linear ? {
+                    txName: null, mdUnit: null, mdComment: null, inverse: null,
+                    precision: 0, flags: 0, physicalRangeMinimum: 0, physicalRangeMaximum: 0,
+                    type: ConversionType.Linear, values: channel.linear, refs: [],
+                } : null,
                 data: null,
                 unit: null,
                 comment: null,
-                channelType: channel.type === 'time' ? 2 : 0,
+                channelType: channel.type === 'time' ? 2 : channel.type === 'virtual' ? 3 : 0,
                 syncType: 0,
                 dataType: channel.dataType,
                 bitOffset: 0,
@@ -205,6 +212,7 @@ describe('mdfFile v4', () => {
         expect(channels.length).toBe(2);
 
         const timeChannel = channels.find(c => c.channelType === ChannelType.Time);
+        expect(timeChannel && isTimeChannel(timeChannel.channelType)).toBe(true);
         const valueChannel = channels.find(c => c.channelType === ChannelType.Signal);
 
         expect(timeChannel).toBeDefined();
@@ -248,6 +256,34 @@ describe('mdfFile v4', () => {
             expect(timeBuf.values[i]).toBeCloseTo(timeValues[i]);
             expect(voltageBuf.values[i]).toBeCloseTo(signalValues[i]);
         }
+    });
+
+    it('should read a virtual master as the record index, made a time by its conversion', async () => {
+        const file = await createMdf4File([
+            {
+                name: 'Sampled',
+                channels: [
+                    { name: 'time', type: 'virtual', dataType: DataType.UintLe, bitCount: 0, values: [], linear: [250e-9, 1e-6] },
+                    { name: 'A0', type: 'signal', dataType: DataType.UintLe, bitCount: 16, values: [7, 8, 9, 10] },
+                ],
+            },
+        ]);
+
+        const mdf = await openMdfFile(file);
+        const channels = mdf.getGroups()[0].channelGroups[0].channels;
+        const time = channels.find(c => c.name === 'time')!;
+        const a0 = channels.find(c => c.name === 'A0')!;
+        expect(time.channelType).toBe(ChannelType.VirtualTime);
+        expect(isTimeChannel(time.channelType)).toBe(true);
+        expect(channels.find(c => isTimeChannel(c.channelType))).toBe(time);
+        const timeBuf = makeBuffer();
+        const a0Buf = makeBuffer();
+        await mdf.read([{ channel: time, buffer: timeBuf }, { channel: a0, buffer: a0Buf }]);
+        expect(timeBuf.values).toEqual([0, 1, 2, 3]);
+        expect(a0Buf.values).toEqual([7, 8, 9, 10]);
+        const toTime = deserializeConversion(await time.getConversion())!;
+        const times = timeBuf.values.map(v => Number(toTime(v)));
+        [250e-9, 1.25e-6, 2.25e-6, 3.25e-6].forEach((t, i) => expect(times[i]).toBeCloseTo(t, 12));
     });
 
     it('should handle multiple groups', async () => {

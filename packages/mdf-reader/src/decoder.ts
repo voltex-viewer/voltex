@@ -23,7 +23,12 @@ export function getNumberType(channel: AbstractChannel): NumberType {
 export enum ChannelType {
     Time = 0,
     Signal = 1,
-    Unknown = 2,
+    VirtualTime = 2,
+    Unknown = 3,
+}
+
+export function isTimeChannel(type: ChannelType): boolean {
+    return type === ChannelType.Time || type === ChannelType.VirtualTime;
 }
 
 export enum DataType {
@@ -87,7 +92,7 @@ export class DataGroupLoader {
                 if (!sequence) continue;
                 channelSequences.push({
                     sequence,
-                    loader: getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
+                    loader: channel.type === ChannelType.VirtualTime ? recordCounter() : getLoader(channel.dataType, channel.byteOffset, channel.bitOffset, channel.bitCount),
                 });
             }
             records.set(recordId, {length: group.dataBytes + group.invalidationBytes, sequences: channelSequences});
@@ -115,6 +120,11 @@ export class DataGroupLoader {
             });
         console.log(`  Total Rows: ${rowCount}`);
     }
+}
+
+function recordCounter(): (buffer: DataView) => number {
+    let index = 0;
+    return () => index++;
 }
 
 function getLoader(dataType: DataType, byteOffset: number, bitOffset: number, bitCount: number) {
