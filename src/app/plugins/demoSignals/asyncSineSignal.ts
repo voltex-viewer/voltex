@@ -1,15 +1,15 @@
-import { RenderMode, tileColumns, type Signal, type SignalSource, type Tile, type Sample } from '@voltex-viewer/plugin-api';
+import { RenderMode, tileColumns, type SignalSource, type Tile, type Sample, type SignalBackend } from '@voltex-viewer/plugin-api';
 
 /**
  * A sine with far too many samples to hold, so its tiles are computed in closed form and delivered after a delay
  * like a remote source. The period must be a multiple of 4 samples, so every crest and trough falls on a sample.
  */
-export class AsyncSineSignal implements Signal {
+export class AsyncSineSignal implements SignalBackend {
     readonly renderHint = RenderMode.Lines;
     readonly valueRange = [-1, 1] as const;
 
     constructor(
-        public readonly source: SignalSource,
+        public readonly source: SignalSource<SignalBackend>,
         private readonly sampleRate: number,
         private readonly periodSamples: number,
         private readonly length: number,

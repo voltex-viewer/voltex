@@ -1,4 +1,4 @@
-import { MeasureInfo, PluginContext, RenderMode, SignalSource } from '@voltex-viewer/plugin-api';
+import { MeasureInfo, PluginContext, RenderMode, SignalSource, type SignalBackend } from '@voltex-viewer/plugin-api';
 import { type Sequence, SequenceSignal } from '@voltex-viewer/signal-utils';
 
 export default (context: PluginContext): void => {
@@ -10,10 +10,10 @@ export default (context: PluginContext): void => {
     const maxFlameGraphs = 100;
     let minFrameTime = Infinity;
     let maxFrameTime = -Infinity;
-    const flameGraphSources: Array<{ name: string[]; source: SignalSource }> = [];
+    const flameGraphSources: Array<{ name: string[]; source: SignalSource<SignalBackend> }> = [];
     
     // Create signal source for frame time data
-    const signalSource: SignalSource = {
+    const signalSource: SignalSource<SignalBackend> = {
         name: ['Profiler', 'Frame Time (ms)'],
         signal: () => Promise.resolve(new SequenceSignal(
             signalSource,
@@ -32,7 +32,7 @@ export default (context: PluginContext): void => {
 
         for (let depth = 0; depth < maxDepth; depth++) {
             if (!flameGraphSources[depth]) {
-                const depthSource: SignalSource = {
+                const depthSource: SignalSource<SignalBackend> = {
                     name: ['Profiler', `Depth ${depth}`],
                     signal: () => {
                         // Use the start time of the first measure entry (root of the stack)

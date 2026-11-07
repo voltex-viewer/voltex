@@ -166,8 +166,7 @@ export default (context: PluginContext): void => {
         const dpr = window.devicePixelRatio || 1;
         const start = state.offset / state.pxPerSecond - signalShift(signal, state);
         const end = start + gl.canvas.width / dpr / state.pxPerSecond;
-        const aheadTo = end >= state.displayEndTime - signalShift(signal, state) ? Math.max(end, signal.timeRange[1]) : end;
-        const { changed, busy } = view.update(start, end, state.pxPerSecond * dpr, deadline, aheadTo);
+        const { changed, busy } = view.update(start, end, state.pxPerSecond * dpr, deadline);
         if (changed) {
             bufferData.runs.build(view.geometry!);
         }
@@ -237,7 +236,7 @@ export default (context: PluginContext): void => {
                         bufferLength: 0,
                         blocks: { buffer: createBuffer(), count: 0, capacity: 0 },
                         runs: new EnumRuns(),
-                        lod: new LodView(channel, () => context.requestRender()),
+                        lod: new LodView(channel),
                         uploaded: null,
                         dots: { timeHighBuffer, timeLowBuffer, valueBuffer, bufferCapacity: 0, bufferLength: 0 },
                     });

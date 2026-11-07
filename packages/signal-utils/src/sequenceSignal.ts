@@ -1,12 +1,12 @@
-import type { RenderMode, Signal, SignalSource, Tile } from '@voltex-viewer/plugin-api';
+import type { RenderMode, SignalSource, Tile, SignalBackend } from '@voltex-viewer/plugin-api';
 import type { Sequence } from './sequences';
 import { SequenceTiles } from './sequenceTiles';
 
-export class SequenceSignal implements Signal {
+export class SequenceSignal implements SignalBackend {
     private readonly tiles: SequenceTiles;
 
     constructor(
-        public source: SignalSource,
+        public source: SignalSource<SignalBackend>,
         private readonly time: Sequence,
         private readonly values: Sequence,
         public renderHint: RenderMode,

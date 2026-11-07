@@ -1,4 +1,4 @@
-import { PluginContext, SignalSource, RenderObject } from '@voltex-viewer/plugin-api';
+import { PluginContext, SignalSource, RenderObject, type SignalBackend } from '@voltex-viewer/plugin-api';
 import { SequenceSignal } from '@voltex-viewer/signal-utils';
 import { v4, NumberType, deserializeConversion } from '@voltex-viewer/mdf-reader';
 import { buildMdfHeader } from './mdfExport';
@@ -131,7 +131,7 @@ export default (context: PluginContext): void => {
                     throw new Error('Unexpected response type');
                 }
                 
-                const sources: SignalSource[] = response.signals.map(metadata => ({
+                const sources: SignalSource<SignalBackend>[] = response.signals.map(metadata => ({
                     name: metadata.name,
                     signal: async () => {
                         const loadMessage: WorkerMessage = {
@@ -156,7 +156,7 @@ export default (context: PluginContext): void => {
                             worker.postMessage(loadMessage);
                         });
                         
-                        const source: SignalSource = sources.find(s => s.name === metadata.name)!;
+                        const source: SignalSource<SignalBackend> = sources.find(s => s.name === metadata.name)!;
                         
                         const timeConstructor = metadata.timeSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.timeSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;
                         const valuesConstructor = metadata.valuesSequenceType === NumberType.BigInt64 ? BigInt64Array : metadata.valuesSequenceType === NumberType.BigUint64 ? BigUint64Array : Float64Array;

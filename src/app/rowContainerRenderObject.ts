@@ -1,13 +1,13 @@
 import { RowImpl } from './rowImpl';
 import type { RenderObject, WaveformState, RenderBounds, RenderContext, RowInsert, RowParameters, MouseEvent, WheelEvent, MouseCaptureConfig } from "@voltex-viewer/plugin-api";
-import { getAbsoluteBounds, px, signalShift } from "@voltex-viewer/plugin-api";
-import { lodLevel } from '@voltex-viewer/signal-utils';
+import { getAbsoluteBounds, px, signalShift, tileDuration } from "@voltex-viewer/plugin-api";
+import { coverView, hasDataUntil, lodLevel } from '@voltex-viewer/signal-utils';
 import { RowChangedCallback } from './rowManager';
 import { CommandManager } from './commandManager';
 import { AutoFitButton } from './autoFitButton';
 import { PluginConfigManager } from './pluginConfigManager';
 import { voltexPluginName, VoltexConfig } from './voltexConfig';
-import { TileTracker } from './tileTracker';
+import type { SignalCache } from './signalCache';
 
 type ResizeState = 
     | { type: 'none' }
@@ -66,7 +66,7 @@ export class RowContainerRenderObject {
     private isRealTimeTracking: boolean = false;
     private autoFitButton: AutoFitButton;
 
-    private readonly tileTracker = new TileTracker(() => this.requestRender());
+    private followTarget: number | null = null;
     // Whether displayEndTime should jump to the newest data
     private displayEndStale = true;
     
@@ -94,6 +94,7 @@ export class RowContainerRenderObject {
         private commandManager: CommandManager,
         private canvas: HTMLCanvasElement,
         private configManager: PluginConfigManager,
+        private readonly signals: SignalCache,
     ) {
         // Initialize targetTransform to current state
         this.animationTarget = { type: 'free', ...this.getCurrentTransform() };
@@ -1072,7 +1073,7 @@ export class RowContainerRenderObject {
         
         // Add new rows at specified indices (sort by index descending to avoid index shifting)
         for (const insert of [...rowsToAdd].reverse().sort((a, b) => b.index - a.index)) {
-            const channels = (insert.row.channels ?? []).map(signal => this.tileTracker.track(signal));
+            const channels = (insert.row.channels ?? []).map(backend => this.signals.signal(backend));
             const row: RowImpl = new RowImpl(
                 this.renderObject,
                 channels,
@@ -1351,7 +1352,7 @@ export class RowContainerRenderObject {
 
     updateView(bounds: RenderBounds): boolean {
         this.updateReferenceWallTime();
-        this.updateDisplayEndTime();
+        this.updateDisplayEndTime(bounds.width - this.labelWidth);
         this.rows.forEach(row => {
             row.updateSignalBounds();
             if (row.verticalAutoFit) row.fitVertical();
@@ -1398,27 +1399,48 @@ export class RowContainerRenderObject {
         return range && { min: range.min, max: Math.max(range.min, Math.min(range.max, this.state.displayEndTime)) };
     }
 
-    // Drawn up to where every live signal's tiles are loaded, so newer data only appears once all of it can be drawn
-    private updateDisplayEndTime(): void {
+    // Drawn up to where every live signal's tiles are loaded, so newer data only appears once all of it can be drawn.
+    // It waits on one target at a time, as the newest data can move on faster than its tiles load.
+    private updateDisplayEndTime(viewportWidth: number): void {
         const newest = this.getSignalTimeRange()?.max ?? Infinity;
         if (this.displayEndStale || !Number.isFinite(this.state.displayEndTime)) {
             // Show new signals in full straight away
             this.state.displayEndTime = newest;
+            this.followTarget = null;
             this.displayEndStale = false;
-        } else {
-            const level = lodLevel(this.state.pxPerSecond * (window.devicePixelRatio || 1));
-            let ready = newest;
-            for (const row of this.rows) {
-                for (const signal of row.signals) {
-                    const [start, end] = signal.timeRange;
-                    // A signal that won't grow has nothing more to wait for
-                    if (!signal.live || start > end) continue;
-                    const shift = signalShift(signal, this.state);
-                    ready = Math.min(ready, this.tileTracker.readyUntil(signal, this.state.displayEndTime - shift, level) + shift);
+            return;
+        }
+        const width = Math.max(0, viewportWidth) / this.state.pxPerSecond;
+        let end = this.followTarget ?? newest;
+        if (end > this.state.displayEndTime && this.loadTiles(end - width, end)) {
+            this.state.displayEndTime = end;
+            end = newest;
+        }
+        this.followTarget = end > this.state.displayEndTime ? end : null;
+    }
+
+    private loadTiles(start: number, end: number): boolean {
+        const level = lodLevel(this.state.pxPerSecond * (window.devicePixelRatio || 1));
+        const duration = tileDuration(level);
+        let loaded = true;
+        for (const row of this.rows) {
+            for (const signal of row.signals) {
+                const [first, last] = signal.timeRange;
+                // A signal that won't grow has nothing more to wait for
+                if (!signal.live || first > last) continue;
+                const shift = signalShift(signal, this.state);
+                for (const cover of coverView(signal, start - shift, end - shift, level)) {
+                    if ('raw' in cover) continue;
+                    const cached = signal.peek(level, cover.index);
+                    if (cached && hasDataUntil(cached, (cover.index + 1) * duration, signal)) continue;
+                    loaded = false;
+                    const result = signal.tile(level, cover.index);
+                    // The signal logs failures, and it's asked again next frame
+                    if (result instanceof Promise) result.catch(() => {});
                 }
             }
-            this.state.displayEndTime = Math.max(this.state.displayEndTime, ready);
         }
+        return loaded;
     }
 
     private updateAutoFit(bounds: RenderBounds): boolean {

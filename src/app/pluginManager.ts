@@ -1,4 +1,5 @@
 import type { PluginModule, PluginContext, RowsChangedCallback, SidebarEntryArgs, PluginFunction, PluginMetadata, SignalSourceManager, SignalSource, Row, RowParameters, RowInsert, ReadOnlyRenderProfiler, FileOpenHandler, FileSaveHandler, Command, WritableFile } from '@voltex-viewer/plugin-api';
+import type { SignalSourceManagerImpl } from './signalSourceManagerImpl';
 import { RenderObjectImpl } from './renderObject';
 import type { WebGlContext, WaveformState } from "@voltex-viewer/plugin-api";
 import { RowChangedEvent } from './rowManager';
@@ -48,7 +49,7 @@ export class PluginManager {
         private state: WaveformState,
         private webgl: WebGlContext,
         private signalMetadata: SignalMetadataManagerImpl,
-        private signalSources: SignalSourceManager,
+        private signalSources: SignalSourceManagerImpl,
         private rowManager: RowContainerRenderObject,
         private rootRenderObject: RenderObjectImpl,
         private onSidebarEntryAdded: (entry: SidebarEntryArgs) => SidebarEntryImpl,
@@ -464,7 +465,7 @@ export class PluginManager {
                     if (handler.extensions.some(ext => ext.toLowerCase() === fileExtension)) {
                         try {
                             const sources = await handler.handler(file);
-                            bigPush(allSources, sources);
+                            bigPush(allSources, this.signalSources.wrap(sources));
                             handled = true;
                         } catch (error) {
                             console.error(error);

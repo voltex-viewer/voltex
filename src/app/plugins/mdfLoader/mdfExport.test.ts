@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { RenderMode, type SignalSource } from '@voltex-viewer/plugin-api';
+import { RenderMode, type SignalSource, type SignalBackend } from '@voltex-viewer/plugin-api';
 import { InMemoryBigUint64Sequence, InMemoryFloat64Sequence, InMemorySequence, SequenceSignal } from '@voltex-viewer/signal-utils';
 import { openMdfFile, v4 } from '@voltex-viewer/mdf-reader';
+import { SignalCache } from '../../signalCache';
 import { buildMdfHeader } from './mdfExport';
 
-function source(name: string[]): SignalSource {
+function source(name: string[]): SignalSource<SignalBackend> {
     return { name, signal: () => Promise.reject(new Error('unused')) };
 }
 
@@ -42,10 +43,11 @@ describe('MDF export', () => {
         floatTime.push(0.5, 1.5);
         floats.push(0.25, -3);
 
+        const cache = new SignalCache(() => {});
         const header = await buildMdfHeader([
             new SequenceSignal(source(['file', 'Big']), bigTime, big, RenderMode.Lines, () => false),
             new SequenceSignal(source(['file', 'Float']), floatTime, floats, RenderMode.Lines, () => false),
-        ], 0n);
+        ].map(backend => cache.signal(backend)), 0n);
         const values = await readBack(await serialize(header));
 
         expect(values.get('file/Big')).toEqual([2n ** 64n - 1n, 2n ** 53n + 1n, 7n]);

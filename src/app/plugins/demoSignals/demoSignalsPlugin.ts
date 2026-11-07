@@ -1,4 +1,4 @@
-import { PluginContext, RenderMode, Signal, SignalSource } from '@voltex-viewer/plugin-api';
+import { PluginContext, RenderMode, SignalSource, type SignalBackend } from '@voltex-viewer/plugin-api';
 import { FunctionTimeSequence, FunctionValueSequence, InMemoryFloat64Sequence, InMemorySequence, type Sequence, SequenceSignal } from '@voltex-viewer/signal-utils';
 import * as t from 'io-ts';
 import { AsyncSineSignal } from './asyncSineSignal';
@@ -44,7 +44,7 @@ function prefix(sequence: Sequence, length: () => number): Sequence {
     return wrapped;
 }
 
-function realTimeSignal(source: SignalSource, time: Sequence, values: Sequence, renderHint: RenderMode, isRealTimeEnabled: () => boolean): Signal {
+function realTimeSignal(source: SignalSource<SignalBackend>, time: Sequence, values: Sequence, renderHint: RenderMode, isRealTimeEnabled: () => boolean): SignalBackend {
     const length = Math.min(time.length, values.length);
     const exposed = realTimeLength(
         () => length,
@@ -64,7 +64,7 @@ function realTimeSignal(source: SignalSource, time: Sequence, values: Sequence, 
     return new SequenceSignal(source, prefix(time, exposed), prefix(values, exposed), renderHint, () => exposed() < length);
 }
 
-function realTimeFunctionSignal(source: SignalSource, time: Sequence, generator: (time: number) => number, min: number, max: number, renderHint: RenderMode, isRealTimeEnabled: () => boolean): Signal {
+function realTimeFunctionSignal(source: SignalSource<SignalBackend>, time: Sequence, generator: (time: number) => number, min: number, max: number, renderHint: RenderMode, isRealTimeEnabled: () => boolean): SignalBackend {
     return realTimeSignal(source, time, new FunctionValueSequence(generator, time, min, max), renderHint, isRealTimeEnabled);
 }
 
@@ -92,7 +92,7 @@ export default async (context: PluginContext) => {
 
     if (config.realTimeLoading) startAnimation();
 
-    const squareWaveSource: SignalSource = {
+    const squareWaveSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Square Wave'],
         signal: () => Promise.resolve(realTimeFunctionSignal(
             squareWaveSource,
@@ -105,7 +105,7 @@ export default async (context: PluginContext) => {
         )),
     };
     
-    const triangleWaveSource: SignalSource = {
+    const triangleWaveSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Triangle Wave'],
         signal: () => Promise.resolve(realTimeFunctionSignal(
             triangleWaveSource,
@@ -118,7 +118,7 @@ export default async (context: PluginContext) => {
         )),
     };
     
-    const sawtoothWaveSource: SignalSource = {
+    const sawtoothWaveSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Sawtooth Wave'],
         signal: () => Promise.resolve(realTimeFunctionSignal(
             sawtoothWaveSource,
@@ -131,7 +131,7 @@ export default async (context: PluginContext) => {
         )),
     };
     
-    const sineWaveSource: SignalSource = {
+    const sineWaveSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Sine Wave'],
         signal: () => Promise.resolve(realTimeFunctionSignal(
             sineWaveSource,
@@ -144,7 +144,7 @@ export default async (context: PluginContext) => {
         )),
     };
     
-    const flatSignalSource: SignalSource = {
+    const flatSignalSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Flat Signal'],
         signal: () => Promise.resolve(realTimeFunctionSignal(
             flatSignalSource,
@@ -167,7 +167,7 @@ export default async (context: PluginContext) => {
         currentTime += gap;
     }
 
-    const randomPoints: SignalSource = {
+    const randomPoints: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Random Points'],
                 signal: () => {
             const values = new InMemorySequence();
@@ -176,7 +176,7 @@ export default async (context: PluginContext) => {
         },
     };
     
-    const trafficLightSource: SignalSource = {
+    const trafficLightSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Traffic Light'],
         signal: () => {
             const timeSeq = new InMemoryFloat64Sequence();
@@ -223,7 +223,7 @@ export default async (context: PluginContext) => {
         },
     };
 
-    const sineWithGapsSource: SignalSource = {
+    const sineWithGapsSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Sine with Gaps'],
         signal: () => {
             const timeSeq = new InMemoryFloat64Sequence();
@@ -247,7 +247,7 @@ export default async (context: PluginContext) => {
         },
     };
 
-    const blipSource: SignalSource = {
+    const blipSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Blip'],
         signal: () => {
             const timeSeq = new InMemoryFloat64Sequence();
@@ -264,7 +264,7 @@ export default async (context: PluginContext) => {
     };
 
         // Far too many samples to keep in memory, so it only exists as tiles, like a remote source
-    const asyncSineSource: SignalSource = {
+    const asyncSineSource: SignalSource<SignalBackend> = {
         name: ['Demo Signals', 'Async LOD Sine'],
         signal: () => {
             const sampleRate = 1e9;

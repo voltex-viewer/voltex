@@ -1,9 +1,16 @@
-import type { SignalSource, SignalSourceManager, SignalsAvailableChangedEvent } from '@voltex-viewer/plugin-api';
+import type { SignalBackend, SignalSource, SignalSourceManager, SignalsAvailableChangedEvent } from '@voltex-viewer/plugin-api';
 import { bigPush } from './bigPush';
+import type { SignalCache } from './signalCache';
 
 export class SignalSourceManagerImpl implements SignalSourceManager {
     private internalAvailable: SignalSource[] = [];
     private callbacks: ((event: SignalsAvailableChangedEvent) => void)[] = [];
+
+    constructor(private readonly cache: SignalCache) {}
+
+    wrap(sources: SignalSource<SignalBackend>[]): SignalSource[] {
+        return sources.map(source => this.cache.source(source));
+    }
 
     get available(): SignalSource[] {
         return [...this.internalAvailable];
@@ -13,8 +20,9 @@ export class SignalSourceManagerImpl implements SignalSourceManager {
         this.callbacks.push(callback);
     }
 
-    add(signals: SignalSource[]): void {
-        if (signals.length === 0) return;
+    add(sources: SignalSource<SignalBackend>[]): void {
+        if (sources.length === 0) return;
+        const signals = this.wrap(sources);
         
         bigPush(this.internalAvailable, signals);
         
@@ -26,7 +34,7 @@ export class SignalSourceManagerImpl implements SignalSourceManager {
         this.notifyCallbacks(event);
     }
 
-    remove(signals: SignalSource[]): void {
+    remove(signals: SignalSource<SignalBackend>[]): void {
         if (signals.length === 0) return;
         
         const removedSignals: SignalSource[] = [];

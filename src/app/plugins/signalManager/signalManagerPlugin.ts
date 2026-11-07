@@ -1,4 +1,4 @@
-import { type PluginContext, type SignalSource, RenderMode, type Row, type RowInsert, type Signal } from '@voltex-viewer/plugin-api';
+import { type PluginContext, type SignalSource, RenderMode, type Row, type RowInsert, type Signal, type SignalBackend } from '@voltex-viewer/plugin-api';
 import * as t from 'io-ts';
 import { TreeEntry, buildTreeFromSources, getDescendantRange } from './treeModel';
 import { SignalManagerSidebar } from './signalManagerSidebar';
@@ -194,7 +194,7 @@ export default (context: PluginContext): void => {
 
         const newFileName = newSources.length > 0 ? newSources[0].name[0] : oldFileName;
 
-        const signalPromises: Promise<Signal>[] = [];
+        const signalPromises: Promise<SignalBackend>[] = [];
         const signalInfoForPromises: typeof plottedSignalInfo = [];
         for (const info of plottedSignalInfo) {
             const newSource = newSourcesByNameSuffix.get(info.nameSuffix);

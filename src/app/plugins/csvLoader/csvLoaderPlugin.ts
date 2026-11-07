@@ -1,10 +1,10 @@
-import { SignalSource, PluginContext, RenderMode, Signal } from '@voltex-viewer/plugin-api';
+import { SignalSource, PluginContext, RenderMode, type SignalBackend } from '@voltex-viewer/plugin-api';
 import { InMemorySequence, InMemoryFloat64Sequence, rawSamples, SequenceSignal } from '@voltex-viewer/signal-utils';
 
-class CsvSource implements SignalSource {
-    constructor(public readonly name: string[], private _signal: Signal) {}
+class CsvSource implements SignalSource<SignalBackend> {
+    constructor(public readonly name: string[], private _signal: SignalBackend) {}
 
-    signal(): Promise<Signal> {
+    signal(): Promise<SignalBackend> {
         return Promise.resolve(this._signal);
     }
 }
@@ -66,7 +66,7 @@ export default (context: PluginContext): void => {
                 }
             }
 
-            const sources: SignalSource[] = [];
+            const sources: SignalSource<SignalBackend>[] = [];
             for (let i = 0; i < signalHeaders.length; i++) {
                 const name = [file.name, signalHeaders[i]];
                 const seq = signalSequences[i];

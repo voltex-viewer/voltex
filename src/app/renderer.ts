@@ -3,6 +3,7 @@ import { calculateBounds, px } from "@voltex-viewer/plugin-api";
 import { RenderObjectImpl } from './renderObject';
 import { SignalMetadataManagerImpl } from './signalMetadataManager';
 import { SignalSourceManagerImpl } from './signalSourceManagerImpl';
+import { SignalCache } from './signalCache';
 import { WebGLUtilsImpl } from './webGLUtils';
 import { PluginManager } from './pluginManager';
 import { setPluginManager } from './plugins/manager/pluginManagerPlugin';
@@ -69,11 +70,12 @@ export class Renderer {
         this.webglUtils = proxiedWebglUtils;
         
         this.signalMetadata = new SignalMetadataManagerImpl();
-        this.signalSources = new SignalSourceManagerImpl();
+        const signalCache = new SignalCache(this.requestRender);
+        this.signalSources = new SignalSourceManagerImpl(signalCache);
 
         // Create row container and add it to root
         const commandManager = new CommandManager(configManager);
-        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, commandManager, this.canvas, configManager);
+        this.rowContainer = new RowContainerRenderObject(this.rootRenderObject, this.state, this.requestRender, commandManager, this.canvas, configManager, signalCache);
         
         this.pluginManager = new PluginManager(
             this.state,

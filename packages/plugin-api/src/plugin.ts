@@ -101,9 +101,9 @@ export interface Row {
     setHeight(height: number): void;
 }
 
-export interface SignalSource {
+export interface SignalSource<S extends SignalBackend = Signal> {
     name: string[];
-    signal(): Promise<Signal>;
+    signal(): Promise<S>;
 }
 
 export interface RowsChangedEvent {
@@ -121,8 +121,8 @@ export interface SignalSourceManager {
 
     changed(callback: (event: SignalsAvailableChangedEvent) => void): void;
 
-    add(signals: SignalSource[]): void;
-    remove(signals: SignalSource[]): void;
+    add(signals: SignalSource<SignalBackend>[]): void;
+    remove(signals: SignalSource<SignalBackend>[]): void;
 }
 
 export type RowsChangedCallback = (event: RowsChangedEvent) => void;
@@ -139,7 +139,7 @@ export interface SidebarEntry {
 }
 
 export interface RowParameters {
-    channels?: Signal[];
+    channels?: SignalBackend[];
     height?: number;
 }
 
@@ -152,7 +152,7 @@ export interface FileOpenHandler {
     extensions: `.${string}`[];
     description: string;
     mimeType: `${string}/${string}`;
-    handler: (file: File) => Promise<SignalSource[]>;
+    handler: (file: File) => Promise<SignalSource<SignalBackend>[]>;
 }
 
 export interface WritableFile {
@@ -299,8 +299,8 @@ export function tileDuration(level: number): number {
     return tileColumns * Math.pow(2, level);
 }
 
-export interface Signal {
-    source: SignalSource;
+export interface SignalBackend {
+    source: SignalSource<SignalBackend>;
     renderHint: RenderMode;
     /** Optional absolute recording start, in unix seconds (UTC) */
     startTime?: number | undefined;
@@ -317,6 +317,18 @@ export interface Signal {
     tile(level: number, index: number): Tile | Promise<Tile>;
     /** Returns the form of a value to display, given the exact value */
     format?(value: number | bigint): number | bigint | string;
+}
+
+export interface CachedTile {
+    tile: Tile;
+    /** The time up to which the tile has every sample */
+    completeUntil: number;
+}
+
+export interface Signal extends SignalBackend {
+    source: SignalSource;
+    /** Never fetches, and the tile may be out of date (see `completeUntil`). */
+    peek(level: number, index: number): CachedTile | null;
 }
 
 export interface RenderContext {
