@@ -33,7 +33,7 @@
   "author": "tgillbe",
   "license": "MIT",
   "repository": {
-    "url": "https://github.com/voltex-viewer/voltex.git"
+    "url": "git+https://github.com/voltex-viewer/voltex.git"
   },
   "devDependencies": {
     "typescript": "~5.9.2"

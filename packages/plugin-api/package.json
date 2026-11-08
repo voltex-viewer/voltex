@@ -31,7 +31,7 @@
   "author": "tgillbe",
   "license": "MIT",
   "repository": {
-    "url": "https://github.com/voltex-viewer/voltex.git"
+    "url": "git+https://github.com/voltex-viewer/voltex.git"
   },
   "peerDependencies": {
     "io-ts": "^2.2.22"
